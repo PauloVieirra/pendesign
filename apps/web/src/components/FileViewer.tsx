@@ -46,7 +46,11 @@ import {
 import type { ProjectFilePreview } from '../providers/registry';
 import {
   exportAsHtml,
+  copyImageSnapshotToClipboard,
+  copySvgSnapshotToClipboard,
   exportAsImage,
+  exportAsSvg,
+  requestPreviewSvgSnapshot,
   exportAsJsx,
   exportAsMd,
   exportAsPdf,
@@ -75,6 +79,7 @@ import type {
   ProjectFile,
 } from '../types';
 import { Icon } from './Icon';
+import { ThemeToggle } from './ThemeToggle';
 import { Toast } from './Toast';
 import { PaletteTweaks, type PaletteId } from './PaletteTweaks';
 import { PreviewDrawOverlay, type PreviewDrawMode } from './PreviewDrawOverlay';
@@ -96,6 +101,9 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { EditModeMediaPopover, emptyEditModeMediaPopoverState, type EditModeMediaPopoverState } from './EditModeMediaPopover';
+import { EditModeLinkBubble, emptyEditModeLinkBubbleState, type EditModeLinkBubbleState } from './EditModeLinkBubble';
+import { EditModeColorPopover, emptyEditModeColorPopoverState, type EditModeColorPopoverState } from './EditModeColorPopover';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -976,6 +984,8 @@ export function LiveArtifactViewer({
       {((node: ReactNode) => (
         chromeActionsHost ? createPortal(node, chromeActionsHost) : node
       ))(
+        <>
+        <ThemeToggle className="chrome-action-toolbar-theme" />
         <div className="present-wrap chrome-present-wrap" ref={presentWrapRef}>
           <button
             className="chrome-action chrome-action-secondary present-trigger"
@@ -1004,6 +1014,7 @@ export function LiveArtifactViewer({
             </div>
           ) : null}
         </div>
+        </>
       )}
       {inTabPresent ? (
         <button
@@ -3566,6 +3577,7 @@ function HtmlViewer({
   const [deployError, setDeployError] = useState<string | null>(null);
   const [deployResult, setDeployResult] = useState<WebDeployProjectFileResponse | null>(null);
   const [copiedDeployLink, setCopiedDeployLink] = useState<string | null>(null);
+  const [figmaToast, setFigmaToast] = useState<{ message: string; details?: string; tone?: 'status' | 'alert' } | null>(null);
   const [deployProviderId, setDeployProviderId] = useState<WebDeployProviderId>(DEFAULT_DEPLOY_PROVIDER_ID);
   const [deployToken, setDeployToken] = useState('');
   const [teamId, setTeamId] = useState('');
@@ -3593,6 +3605,15 @@ function HtmlViewer({
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditViewportWidth, setManualEditViewportWidth] = useState<number | null>(null);
   const [previewBodyRef, previewBodySize] = usePreviewCanvasSize<HTMLDivElement>();
+  // Pane-scoped canvas size — drives the preview viewport's reflow and
+  // scale-to-fit math. In single-mode (Source-only / Preview-only) the
+  // pane host fills `viewer-body` and matches `previewBodySize`; in Dual
+  // mode it sits inside SplitPane's right half and tracks that half's
+  // width. Without this, `previewViewportStyle` would scale the design
+  // for the *outer* viewer-body width while only ~50% of that space is
+  // actually visible — the centered design then renders past the right
+  // edge of the clipped pane, which reads as a blank canvas.
+  const [previewPaneRef, previewPaneSize] = usePreviewCanvasSize<HTMLDivElement>();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -3677,6 +3698,11 @@ function HtmlViewer({
       previewScrollRestoreRef.current = null;
       return;
     }
+    // Consume the snapshot atomically. Without this, the effect at
+    // ~L4116 (boardMode / manualEditMode / srcDoc deps) could re-trigger
+    // restorePreviewScrollPosition within the 5s expiry and yank the
+    // scroll back to the stale position after the user already moved.
+    previewScrollRestoreRef.current = null;
     const apply = () => {
       const previewBody = previewBodyRef.current;
       if (typeof previewBody?.scrollTo === 'function') {
@@ -3695,16 +3721,13 @@ function HtmlViewer({
         }, '*');
       } catch {}
     };
+    // Single apply after the next paint settles. The previous chain
+    // (immediate + 80ms + 260ms) re-asserted the scroll position to fight
+    // late layout shifts, but it also fought the user when they tried to
+    // scroll within that window — exactly the "spring back" symptom in
+    // Inspect / Edit modes.
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        apply();
-        window.setTimeout(apply, 80);
-        window.setTimeout(() => {
-          if (previewScrollRestoreRef.current === snapshot) {
-            apply();
-          }
-        }, 260);
-      });
+      window.requestAnimationFrame(apply);
     });
   }, []);
   const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([]);
@@ -3715,9 +3738,19 @@ function HtmlViewer({
   const [manualEditUndone, setManualEditUndone] = useState<ManualEditHistoryEntry[]>([]);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
+  const [manualEditMediaPicker, setManualEditMediaPicker] = useState<EditModeMediaPopoverState>(emptyEditModeMediaPopoverState);
+  const [manualEditLinkBubble, setManualEditLinkBubble] = useState<EditModeLinkBubbleState>(emptyEditModeLinkBubbleState);
+  const [manualEditColorPicker, setManualEditColorPicker] = useState<EditModeColorPopoverState>(emptyEditModeColorPopoverState);
+  const manualEditUploadInputRef = useRef<HTMLInputElement | null>(null);
   const manualEditSavingRef = useRef(false);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors the pending-style infrastructure for text/link/image content
+  // changes coming from the side panel. The pending patch holds the latest
+  // version of the change and is flushed (saved to disk via applyManualEdit)
+  // after the debounce expires.
+  const manualEditPendingContentRef = useRef<{ patch: ManualEditPatch; label: string } | null>(null);
+  const manualEditContentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualEditPreviewVersionRef = useRef(0);
   const sourceRef = useRef<string | null>(source);
   const sourceFileKeyRef = useRef<string | null>(null);
@@ -3731,6 +3764,15 @@ function HtmlViewer({
     [],
   );
   const [activeCommentTarget, setActiveCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
+  // Inspect-mode click → code highlight bridge. When inspect is on, every
+  // click in the design dispatches a target back; the handler stores the
+  // elementId (drives data-od-* range lookup) and a small HTML opening-tag
+  // snippet (`hint` — used as a fallback when the clicked element has no
+  // data-od-* annotation). The tick forces React to re-run the editor's
+  // scroll-into-view effect even when the user re-clicks the same element.
+  const [inspectHighlightTargetId, setInspectHighlightTargetId] = useState<string | null>(null);
+  const [inspectHighlightHint, setInspectHighlightHint] = useState<string | null>(null);
+  const [inspectHighlightTick, setInspectHighlightTick] = useState(0);
   const [hoveredCommentTarget, setHoveredCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   const [hoveredPodMemberId, setHoveredPodMemberId] = useState<string | null>(null);
   const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
@@ -3890,7 +3932,12 @@ function HtmlViewer({
   const [slideState, setSlideState] = useState<SlideState | null>(
     () => htmlPreviewSlideState.get(previewStateKey) ?? null,
   );
-  const overlayPreviewScale = effectivePreviewScale(previewViewport, previewScale, previewBodySize);
+  // Use the pane-scoped size when it has been measured (the wrapping
+  // `<div ref={previewPaneRef}>` inside the preview pane mounts on the
+  // first paint after viewMode flips). Falling back to `previewBodySize`
+  // keeps the very first paint stable instead of computing scale=NaN
+  // while the ResizeObserver settles.
+  const overlayPreviewScale = effectivePreviewScale(previewViewport, previewScale, previewPaneSize ?? previewBodySize);
   const shareRef = useRef<HTMLDivElement | null>(null);
   const [chromeActionsHost, setChromeActionsHost] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -4212,9 +4259,18 @@ function HtmlViewer({
     }, '*');
   }, [boardMode, boardTool, drawClickSelectionMode, srcDoc]);
 
+  // Track the srcDoc this effect last ran against so we know when the iframe
+  // was reloaded (fresh bridge, no selection state) and we have to re-post the
+  // current id even if `lastPostedSelectedTargetIdRef` already saw it.
+  const lastEffectSrcDocRef = useRef<string | null>(null);
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    if (lastEffectSrcDocRef.current !== srcDoc) {
+      lastEffectSrcDocRef.current = srcDoc;
+      // Iframe reloaded with a new srcDoc — bridge has zero state.
+      lastPostedSelectedTargetIdRef.current = null;
+    }
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
   }, [manualEditMode, selectedManualEditTarget?.id, srcDoc]);
@@ -4226,9 +4282,35 @@ function HtmlViewer({
     return true;
   }, []);
 
+  // Content live-preview: mirrors the style live-preview pattern but for text/
+  // link/image fields the panel exposes. Keystrokes in the side panel are
+  // echoed to the iframe DOM immediately — the disk save still goes through
+  // applyManualEdit (debounced via scheduleManualEditContentSave below).
+  const previewTextToIframe = useCallback((id: string, value: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-preview-text', id, value }, '*');
+  }, []);
+  const previewLinkToIframe = useCallback((id: string, text: string, href: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-preview-link', id, text, href }, '*');
+  }, []);
+  const previewImageToIframe = useCallback((id: string, src: string, alt: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-preview-image', id, src, alt }, '*');
+  }, []);
+
+  const lastPostedSelectedTargetIdRef = useRef<string | null>(null);
   function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
+    // Skip when the iframe already knows. Without this, every render that
+    // touches manualEditMode / srcDoc would re-post the same id, and the
+    // bridge would burn cycles tearing down + rebuilding visual handles.
+    if (lastPostedSelectedTargetIdRef.current === id) return;
+    lastPostedSelectedTargetIdRef.current = id;
     win.postMessage({ type: 'od-edit-selected-target', id }, '*');
   }
 
@@ -4253,6 +4335,17 @@ function HtmlViewer({
     win.postMessage({ type: 'od:inspect-mode', enabled: inspectMode }, '*');
   }, [inspectMode, srcDoc]);
 
+  // When inspect is turned off, clear any pending highlight so the editor
+  // shows clean source again. We don't clear ON inspect-on; only OFF, so
+  // the user re-toggling inspect doesn't blank out the last selection.
+  useEffect(() => {
+    if (!inspectMode) {
+      setInspectHighlightTargetId(null);
+      setInspectHighlightHint(null);
+    }
+  }, [inspectMode]);
+
+
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
@@ -4272,7 +4365,15 @@ function HtmlViewer({
   // artifacts) because the comment-mode listener short-circuits on
   // `!boardMode`. Issue #890.
   useEffect(() => {
-    if (!inspectMode && !boardMode && !drawClickSelectionMode) {
+    // Defensive: even though the modes are toggled mutually-exclusive in the
+    // UI, the comment bridge inside the iframe can keep posting od:comment-
+    // targets while it transitions through stale state. If manual edit mode
+    // is active, ignore all comment-targets messages outright — the listener
+    // is the source of the "Maximum update depth exceeded" loop the user
+    // reported (the iframe's MutationObserver fires schedulePostTargets on
+    // every edit-mode DOM tweak, this listener answers, state updates,
+    // re-renders, more mutations follow).
+    if (manualEditMode || (!inspectMode && !boardMode && !drawClickSelectionMode)) {
       setLiveCommentTargets((current) => (current.size > 0 ? new Map() : current));
       return;
     }
@@ -4310,7 +4411,7 @@ function HtmlViewer({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [inspectMode, boardMode, drawClickSelectionMode, file.name, isOurPreviewIframeSource]);
+  }, [inspectMode, boardMode, drawClickSelectionMode, manualEditMode, file.name, isOurPreviewIframeSource]);
 
   useEffect(() => {
     setActiveCommentTarget(null);
@@ -4379,7 +4480,9 @@ function HtmlViewer({
   }, [selectedManualEditTarget?.id]);
 
   useEffect(() => {
-    const selectionMode = boardMode || drawClickSelectionMode;
+    // Same defensive guard as the comment-targets effect above: do NOT
+    // attach this onMessage listener while manual edit mode is active.
+    const selectionMode = (boardMode || drawClickSelectionMode) && !manualEditMode;
     if (!selectionMode) {
       setActiveCommentTarget((current) => (current ? null : current));
       setHoveredCommentTarget((current) => (current ? null : current));
@@ -4504,7 +4607,7 @@ function HtmlViewer({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [boardMode, drawClickSelectionMode, file.name, isOurPreviewIframeSource, previewComments]);
+  }, [boardMode, drawClickSelectionMode, manualEditMode, file.name, isOurPreviewIframeSource, previewComments]);
 
   useEffect(() => {
     if (!manualEditMode) {
@@ -4516,6 +4619,11 @@ function HtmlViewer({
         clearTimeout(manualEditStyleTimerRef.current);
         manualEditStyleTimerRef.current = null;
       }
+      if (manualEditContentTimerRef.current) {
+        clearTimeout(manualEditContentTimerRef.current);
+        manualEditContentTimerRef.current = null;
+      }
+      manualEditPendingContentRef.current = null;
       return;
     }
     function onMessage(ev: MessageEvent) {
@@ -4530,12 +4638,125 @@ function HtmlViewer({
         setSelectedManualEditTarget((current) =>
           current ? data.targets.find((target) => target.id === current.id) ?? current : current,
         );
-        const selectedId = selectedManualEditTargetIdRef.current;
-        if (selectedId) setTimeout(() => postSelectedManualEditTargetToIframe(selectedId), 0);
+        // (Intentionally NOT re-posting od-edit-selected-target here.) The
+        // useEffect with deps [manualEditMode, selectedManualEditTarget?.id,
+        // srcDoc] already syncs selection to the iframe whenever the id or
+        // the document body changes. Re-posting here was redundant AND it
+        // created a feedback loop: bridge → od-edit-targets → host re-posts
+        // od-edit-selected-target → bridge tears down + rebuilds resize/
+        // padding handles → scrollbar toggles on edge cases → window.resize
+        // fires → bridge postTargets again → and the design canvas appears
+        // to "shake" as handles flicker on every cycle.
         return;
       }
       if (data.type === 'od-edit-select') {
         void selectManualEditTarget(data.target);
+        return;
+      }
+      if (data.type === 'od-edit-inline-text') {
+        const summary = data.value.length > 24 ? `${data.value.slice(0, 24)}…` : data.value;
+        const label = summary ? `Text: ${summary}` : 'Text';
+        // Three commit paths, in priority order:
+        //  1. outerHtml present → formatted text (B/I/U via execCommand). Must
+        //     go through set-outer-html so the nested markup survives.
+        //  2. kind === 'link' → set-link, combining the latest text with the
+        //     href the bridge tracked (synced from the host bubble).
+        //  3. plain text → set-text, the existing happy path.
+        if (data.outerHtml) {
+          void applyManualEdit({ id: data.id, kind: 'set-outer-html', html: data.outerHtml }, label);
+        } else if (data.kind === 'link') {
+          void applyManualEdit(
+            { id: data.id, kind: 'set-link', text: data.value, href: data.href ?? '' },
+            label,
+          );
+        } else {
+          void applyManualEdit({ id: data.id, kind: 'set-text', value: data.value }, label);
+        }
+        setManualEditLinkBubble(emptyEditModeLinkBubbleState());
+        return;
+      }
+      if (data.type === 'od-edit-media-request') {
+        setManualEditMediaPicker({
+          open: true,
+          targetId: data.id,
+          mediaKind: data.mediaKind,
+          mediaTarget: data.mediaTarget ?? 'src',
+          rect: data.rect,
+          currentSrc: data.currentSrc,
+          currentAlt: data.currentAlt,
+          tagName: data.tagName ?? '',
+          outerHtml: data.outerHtml ?? '',
+        });
+        return;
+      }
+      if (data.type === 'od-edit-inline-link-active') {
+        setManualEditLinkBubble({
+          open: true,
+          targetId: data.id,
+          rect: data.rect,
+          href: data.href,
+        });
+        return;
+      }
+      if (data.type === 'od-edit-inline-end') {
+        setManualEditLinkBubble(emptyEditModeLinkBubbleState());
+        return;
+      }
+      if (data.type === 'od-edit-color-request') {
+        setManualEditColorPicker({
+          open: true,
+          targetId: data.id,
+          rect: data.rect,
+          colorTarget: data.colorTarget,
+          currentColor: data.currentColor,
+        });
+        return;
+      }
+      if (data.type === 'od-edit-structural-action') {
+        if (data.action === 'clone') {
+          void applyManualEdit({ id: data.id, kind: 'clone-element-after' }, 'Duplicate');
+        } else if (data.action === 'delete') {
+          void applyManualEdit({ id: data.id, kind: 'delete-element' }, 'Delete');
+        } else if (data.action === 'add-sibling-li') {
+          void applyManualEdit(
+            { id: data.id, kind: 'insert-sibling-after', html: '<li> </li>' },
+            'List item',
+          );
+        } else if (data.action === 'move-up') {
+          void applyManualEdit({ id: data.id, kind: 'move-element-up' }, 'Move up');
+        } else if (data.action === 'move-down') {
+          void applyManualEdit({ id: data.id, kind: 'move-element-down' }, 'Move down');
+        } else if (data.action === 'move-before-ref' && data.referenceId) {
+          void applyManualEdit(
+            { id: data.id, kind: 'move-before-ref', referenceId: data.referenceId },
+            'Reorder',
+          );
+        } else if (data.action === 'append-to-parent' && data.parentId) {
+          void applyManualEdit(
+            { id: data.id, kind: 'append-to-parent', parentId: data.parentId },
+            'Reparent',
+          );
+        }
+        return;
+      }
+      if (data.type === 'od-edit-resize-commit') {
+        void applyManualEdit(
+          { id: data.id, kind: 'set-style', styles: data.styles },
+          'Resize',
+        );
+        return;
+      }
+      if (data.type === 'od-edit-format-color-request') {
+        // Routes through the same color popover, but with a sentinel target id
+        // ('__format__') so the apply step skips set-text/set-style and posts
+        // back to the bridge as a foreColor execCommand instead.
+        setManualEditColorPicker({
+          open: true,
+          targetId: '__format__',
+          rect: data.rect,
+          colorTarget: 'color',
+          currentColor: data.currentColor,
+        });
         return;
       }
     }
@@ -4592,6 +4813,34 @@ function HtmlViewer({
       manualEditStyleTimerRef.current = null;
       void flushManualEditStyleSave();
     }, 1000);
+  }
+
+  async function flushManualEditContentSave(): Promise<boolean> {
+    const pending = manualEditPendingContentRef.current;
+    if (!pending) return true;
+    if (manualEditSavingRef.current) {
+      scheduleManualEditContentSave();
+      return false;
+    }
+    manualEditPendingContentRef.current = null;
+    return applyManualEdit(pending.patch, pending.label);
+  }
+  function scheduleManualEditContentSave() {
+    if (manualEditContentTimerRef.current) clearTimeout(manualEditContentTimerRef.current);
+    manualEditContentTimerRef.current = setTimeout(() => {
+      manualEditContentTimerRef.current = null;
+      void flushManualEditContentSave();
+    }, 1000);
+  }
+  function handleManualEditContentChange(patch: ManualEditPatch, label: string) {
+    // Live preview: poke the iframe DOM right now so the canvas reflects the
+    // typed value without waiting for the disk save round-trip.
+    if (patch.kind === 'set-text') previewTextToIframe(patch.id, patch.value);
+    else if (patch.kind === 'set-link') previewLinkToIframe(patch.id, patch.text, patch.href);
+    else if (patch.kind === 'set-image') previewImageToIframe(patch.id, patch.src, patch.alt);
+    manualEditPendingContentRef.current = { patch, label };
+    setManualEditError(null);
+    scheduleManualEditContentSave();
   }
 
   function clearManualEditStyleTimer() {
@@ -4716,6 +4965,93 @@ function HtmlViewer({
     }
   }
 
+  function closeManualEditMediaPicker() {
+    setManualEditMediaPicker(emptyEditModeMediaPopoverState());
+  }
+
+  async function uploadManualEditImage(file: File): Promise<string | null> {
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('name', file.name);
+      const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!resp.ok) {
+        setManualEditError('Upload failed.');
+        return null;
+      }
+      const json = (await resp.json()) as { file?: { name?: string } };
+      const uploadedName = json.file?.name;
+      if (!uploadedName) return null;
+      return `/api/projects/${encodeURIComponent(projectId)}/raw/${uploadedName
+        .split('/')
+        .map((seg) => encodeURIComponent(seg))
+        .join('/')}`;
+    } catch (err) {
+      setManualEditError(err instanceof Error ? err.message : 'Upload failed.');
+      return null;
+    }
+  }
+
+  async function applyManualEditImageSwap(targetId: string, src: string, alt: string) {
+    // Background-image targets route through set-style: the src field becomes
+    // the new backgroundImage URL, and we clear/preserve backgroundColor only
+    // when the user explicitly empties the URL. The alt text is dropped for
+    // background fills — there's no element attribute to write it to.
+    if (manualEditMediaPicker.mediaTarget === 'background') {
+      const value = src.trim() ? `url("${src}")` : '';
+      const ok = await applyManualEdit(
+        { id: targetId, kind: 'set-style', styles: { backgroundImage: value } },
+        `Background: ${src.slice(0, 32) || '(none)'}`,
+      );
+      if (ok) closeManualEditMediaPicker();
+      return;
+    }
+    const ok = await applyManualEdit(
+      { id: targetId, kind: 'set-image', src, alt },
+      `Image: ${src.slice(0, 32)}`,
+    );
+    if (ok) closeManualEditMediaPicker();
+  }
+
+  async function applyManualEditIconSwap(targetId: string, markup: string) {
+    const ok = await applyManualEdit(
+      { id: targetId, kind: 'set-outer-html', html: markup },
+      'Icon',
+    );
+    if (ok) closeManualEditMediaPicker();
+  }
+
+  function closeManualEditColorPicker() {
+    setManualEditColorPicker(emptyEditModeColorPopoverState());
+  }
+
+  async function applyManualEditColorSwap(hex: string) {
+    const target = manualEditColorPicker;
+    if (!target.open || !target.targetId) return;
+    // Sentinel id from the in-iframe format toolbar — the bridge is in
+    // contenteditable mode and wants foreColor on the saved range, not a
+    // source patch. Route the hex straight back without touching the file.
+    if (target.targetId === '__format__') {
+      iframeRef.current?.contentWindow?.postMessage({ type: 'od-edit-format-apply-color', hex }, '*');
+      closeManualEditColorPicker();
+      return;
+    }
+    // The color target controls which patch we emit:
+    //   text → set-text (the leaf's textContent IS the color literal)
+    //   background → set-style({ backgroundColor })
+    //   color → set-style({ color }) — used by future selected-element flows
+    const label = `Color: ${hex}`;
+    const ok = target.colorTarget === 'text'
+      ? await applyManualEdit({ id: target.targetId, kind: 'set-text', value: hex }, label)
+      : target.colorTarget === 'background'
+        ? await applyManualEdit({ id: target.targetId, kind: 'set-style', styles: { backgroundColor: hex } }, label)
+        : await applyManualEdit({ id: target.targetId, kind: 'set-style', styles: { color: hex } }, label);
+    if (ok) closeManualEditColorPicker();
+  }
+
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
     const persisted = await fetchProjectFileText(projectId, file.name, {
       cache: 'no-store',
@@ -4832,6 +5168,26 @@ function HtmlViewer({
       });
       setInspectError(null);
       setInspectSavedAt(null);
+      // Feed the click into the CodeEditor's scroll/highlight: the
+      // elementId resolves directly when the element carries a data-od-*
+      // annotation; for unannotated nodes (text spans, plain divs) the
+      // hint (the element's opening tag + first text chars) lets the
+      // editor disambiguate sibling elements with identical opening
+      // tags. Tick is bumped so re-clicking the same element re-centers.
+      const hintRaw = typeof (data as { htmlHint?: unknown }).htmlHint === 'string'
+        ? (data as { htmlHint?: string }).htmlHint!
+        : '';
+      const textRaw = typeof data.text === 'string' ? data.text : '';
+      // Glue: "<opening tag>·<first 40 chars of text>". The editor's
+      // matcher uses the joined string when sibling tags share the same
+      // opening; raw open tag still matches when the element is
+      // text-less (icons, empty divs, etc.).
+      const composedHint = textRaw
+        ? `${hintRaw} ${textRaw.slice(0, 40)}`
+        : hintRaw;
+      setInspectHighlightTargetId(String(data.elementId));
+      setInspectHighlightHint(composedHint || null);
+      setInspectHighlightTick((n) => n + 1);
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -5525,19 +5881,46 @@ function HtmlViewer({
 
   // Named pane JSX expressions — used by both single-mode and Dual layout.
   // No state hooks live here; these are pure render expressions.
+  // The CodeEditor's commit is debounced inside the component (~600ms after
+  // the user stops typing). We mirror it to disk so a user who switches files
+  // or restarts the desktop doesn't lose their work — the previous behavior
+  // updated state in memory only, so re-mounting the FileViewer would refetch
+  // the unchanged file from disk and silently revert the edit. Manual-edit
+  // patches own their own writeProjectTextFile call (applyManualEdit), so we
+  // skip the redundant write while a patch save is in flight.
   const sourcePane = (
     <CodeEditor
       source={source ?? ''}
-      onCommit={setSource}
+      onCommit={async (next) => {
+        setSource(next);
+        sourceRef.current = next;
+        if (manualEditSavingRef.current) return;
+        const saved = await writeProjectTextFile(projectId, file.name, next, {
+          artifactManifest: file.artifactManifest,
+        });
+        if (saved) await onFileSaved?.();
+      }}
       t={t}
+      selectedTargetId={inspectMode ? inspectHighlightTargetId : null}
+      selectedTargetHint={inspectMode ? inspectHighlightHint : null}
+      selectionTick={inspectHighlightTick}
     />
   );
   const previewPane = (
-    <>
+    // The host element measures the pane's actual rendered size so the
+    // viewport math reflows for Dual layout (half-width) just as well as
+    // single-pane (full width). Style is inline — no new class needed,
+    // the parent (viewer-body or SplitPane right-side) already provides
+    // a positioned, sized box for us to fill 100% of.
+    <div
+      ref={previewPaneRef}
+      className="preview-pane-host"
+      style={{ position: 'relative', width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+    >
       {previewViewport === 'responsive' ? (
         <BreakpointRuler
-          width={responsiveSize?.width ?? (previewBodyRef.current?.clientWidth ?? 0)}
-          height={responsiveSize?.height ?? (previewBodyRef.current?.clientHeight ?? 0)}
+          width={responsiveSize?.width ?? (previewPaneSize?.width ?? previewPaneRef.current?.clientWidth ?? 0)}
+          height={responsiveSize?.height ?? (previewPaneSize?.height ?? previewPaneRef.current?.clientHeight ?? 0)}
           preset={breakpointPreset}
           onPresetChange={setBreakpointPreset}
           t={t}
@@ -5545,7 +5928,7 @@ function HtmlViewer({
       ) : null}
       <div
         className={`${manualEditMode ? 'manual-edit-workspace' : 'comment-preview-layer'} preview-viewport preview-viewport-${previewViewport}`}
-        style={previewViewportStyle(previewViewport, previewScale, previewBodySize, responsiveSize)}
+        style={previewViewportStyle(previewViewport, previewScale, previewPaneSize ?? previewBodySize, responsiveSize)}
       >
         {previewViewport === 'responsive' ? (
           <>
@@ -5597,6 +5980,7 @@ function HtmlViewer({
             onApplyPatch={(patch, label) => {
               void applyManualEdit(patch, label);
             }}
+            onContentChange={handleManualEditContentChange}
             onError={setManualEditError}
             onClearSelection={() => {
               void clearManualEditTargetSelection();
@@ -5611,6 +5995,61 @@ function HtmlViewer({
               void redoManualEdit();
             }}
           />
+        ) : null}
+        {manualEditMode ? (
+          <>
+            <input
+              ref={manualEditUploadInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={async (event) => {
+                const fileInput = event.currentTarget;
+                const picked = fileInput.files?.[0];
+                fileInput.value = '';
+                if (!picked) return;
+                const targetId = manualEditMediaPicker.targetId;
+                if (!targetId) return;
+                const url = await uploadManualEditImage(picked);
+                if (url) await applyManualEditImageSwap(targetId, url, manualEditMediaPicker.currentAlt);
+              }}
+            />
+            <EditModeMediaPopover
+              state={manualEditMediaPicker}
+              onClose={closeManualEditMediaPicker}
+              onPickImageFile={() => manualEditUploadInputRef.current?.click()}
+              onSubmitImageUrl={(src, alt) => {
+                void applyManualEditImageSwap(manualEditMediaPicker.targetId, src, alt);
+              }}
+              onSubmitIcon={(markup) => {
+                void applyManualEditIconSwap(manualEditMediaPicker.targetId, markup);
+              }}
+              onSubmitOuterHtml={(html) => {
+                void applyManualEditIconSwap(manualEditMediaPicker.targetId, html);
+              }}
+              iframeRect={iframeRef.current?.getBoundingClientRect() ?? null}
+            />
+            <EditModeLinkBubble
+              state={manualEditLinkBubble}
+              iframeRect={iframeRef.current?.getBoundingClientRect() ?? null}
+              onHrefChange={(href) => {
+                iframeRef.current?.contentWindow?.postMessage({ type: 'od-edit-inline-set-href', href }, '*');
+              }}
+              onCommit={(href) => {
+                iframeRef.current?.contentWindow?.postMessage({ type: 'od-edit-inline-commit', href }, '*');
+              }}
+              onCancel={() => {
+                iframeRef.current?.contentWindow?.postMessage({ type: 'od-edit-inline-cancel' }, '*');
+                setManualEditLinkBubble(emptyEditModeLinkBubbleState());
+              }}
+            />
+            <EditModeColorPopover
+              state={manualEditColorPicker}
+              iframeRect={iframeRef.current?.getBoundingClientRect() ?? null}
+              onClose={closeManualEditColorPicker}
+              onApply={(hex) => { void applyManualEditColorSwap(hex); }}
+            />
+          </>
         ) : null}
         <div className={manualEditMode ? 'manual-edit-canvas' : 'comment-frame-clip'}>
           <div
@@ -5666,6 +6105,19 @@ function HtmlViewer({
                   onLoad={() => {
                     const frame = srcDocPreviewIframeRef.current;
                     if (!useUrlLoadPreview) iframeRef.current = frame;
+                    // Clear the activation guard before re-activating: when the
+                    // user toggles viewMode (Preview ↔ Dual), this iframe is
+                    // unmounted and remounted because the JSX parent type
+                    // changes (viewer-body direct child ↔ SplitPane right
+                    // side). The activation effect fires once before the new
+                    // contentWindow's bootstrapper is ready, posting a message
+                    // that nothing receives, then stamps the ref as
+                    // "activated". Without clearing here, the freshly-loaded
+                    // bootstrapper never gets its content message and the
+                    // pane renders blank until the user nudges things by
+                    // switching files. onLoad is the canonical "iframe is
+                    // fresh" signal, so it's the right place to reset.
+                    activatedSrcDocTransportHtmlRef.current = null;
                     activateSrcDocTransport(frame);
                     dcViewportRestoreAtRef.current = Date.now();
                     frame?.contentWindow?.postMessage({
@@ -5812,37 +6264,16 @@ function HtmlViewer({
             t={t}
           />
         ) : null}
-        {inspectMode && activeInspectTarget ? (
-          <InspectPanel
-            target={activeInspectTarget}
-            onApply={(prop, value) => {
-              const target = activeInspectTarget;
-              setInspectOverrides((current) =>
-                updateInspectOverride(current, target.elementId, target.selector, prop, value),
-              );
-              postInspectSet(target.elementId, target.selector, prop, value);
-            }}
-            onResetElement={(elementId) => {
-              setInspectOverrides((current) => {
-                if (!(elementId in current)) return current;
-                const next = { ...current };
-                delete next[elementId];
-                return next;
-              });
-              postInspectReset(elementId);
-              setActiveInspectTarget((current) => current && current.elementId === elementId
-                ? current
-                : current);
-            }}
-            onSaveToSource={() => {
-              void saveInspectToSource();
-            }}
-            onClose={() => setActiveInspectTarget(null)}
-            saving={savingInspect}
-            savedAt={inspectSavedAt}
-            error={inspectError}
-          />
-        ) : null}
+        {/* Inspect's role is now strictly "locate code in the editor".
+            The previous InspectPanel (live CSS override editor with
+            Colors / Typography / Padding / Reset / Save-to-source) is
+            intentionally not rendered — the user wants the click in the
+            design to do exactly one thing: jump the editor to the source
+            range. The override plumbing (`postInspectSet`,
+            `postInspectReset`, `saveInspectToSource`, `inspectOverrides`)
+            stays in this component because the daemon-side bridge still
+            needs the same handlers if we ever bring the panel back; it
+            just has no UI surface today. */}
         {/*
           Hint banner for Inspect / Picker modes. The bridge in
           `apps/web/src/runtime/srcdoc.ts` posts `od:comment-targets`
@@ -5863,9 +6294,14 @@ function HtmlViewer({
             missing and how to fix it. Mirrored across Inspect and
             Picker because the failure surface is identical.
         */}
-        {(inspectMode || (boardMode && boardTool === 'inspect'))
+        {/* The "Click any element with data-od-id to tune its style" empty
+            hint was paired with the InspectPanel above. With inspect now
+            being a pure code-locator (no overlay panel, no required
+            annotations thanks to DOM fallback), the hint has no work to
+            do — it stays only for the comment/picker board mode where
+            data-od-id is still meaningful for persisting comments. */}
+        {(boardMode && boardTool === 'inspect')
           && openHintBox
-          && !activeInspectTarget
           && !activeCommentTarget ? (
           <div
             className={`inspect-empty-hint-container${
@@ -5880,16 +6316,14 @@ function HtmlViewer({
               >
                 This artifact has no <code>data-od-id</code>{' '}
                 annotations yet — ask the agent to add them to the
-                sections you want to{' '}
-                {inspectMode ? 'inspect' : 'comment on'}.
+                sections you want to comment on.
               </div>
             ) : (
               <div
                 className="inspect-empty-hint"
                 data-testid="inspect-empty-hint"
               >
-                Click any element with <code>data-od-id</code> to{' '}
-                {inspectMode ? 'tune its style' : 'leave a comment'}.
+                Click any element with <code>data-od-id</code> to leave a comment.
               </div>
             )}
             <button
@@ -5904,7 +6338,7 @@ function HtmlViewer({
           </div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -6183,7 +6617,7 @@ function HtmlViewer({
             className={`viewer-action${inspectMode ? ' active' : ''}`}
             type="button"
             data-testid="inspect-mode-toggle"
-            title="Inspect"
+            title="Inspect — click any element in the design to jump to its source"
             aria-pressed={inspectMode}
             onClick={() => {
               setInspectMode((v) => {
@@ -6194,7 +6628,11 @@ function HtmlViewer({
                   setManualEditMode(false);
                   setDrawOverlayOpen(false);
                   setOpenHintBox(true);
-                  setViewMode('preview');
+                  // Inspect's primary job is now "click design → see code".
+                  // Force Dual so the editor pane is actually on screen
+                  // when the user starts inspecting; without this the
+                  // highlight would happen behind a hidden editor.
+                  if (dualAvailable) setViewMode('dual');
                 }
                 return next;
               });
@@ -6237,6 +6675,7 @@ function HtmlViewer({
       {((filePrimaryActions: ReactNode) => (
         chromeActionsHost ? createPortal(filePrimaryActions, chromeActionsHost) : filePrimaryActions
       ))(<>
+          <ThemeToggle className="chrome-action-toolbar-theme" />
           {showPresent ? (
             <div className="present-wrap chrome-present-wrap">
               <button
@@ -6400,6 +6839,58 @@ function HtmlViewer({
                       <span>{t('fileViewer.exportImage')}</span>
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="share-menu-item"
+                    role="menuitem"
+                    onClick={async () => {
+                      setShareMenuOpen(false);
+                      const iframe = iframeRef.current;
+                      if (!iframe) return;
+                      // The componentized SVG path needs the snapshot bridge,
+                      // which is only injected by buildSrcdoc — i.e. when the
+                      // preview is rendered via srcdoc (Edit / Inspect / Draw
+                      // / Comment / Palette modes force it, and forceInline=1
+                      // does too). In plain URL-load preview the iframe has
+                      // no bridge to answer the postMessage, so we short-
+                      // circuit with a clear hint instead of letting the user
+                      // wait through the request timeout.
+                      if (useUrlLoadPreview) {
+                        setFigmaToast({
+                          message: 'Switch to Edit or Inspect mode to enable Send to Figma.',
+                          details: 'The componentized SVG capture runs inside the design preview, which is only injected when those modes are active.',
+                          tone: 'alert',
+                        });
+                        return;
+                      }
+                      const snap = await requestPreviewSvgSnapshot(iframe);
+                      if (!snap) {
+                        setFigmaToast({ message: 'Could not capture the design snapshot.', tone: 'alert' });
+                        return;
+                      }
+                      const copied = await copySvgSnapshotToClipboard(snap.svg);
+                      if (copied) {
+                        setFigmaToast({
+                          message: 'SVG copied. Paste in Figma (Ctrl/Cmd+V).',
+                          details: 'Each element imports as a separate layer.',
+                        });
+                        return;
+                      }
+                      try {
+                        exportAsSvg(snap.svg, exportTitle);
+                        setFigmaToast({
+                          message: 'Clipboard unavailable — SVG downloaded instead.',
+                          details: 'Drag the .svg into Figma; layers stay separate.',
+                        });
+                      } catch (err) {
+                        console.warn('[figma-export] svg download fallback failed:', err);
+                        setFigmaToast({ message: 'Could not export the design.', tone: 'alert' });
+                      }
+                    }}
+                  >
+                    <span className="share-menu-icon"><Icon name="external-link" size={14} /></span>
+                    <span>Send to Figma</span>
+                  </button>
                   <div className="share-menu-divider" />
                   <button
                     type="button"
@@ -6820,6 +7311,14 @@ function HtmlViewer({
             </div>
           </div>
         </div>
+      ) : null}
+      {figmaToast ? (
+        <Toast
+          message={figmaToast.message}
+          details={figmaToast.details}
+          role={figmaToast.tone === 'alert' ? 'alert' : 'status'}
+          onDismiss={() => setFigmaToast(null)}
+        />
       ) : null}
     </div>
   );

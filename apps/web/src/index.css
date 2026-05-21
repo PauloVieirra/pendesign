@@ -12167,9 +12167,32 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   position: absolute;
   left: 0;
   right: 0;
-  background: color-mix(in srgb, var(--accent-strong, #4c8bff) 12%, transparent);
+  /* Distinct enough that the user sees which snippet was selected, but
+   * still light enough that the syntax-highlighted tokens beneath stay
+   * fully legible. The inset border (left + right) bookends the range
+   * so a multi-line highlight reads as ONE block instead of a vague
+   * gradient when the user is mid-scroll. */
+  background: color-mix(in srgb, var(--accent, #4c8bff) 18%, transparent);
+  box-shadow:
+    inset 3px 0 0 0 var(--accent, #4c8bff),
+    inset -1px 0 0 0 color-mix(in srgb, var(--accent, #4c8bff) 35%, transparent);
+  border-radius: 2px;
   pointer-events: none;
   z-index: 1;
+  /* Short transition so a multi-click sequence still reads as continuous
+   * motion without holding up the next click. 80ms ≈ the user's
+   * perceptual response window for "instant". */
+  transition: top 80ms cubic-bezier(0.23, 1, 0.32, 1), height 80ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* In dark theme, accent-mix with the inky #1e1e1e bg can wash out — bump
+ * the alpha so the highlight stays legible against very dark code. */
+:root[data-theme='dark'] .code-editor-highlight {
+  background: color-mix(in srgb, var(--accent, #569cd6) 28%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) .code-editor-highlight {
+    background: color-mix(in srgb, var(--accent, #569cd6) 28%, transparent);
+  }
 }
 .code-editor-area {
   width: 100%;
@@ -12193,6 +12216,171 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
 }
 .code-editor-status-error .code-editor-area {
   background: color-mix(in srgb, var(--danger, #c0392b) 4%, transparent);
+}
+
+/* ── Syntax highlighting overlay ─────────────────────────────────────
+ *
+ * Transparent-textarea trick: the textarea renders its own text in
+ * `color: transparent` so the caret + selection stay native, while a
+ * `<pre>` overlay sits behind it rendering the same characters wrapped
+ * in token spans. They share font/size/padding/line-height pixel for
+ * pixel; the textarea's `onScroll` forwards its scrollTop/Left to the
+ * overlay so they move together.
+ *
+ * Token colors target a VS Code-ish palette via CSS variables defined
+ * once for light + dark themes below. Editing the palette in one place
+ * cascades to every code surface in the app.
+ */
+.code-editor-area.code-editor-area-overlaid {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  color: transparent;
+  caret-color: var(--code-fg, var(--text));
+  background: transparent;
+}
+.code-editor-area.code-editor-area-overlaid::selection {
+  background: color-mix(in srgb, var(--accent, #4c8bff) 30%, transparent);
+  color: transparent;
+}
+.code-editor-overlay {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: hidden;
+  tab-size: 2;
+  pointer-events: none;
+  color: var(--code-fg, var(--text));
+  /* Transparent on purpose: the wrap below paints the code background,
+   * the highlight sits between wrap and this overlay (z-index 1 vs the
+   * overlay's z-index 2), and the colored tokens read on top. A solid
+   * bg here would hide the highlight rectangle entirely. */
+  background: transparent;
+  z-index: 2;
+  user-select: none;
+}
+.code-editor-area-wrap {
+  background: var(--code-bg, var(--bg-panel));
+}
+
+/* ── Token palette: light theme defaults ──────────────────────────── */
+:root {
+  --code-bg: #fafafa;
+  --code-fg: #24292e;
+  --code-tag-bracket: #24292e;
+  --code-tag-name: #22863a;
+  --code-attr-name: #6f42c1;
+  --code-attr-string: #032f62;
+  --code-attr-value: #032f62;
+  --code-attr-class: #b45309;
+  --code-comment: #6a737d;
+  --code-doctype: #6a737d;
+  --code-js-keyword: #d73a49;
+  --code-js-string: #032f62;
+  --code-js-number: #005cc5;
+  --code-js-ident: #24292e;
+  --code-js-punct: #24292e;
+  --code-css-selector: #22863a;
+  --code-css-property: #6f42c1;
+  --code-css-value: #032f62;
+}
+
+/* ── Token palette: dark theme (VS Code "Dark+" inspired) ─────────── */
+:root[data-theme='dark'] {
+  --code-bg: #1e1e1e;
+  --code-fg: #d4d4d4;
+  --code-tag-bracket: #808080;
+  --code-tag-name: #569cd6;
+  --code-attr-name: #9cdcfe;
+  --code-attr-string: #ce9178;
+  --code-attr-value: #ce9178;
+  --code-attr-class: #dcdcaa;
+  --code-comment: #6a9955;
+  --code-doctype: #808080;
+  --code-js-keyword: #c586c0;
+  --code-js-string: #ce9178;
+  --code-js-number: #b5cea8;
+  --code-js-ident: #9cdcfe;
+  --code-js-punct: #d4d4d4;
+  --code-css-selector: #d7ba7d;
+  --code-css-property: #9cdcfe;
+  --code-css-value: #ce9178;
+}
+
+/* Respect system theme when the user hasn't explicitly chosen one. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    --code-bg: #1e1e1e;
+    --code-fg: #d4d4d4;
+    --code-tag-bracket: #808080;
+    --code-tag-name: #569cd6;
+    --code-attr-name: #9cdcfe;
+    --code-attr-string: #ce9178;
+    --code-attr-value: #ce9178;
+    --code-attr-class: #dcdcaa;
+    --code-comment: #6a9955;
+    --code-doctype: #808080;
+    --code-js-keyword: #c586c0;
+    --code-js-string: #ce9178;
+    --code-js-number: #b5cea8;
+    --code-js-ident: #9cdcfe;
+    --code-js-punct: #d4d4d4;
+    --code-css-selector: #d7ba7d;
+    --code-css-property: #9cdcfe;
+    --code-css-value: #ce9178;
+  }
+}
+
+.code-editor-overlay .tok-comment       { color: var(--code-comment); font-style: italic; }
+.code-editor-overlay .tok-doctype       { color: var(--code-doctype); }
+.code-editor-overlay .tok-tag-bracket   { color: var(--code-tag-bracket); }
+.code-editor-overlay .tok-tag-name      { color: var(--code-tag-name); }
+.code-editor-overlay .tok-attr-name     { color: var(--code-attr-name); }
+.code-editor-overlay .tok-attr-eq       { color: var(--code-tag-bracket); }
+.code-editor-overlay .tok-attr-string   { color: var(--code-attr-string); }
+.code-editor-overlay .tok-attr-value    { color: var(--code-attr-value); }
+.code-editor-overlay .tok-attr-class-value { color: var(--code-attr-class); }
+.code-editor-overlay .tok-text          { color: var(--code-fg); }
+.code-editor-overlay .tok-js-comment    { color: var(--code-comment); font-style: italic; }
+.code-editor-overlay .tok-js-string     { color: var(--code-js-string); }
+.code-editor-overlay .tok-js-number     { color: var(--code-js-number); }
+.code-editor-overlay .tok-js-keyword    { color: var(--code-js-keyword); }
+.code-editor-overlay .tok-js-ident      { color: var(--code-js-ident); }
+.code-editor-overlay .tok-js-punct      { color: var(--code-js-punct); }
+.code-editor-overlay .tok-css-comment   { color: var(--code-comment); font-style: italic; }
+.code-editor-overlay .tok-css-selector  { color: var(--code-css-selector); }
+.code-editor-overlay .tok-css-property  { color: var(--code-css-property); }
+.code-editor-overlay .tok-css-value     { color: var(--code-css-value); }
+.code-editor-overlay .tok-css-punct     { color: var(--code-tag-bracket); }
+.code-editor-overlay .tok-ws,
+.code-editor-overlay .tok-unknown       { color: inherit; }
+
+/* The line gutter follows the editor's code background so the seam
+ * between gutter and code area disappears in both themes. */
+.code-editor-gutter {
+  background: color-mix(in srgb, var(--code-bg, var(--bg-subtle)) 96%, var(--text-muted));
+}
+
+/* ── Theme toggle button ───────────────────────────────────────────── */
+.chrome-action.theme-toggle {
+  width: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.chrome-action.theme-toggle .icon {
+  transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.chrome-action.theme-toggle:hover .icon {
+  transform: rotate(-12deg);
 }
 
 /* Breakpoint ruler — Word-style ruler with minor ticks and a current indicator */
@@ -20048,6 +20236,42 @@ body.desktop-pet-shell .pet-task-item {
   font-size: 12px; min-width: 0;
 }
 .cc-row:focus-within { border-color: var(--accent, #2563eb); }
+/* Stacked variant for content fields (label above input) — used by the
+   ContentInspector text/href/src/alt rows where horizontal density would
+   crop the typed value on the right. */
+.cc-row-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  padding: 6px 8px;
+  gap: 4px;
+}
+.cc-row-stacked .cc-label { padding-right: 0; }
+.cc-row-stacked input,
+.cc-row-stacked textarea {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  padding: 0;
+  outline: none;
+  resize: vertical;
+}
+.cc-content-apply {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cc-content-apply:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.cc-content-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 .cc-label {
   color: var(--text-muted, #6b7280);
   flex: 0 0 auto; padding-right: 8px;
@@ -24328,6 +24552,205 @@ body.desktop-pet-shell .pet-task-item {
 .workspace-shell .workspace-tab.is-active {
   background: var(--bg-subtle);
   border-color: var(--border);
+}
+
+/* Inline edit-mode media popover — anchored to the iframe element the user
+   dblclicked. Sits above the iframe with a fixed coordinate computed by the
+   host. */
+.od-edit-media-popover {
+  width: 320px;
+  max-height: 360px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  overflow: auto;
+}
+.od-edit-media-body { display: flex; flex-direction: column; gap: 10px; }
+.od-edit-media-head {
+  margin: 0;
+  padding-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.od-edit-media-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.od-edit-media-label input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+.od-edit-media-tabs { display: flex; gap: 4px; }
+.od-edit-media-tab {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.od-edit-media-tab-active { background: var(--bg-subtle); color: var(--text); }
+.od-edit-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+.od-edit-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.od-edit-icon-tile:hover { background: var(--bg-subtle); border-color: var(--border); }
+.od-edit-media-primary {
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.od-edit-media-primary:hover { background: var(--bg); }
+.od-edit-media-foot { display: flex; gap: 8px; justify-content: flex-end; }
+.od-edit-media-apply {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.od-edit-media-apply:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Inline href editor — floats beneath the link the user is editing. Compact
+   horizontal row: label + input + Apply. */
+.od-edit-link-bubble {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+.od-edit-link-bubble-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.od-edit-link-bubble input {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* Inline color picker — anchored beneath the swatch / colored container the
+   user dblclicked. Native picker + hex chips + manual hex input. */
+.od-edit-color-popover {
+  width: 260px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+.od-edit-color-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+.od-edit-color-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.od-edit-color-tile:hover { transform: scale(1.1); }
+.od-edit-color-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.od-edit-color-input input[type="color"] {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+.od-edit-color-input input[type="text"] {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+/* Sub-section of the media popover when the target is a <picture>/<video>/
+   <audio> with <source> children. Each row gets src + optional srcset. */
+.od-edit-media-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.od-edit-media-sub-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+.od-edit-media-source-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
 }
 .workspace-shell .workspace-tab__main {
   gap: 7px;

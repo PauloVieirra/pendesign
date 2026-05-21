@@ -47,9 +47,65 @@ export function applyManualEditPatch(source: string, patch: ManualEditPatch): Ma
   } else if (patch.kind === 'set-outer-html') {
     const replaced = replaceOuterHtml(doc, el, patch.html);
     if (!replaced.ok) return { ok: false, source, error: replaced.error };
+  } else if (patch.kind === 'delete-element') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot delete the document body.' };
+    el.remove();
+  } else if (patch.kind === 'clone-element-after') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot clone the document body.' };
+    const clone = el.cloneNode(true) as Element;
+    // Strip runtime-only attributes so the clone gets fresh stable ids when
+    // the bridge re-scans. Without this, two elements would share the same
+    // data-od-runtime-id and findEditableElement would resolve to whichever
+    // came first in the DOM.
+    stripRuntimeMarkers(clone);
+    el.after(clone);
+  } else if (patch.kind === 'insert-sibling-after') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot insert next to the document body.' };
+    const template = doc.createElement('template');
+    template.innerHTML = patch.html.trim();
+    const inserted = Array.from(template.content.children);
+    if (inserted.length !== 1) return { ok: false, source, error: 'Insertion HTML must contain exactly one root element.' };
+    el.after(inserted[0]!);
+  } else if (patch.kind === 'move-element-up') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot move the document body.' };
+    const prev = el.previousElementSibling;
+    if (!prev) return { ok: false, source, error: 'No previous sibling to swap with.' };
+    el.parentElement?.insertBefore(el, prev);
+  } else if (patch.kind === 'move-element-down') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot move the document body.' };
+    const next = el.nextElementSibling;
+    if (!next) return { ok: false, source, error: 'No next sibling to swap with.' };
+    // insertBefore inserts BEFORE the reference node; using nextElementSibling
+    // of next (i.e. the node two positions ahead) keeps `el` after `next`.
+    el.parentElement?.insertBefore(el, next.nextElementSibling);
+  } else if (patch.kind === 'move-before-ref') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot move the document body.' };
+    const ref = findEditableElement(doc, patch.referenceId);
+    if (!ref) return { ok: false, source, error: `Reference target not found: ${patch.referenceId}` };
+    if (el === ref) return { ok: false, source, error: 'Cannot move an element relative to itself.' };
+    if (el.contains(ref)) return { ok: false, source, error: 'Cannot move an element into its own descendant.' };
+    ref.parentElement?.insertBefore(el, ref);
+  } else if (patch.kind === 'append-to-parent') {
+    if (el === doc.body) return { ok: false, source, error: 'Cannot move the document body.' };
+    const parent = findEditableElement(doc, patch.parentId);
+    if (!parent) return { ok: false, source, error: `Parent target not found: ${patch.parentId}` };
+    if (el === parent) return { ok: false, source, error: 'Cannot move an element into itself.' };
+    if (el.contains(parent)) return { ok: false, source, error: 'Cannot move an element into its own descendant.' };
+    parent.appendChild(el);
   }
 
   return { ok: true, source: serializeSource(doc, source) };
+}
+
+function stripRuntimeMarkers(el: Element): void {
+  el.removeAttribute('data-od-runtime-id');
+  el.removeAttribute('data-od-edit-selected');
+  el.removeAttribute('data-od-inline-editing');
+  Array.from(el.querySelectorAll('[data-od-runtime-id], [data-od-edit-selected], [data-od-inline-editing]')).forEach((child) => {
+    child.removeAttribute('data-od-runtime-id');
+    child.removeAttribute('data-od-edit-selected');
+    child.removeAttribute('data-od-inline-editing');
+  });
 }
 
 export function readManualEditFields(source: string, id: string): ManualEditFields {

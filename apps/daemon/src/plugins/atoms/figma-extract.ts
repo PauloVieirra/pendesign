@@ -92,9 +92,17 @@ export interface FigmaExtractOptions {
   // the asset is skipped + listed in meta.unsupportedNodes[] with
   // reason='asset-too-large' so the human can audit.
   assetMaxBytes?: number;
+  // Optional node-id of a page or section that contains the project's
+  // reusable component library. When set, the atom emits an extra
+  // figma/components.tree.json + figma/components.tokens.json scoped
+  // to that subtree, so generate can materialise <cwd>/components/.
+  // Accepts both URL-style ids (e.g. "20-5") and API-style ids
+  // (e.g. "20:5"); they're normalised internally.
+  componentsNodeId?: string;
 }
 
 const FILE_URL_RE = /^https:\/\/(?:www\.)?figma\.com\/(?:file|design)\/([A-Za-z0-9]+)/;
+const NODE_ID_RE  = /[?&]node-id=([^&]+)/;
 
 export async function runFigmaExtract(opts: FigmaExtractOptions): Promise<FigmaExtractReport> {
   const cwd = path.resolve(opts.cwd);
@@ -103,7 +111,7 @@ export async function runFigmaExtract(opts: FigmaExtractOptions): Promise<FigmaE
     throw new Error('figma-extract: missing fileKey or fileUrl (Figma file URL must match https://figma.com/file/<KEY>)');
   }
   if (!opts.token) {
-    throw new Error('figma-extract: missing OAuth token (route through oauth-prompt with connectorId=figma)');
+    throw new Error('figma-extract: missing Figma personal access token (configure Settings → MCP → figma-context, or export FIGMA_TOKEN)');
   }
   const fetchFn = opts.fetchFn ?? globalThis.fetch;
   if (!fetchFn) throw new Error('figma-extract: no fetch implementation available');
@@ -170,8 +178,70 @@ export async function runFigmaExtract(opts: FigmaExtractOptions): Promise<FigmaE
     meta.atomDigest = digestObject({ tree, tokens, assetIssues });
   }
 
+  // 4. Components subtree pass — when the caller supplied a separate
+  // page id for the project's component library, slice the already-
+  // walked tree to that subtree and emit two extra files. Filesystem
+  // is the only inter-stage channel, so writing them here means the
+  // generate stage finds them without any registry handshake.
+  if (opts.componentsNodeId) {
+    const componentsRootId = normaliseNodeId(opts.componentsNodeId);
+    const subtree = filterSubtree(tree, componentsRootId);
+    if (subtree.length > 0) {
+      const componentsTokens = liftTokens(subtree);
+      await fsp.writeFile(path.join(figmaDir, 'components.tree.json'),   JSON.stringify(subtree,         null, 2) + '\n', 'utf8');
+      await fsp.writeFile(path.join(figmaDir, 'components.tokens.json'), JSON.stringify(componentsTokens, null, 2) + '\n', 'utf8');
+    } else {
+      unsupportedNodes.push({
+        id:     componentsRootId,
+        type:   'components-root',
+        reason: 'componentsNodeId did not match any node in the document',
+      });
+    }
+  }
+
   await fsp.writeFile(path.join(figmaDir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n', 'utf8');
   return { tree, tokens, meta };
+}
+
+// Parse `?node-id=X-Y` (URL form) or `node-id=X:Y` (API form) out of a
+// Figma URL. Returns the API-form id ("X:Y"). Exported so the daemon's
+// figma worker can derive componentsNodeId from a componentsUrl input.
+export function extractNodeId(figmaUrl: string | undefined): string | undefined {
+  if (!figmaUrl) return undefined;
+  const m = NODE_ID_RE.exec(figmaUrl);
+  const raw = m?.[1];
+  if (!raw) return undefined;
+  return normaliseNodeId(decodeURIComponent(raw));
+}
+
+// Figma renders node ids as "X-Y" in URLs but the REST API and the
+// `node.id` field both use "X:Y". Accept either form on input.
+function normaliseNodeId(raw: string): string {
+  return raw.replace('-', ':');
+}
+
+// BFS the tree starting from `rootId`, returning every descendant
+// (inclusive). Returns an empty array if rootId isn't in the tree.
+function filterSubtree(tree: FigmaNode[], rootId: string): FigmaNode[] {
+  const byId = new Map(tree.map((n) => [n.id, n]));
+  const root = byId.get(rootId);
+  if (!root) return [];
+  const out: FigmaNode[] = [];
+  const queue: FigmaNode[] = [root];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    out.push(node);
+    if (Array.isArray(node.children)) {
+      for (const childId of node.children) {
+        const child = byId.get(childId);
+        if (child) queue.push(child);
+      }
+    }
+  }
+  return out;
 }
 
 interface AssetCandidate { id: string; type: string }

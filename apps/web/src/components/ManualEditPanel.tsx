@@ -27,6 +27,8 @@ export function ManualEditPanel({
   onDraftChange,
   onStyleChange,
   onInvalidStyle,
+  onApplyPatch,
+  onContentChange,
   onError,
   onClearSelection,
   pageStylesEnabled = true,
@@ -45,6 +47,10 @@ export function ManualEditPanel({
   onStyleChange?: (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
   onInvalidStyle?: (id: string, keys: Array<keyof ManualEditStyles>) => void;
   onApplyPatch: (patch: ManualEditPatch, label: string) => void;
+  /** Per-keystroke live preview: fired by content fields (text/href/src/alt)
+   * so the iframe updates in real time. The host handles both the live
+   * postMessage and the debounced disk save. */
+  onContentChange?: (patch: ManualEditPatch, label: string) => void;
   onError: (message: string) => void;
   onClearSelection: () => void;
   onCancelDraft: () => void;
@@ -72,12 +78,21 @@ export function ManualEditPanel({
     <aside className="manual-edit-right">
       <section className="manual-edit-modal cc-panel">
         {targetForInspector ? (
-          <StyleInspector
-            styles={draft.styles}
-            layoutEnabled={targetForInspector.isLayoutContainer}
-            onClearSelection={onClearSelection}
-            onChange={changeTargetStyle}
-          />
+          <>
+            <ContentInspector
+              target={targetForInspector}
+              draft={draft}
+              onDraftChange={onDraftChange}
+              onApplyPatch={onApplyPatch}
+              onContentChange={onContentChange}
+            />
+            <StyleInspector
+              styles={draft.styles}
+              layoutEnabled={targetForInspector.isLayoutContainer}
+              onClearSelection={onClearSelection}
+              onChange={changeTargetStyle}
+            />
+          </>
         ) : !targetForInspector ? (
           <PageInspector
             enabled={pageStylesEnabled}
@@ -97,6 +112,163 @@ export function ManualEditPanel({
         {error ? <div className="manual-edit-error">{error}</div> : null}
       </section>
     </aside>
+  );
+}
+
+/**
+ * Content editor for the currently selected element. The kinds map 1:1 to the
+ * patch kinds: text/heading/etc → set-text, links → set-link, images → set-image.
+ * Apply is explicit (button or Enter) so the user can fiddle without writing
+ * to disk on every keystroke — the host already serializes patches through
+ * applyManualEdit + writeProjectTextFile.
+ */
+function ContentInspector({
+  target,
+  draft,
+  onDraftChange,
+  onApplyPatch,
+  onContentChange,
+}: {
+  target: ManualEditTarget;
+  draft: ManualEditDraft;
+  onDraftChange: (draft: ManualEditDraft) => void;
+  onApplyPatch: (patch: ManualEditPatch, label: string) => void;
+  onContentChange?: (patch: ManualEditPatch, label: string) => void;
+}) {
+  const labelFor = target.label || target.tagName;
+  // Fire the live preview (and schedule the debounced save) on every keystroke
+  // so the iframe DOM reflects the typed value immediately, without waiting
+  // for the user to click Apply. The Apply button stays as an immediate flush
+  // for users who'd rather not wait for the 1-second debounce.
+  const live = (patch: ManualEditPatch, label: string) => {
+    if (onContentChange) onContentChange(patch, label);
+    else onApplyPatch(patch, label);
+  };
+  if (target.kind === 'image') {
+    return (
+      <Section title="CONTENT">
+        <label className="cc-row cc-row-stacked">
+          <span className="cc-label">Image URL</span>
+          <input
+            type="url"
+            value={draft.src}
+            onChange={(e) => {
+              const nextSrc = e.currentTarget.value;
+              onDraftChange({ ...draft, src: nextSrc });
+              live({ id: target.id, kind: 'set-image', src: nextSrc, alt: draft.alt }, `Image: ${labelFor}`);
+            }}
+            placeholder="https://…"
+          />
+        </label>
+        <label className="cc-row cc-row-stacked">
+          <span className="cc-label">Alt text</span>
+          <input
+            type="text"
+            value={draft.alt}
+            onChange={(e) => {
+              const nextAlt = e.currentTarget.value;
+              onDraftChange({ ...draft, alt: nextAlt });
+              live({ id: target.id, kind: 'set-image', src: draft.src, alt: nextAlt }, `Image: ${labelFor}`);
+            }}
+            placeholder="Describe the image"
+          />
+        </label>
+        <button
+          type="button"
+          className="cc-content-apply"
+          onClick={() => onApplyPatch({ id: target.id, kind: 'set-image', src: draft.src, alt: draft.alt }, `Image: ${labelFor}`)}
+        >
+          Apply image
+        </button>
+      </Section>
+    );
+  }
+  if (target.kind === 'link') {
+    return (
+      <Section title="CONTENT">
+        <label className="cc-row cc-row-stacked">
+          <span className="cc-label">Text</span>
+          <textarea
+            rows={2}
+            value={draft.text}
+            onChange={(e) => {
+              const nextText = e.currentTarget.value;
+              onDraftChange({ ...draft, text: nextText });
+              live({ id: target.id, kind: 'set-link', text: nextText, href: draft.href }, `Link: ${labelFor}`);
+            }}
+            placeholder="Link label"
+          />
+        </label>
+        <label className="cc-row cc-row-stacked">
+          <span className="cc-label">href</span>
+          <input
+            type="url"
+            value={draft.href}
+            onChange={(e) => {
+              const nextHref = e.currentTarget.value;
+              onDraftChange({ ...draft, href: nextHref });
+              live({ id: target.id, kind: 'set-link', text: draft.text, href: nextHref }, `Link: ${labelFor}`);
+            }}
+            placeholder="https://…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onApplyPatch({ id: target.id, kind: 'set-link', text: draft.text, href: draft.href }, `Link: ${labelFor}`);
+              }
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="cc-content-apply"
+          onClick={() => onApplyPatch({ id: target.id, kind: 'set-link', text: draft.text, href: draft.href }, `Link: ${labelFor}`)}
+        >
+          Apply link
+        </button>
+      </Section>
+    );
+  }
+  // text / container / token — show a textarea bound to set-text when the
+  // element is a text-leaf, otherwise just show the read-only label (containers
+  // don't have a single textContent worth editing safely).
+  const isTextLeaf = !target.text.trim() || target.kind === 'text' || target.kind === 'token';
+  return (
+    <Section title="CONTENT">
+      {isTextLeaf ? (
+        <>
+          <label className="cc-row cc-row-stacked">
+            <span className="cc-label">Text</span>
+            <textarea
+              rows={3}
+              value={draft.text}
+              onChange={(e) => {
+                const nextText = e.currentTarget.value;
+                onDraftChange({ ...draft, text: nextText });
+                live({ id: target.id, kind: 'set-text', value: nextText }, `Text: ${labelFor}`);
+              }}
+              placeholder="Element text"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  onApplyPatch({ id: target.id, kind: 'set-text', value: draft.text }, `Text: ${labelFor}`);
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="cc-content-apply"
+            onClick={() => onApplyPatch({ id: target.id, kind: 'set-text', value: draft.text }, `Text: ${labelFor}`)}
+          >
+            Apply text
+          </button>
+        </>
+      ) : (
+        <p className="cc-section-hint">
+          This element contains nested markup. Edit individual children, or use the code editor for whole-element changes.
+        </p>
+      )}
+    </Section>
   );
 }
 

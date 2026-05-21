@@ -18,7 +18,7 @@ import type {
   SkillSummary,
 } from '../types';
 import { Icon } from './Icon';
-import { NewProjectPanel, type CreateInput, type CreateTab } from './NewProjectPanel';
+import { NewProjectPanel, type CreateInput, type CreateTab, type FigmaCreateInput } from './NewProjectPanel';
 
 interface Props {
   open: boolean;
@@ -32,6 +32,7 @@ interface Props {
   connectorsLoading?: boolean;
   loading?: boolean;
   onCreate: (input: CreateInput) => void;
+  onCreateFigma?: (input: FigmaCreateInput) => void | Promise<void>;
   onImportClaudeDesign?: (file: File) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onOpenConnectorsTab?: () => void;
@@ -51,6 +52,7 @@ export function NewProjectModal({
   connectorsLoading,
   loading,
   onCreate,
+  onCreateFigma,
   onImportClaudeDesign,
   onImportFolder,
   onOpenConnectorsTab,
@@ -124,6 +126,14 @@ export function NewProjectModal({
               onCreate(input);
               onClose();
             }}
+            {...(onCreateFigma
+              ? {
+                  onCreateFigma: async (input: FigmaCreateInput) => {
+                    await onCreateFigma(input);
+                    onClose();
+                  },
+                }
+              : {})}
             {...(onImportClaudeDesign ? { onImportClaudeDesign } : {})}
             {...(onImportFolder ? { onImportFolder } : {})}
             {...(onOpenConnectorsTab ? { onOpenConnectorsTab } : {})}

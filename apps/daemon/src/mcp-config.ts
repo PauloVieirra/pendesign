@@ -273,6 +273,27 @@ async function doWrite(dataDir: string, body: unknown): Promise<McpConfig> {
   return next;
 }
 
+// Resolve the Figma Personal Access Token. Single source of truth for
+// the figma-migration scenario and the `od figma ...` CLI: looks first
+// at the saved `figma-context` MCP server's `env.FIGMA_API_KEY` (what
+// the Settings UI writes), then falls back to the `FIGMA_TOKEN` shell
+// env var so CI / scripted runs don't need to touch the config file.
+// Returns null when neither is set — callers should surface a clear
+// "configure your PAT" error instead of letting the Figma REST 401.
+export async function getFigmaPat(dataDir: string): Promise<string | null> {
+  try {
+    const cfg = await readMcpConfig(dataDir);
+    const server = cfg.servers.find((s) => s.id === 'figma-context');
+    const fromConfig = server?.env?.FIGMA_API_KEY;
+    if (typeof fromConfig === 'string' && fromConfig.length > 0) return fromConfig;
+  } catch {
+    // Corrupted / missing config — fall through to env fallback below.
+  }
+  const fromEnv = process.env.FIGMA_TOKEN;
+  if (typeof fromEnv === 'string' && fromEnv.length > 0) return fromEnv;
+  return null;
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // Spawn-time wiring helpers.
 // ───────────────────────────────────────────────────────────────────────

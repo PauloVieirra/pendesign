@@ -38,6 +38,14 @@ export interface AtomWorkerContext {
   stage:          PipelineStage;
   iteration:      number;
   snapshot:       AppliedPluginSnapshot;
+  // Project working directory (absolute). Optional because pre-existing
+  // workers (critique-theater) and tests don't need it; new I/O workers
+  // like figma-extract require it and surface a clear note when absent.
+  cwd?:           string;
+  // Daemon data directory (absolute). Optional for the same reason as
+  // `cwd`. figma-extract reads mcp-config.json from here to source the
+  // user's Figma Personal Access Token.
+  dataDir?:       string;
 }
 
 export interface AtomOutcome {

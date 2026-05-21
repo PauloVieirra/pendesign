@@ -56,6 +56,7 @@ import {
   syncMediaProvidersToDaemon,
 } from './state/config';
 import { applyAppearanceToDocument } from './state/appearance';
+import { OD_THEME_CHANGE_EVENT, type OdThemeChangeDetail } from './components/ThemeToggle';
 import { isMacPlatform } from './utils/platform';
 import {
   createProject,
@@ -277,6 +278,21 @@ export function App() {
       accentColor: config.accentColor,
     });
   }, [config.theme, config.accentColor]);
+
+  // Toolbar theme toggle (ThemeToggle component) writes localStorage and
+  // calls applyAppearanceToDocument directly, then fires this event so the
+  // canonical React state stays in sync. Without this, the SettingsDialog
+  // appearance picker would show the OLD theme the next time the user
+  // opens it, even though the document's data-theme attribute is current.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<OdThemeChangeDetail>).detail;
+      if (!detail) return;
+      setConfig((prev) => (prev.theme === detail.theme ? prev : { ...prev, theme: detail.theme }));
+    };
+    window.addEventListener(OD_THEME_CHANGE_EVENT, handler);
+    return () => window.removeEventListener(OD_THEME_CHANGE_EVENT, handler);
+  }, []);
 
   // Tell the daemon what the user is currently looking at, so the MCP
   // server can surface it as `get_active_context` to a coding agent in

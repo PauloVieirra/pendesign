@@ -191,10 +191,179 @@ function injectSnapshotBridge(doc: string): string {
     };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
+  // ──────────────────────────────────────────────────────────────────
+  // Componentized SVG snapshot — walks the live DOM and emits one SVG
+  // primitive per element so the result imports into Figma as a tree of
+  // groups (not a flattened raster like the PNG path above). Each visual
+  // ancestor becomes a <g transform="translate(...)"> with children
+  // recursed into it; text-leaf elements become <text>, images become
+  // <image>, and inline <svg>s are copied as-is.
+  // ──────────────────────────────────────────────────────────────────
+  function svgEscapeAttr(s){
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function svgEscapeText(s){
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function svgHasVisibleColor(colorStr){
+    if (!colorStr || colorStr === 'transparent' || colorStr === 'none') return false;
+    var rgba = String(colorStr).match(/^rgba\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*([0-9.]+)\\s*\\)$/i);
+    if (rgba && parseFloat(rgba[1]) === 0) return false;
+    return true;
+  }
+  function svgIsTextLeaf(el){
+    for (var i = 0; i < el.children.length; i++) {
+      if (el.children[i].nodeType === 1) return false;
+    }
+    return (el.textContent || '').trim() !== '';
+  }
+  function svgIsSkippedTag(tag){
+    return tag === 'script' || tag === 'style' || tag === 'link' || tag === 'meta'
+        || tag === 'head' || tag === 'title' || tag === 'noscript';
+  }
+  function svgIsBridgeNode(el){
+    if (!el.hasAttribute) return false;
+    return el.hasAttribute('data-od-edit-bridge')
+        || el.hasAttribute('data-od-snapshot-bridge')
+        || el.hasAttribute('data-od-deck-bridge')
+        || el.hasAttribute('data-od-comment-bridge')
+        || el.hasAttribute('data-od-deck-fix')
+        || el.hasAttribute('data-od-sandbox-shim')
+        || el.hasAttribute('data-od-edit-bridge-style')
+        || el.hasAttribute('data-od-comment-bridge-style');
+  }
+  function svgWalkChildren(el, parentAbsX, parentAbsY){
+    var parts = [];
+    for (var i = 0; i < el.children.length; i++) {
+      parts.push(svgWalkElement(el.children[i], parentAbsX, parentAbsY));
+    }
+    return parts.join('');
+  }
+  function svgWalkElement(el, parentAbsX, parentAbsY){
+    if (!el || el.nodeType !== 1) return '';
+    var tag = el.tagName ? el.tagName.toLowerCase() : '';
+    if (svgIsSkippedTag(tag)) return '';
+    if (svgIsBridgeNode(el)) return '';
+    var rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      // Empty container can still hold positioned children — recurse, no group.
+      return svgWalkChildren(el, parentAbsX, parentAbsY);
+    }
+    var styles = window.getComputedStyle(el);
+    if (styles.display === 'none' || styles.visibility === 'hidden') return '';
+    var opacity = parseFloat(styles.opacity || '1');
+    if (!isFinite(opacity)) opacity = 1;
+    if (opacity === 0) return '';
+    var absX = rect.left + (window.scrollX || 0);
+    var absY = rect.top + (window.scrollY || 0);
+    var x = absX - parentAbsX;
+    var y = absY - parentAbsY;
+    var w = rect.width;
+    var h = rect.height;
+    var parts = [];
+    // Background fill
+    if (svgHasVisibleColor(styles.backgroundColor)) {
+      var radius = parseFloat(styles.borderTopLeftRadius) || 0;
+      parts.push('<rect width="' + w + '" height="' + h + '" fill="' + styles.backgroundColor + '"'
+        + (radius ? ' rx="' + radius + '" ry="' + radius + '"' : '') + '/>');
+    }
+    // Border (uniform only — the lossy cases like asymmetric borders are
+    // skipped for the first pass; Figma users can patch them by hand).
+    var borderWidth = parseFloat(styles.borderTopWidth) || 0;
+    if (borderWidth > 0 && styles.borderTopStyle !== 'none' && svgHasVisibleColor(styles.borderTopColor)) {
+      var bRadius = parseFloat(styles.borderTopLeftRadius) || 0;
+      parts.push('<rect x="' + (borderWidth/2) + '" y="' + (borderWidth/2) + '"'
+        + ' width="' + Math.max(0, w - borderWidth) + '" height="' + Math.max(0, h - borderWidth) + '"'
+        + ' fill="none" stroke="' + styles.borderTopColor + '" stroke-width="' + borderWidth + '"'
+        + (bRadius ? ' rx="' + bRadius + '" ry="' + bRadius + '"' : '') + '/>');
+    }
+    if (tag === 'img' && el.getAttribute('src')) {
+      var src = el.currentSrc || el.getAttribute('src') || '';
+      var altText = el.getAttribute('alt') || '';
+      parts.push('<image x="0" y="0" width="' + w + '" height="' + h + '"'
+        + ' xlink:href="' + svgEscapeAttr(src) + '" href="' + svgEscapeAttr(src) + '"'
+        + ' preserveAspectRatio="xMidYMid slice"'
+        + (altText ? ' aria-label="' + svgEscapeAttr(altText) + '"' : '') + '/>');
+    } else if (tag === 'svg') {
+      try {
+        var svgClone = el.cloneNode(true);
+        svgClone.setAttribute('width', String(w));
+        svgClone.setAttribute('height', String(h));
+        parts.push(new XMLSerializer().serializeToString(svgClone));
+      } catch(e){ /* skip un-serializable */ }
+    } else if (svgIsTextLeaf(el)) {
+      var text = (el.textContent || '').replace(/[\\u00A0]/g, ' ').trim();
+      if (text) {
+        var fontFamily = styles.fontFamily || 'sans-serif';
+        var fontSize = parseFloat(styles.fontSize) || 16;
+        var fontWeight = styles.fontWeight || 'normal';
+        var fillColor = styles.color || '#000';
+        var lineHeight = parseFloat(styles.lineHeight);
+        if (!isFinite(lineHeight) || lineHeight <= 0) lineHeight = fontSize * 1.4;
+        var textAlign = styles.textAlign || 'start';
+        var anchor = (textAlign === 'right' || textAlign === 'end') ? 'end'
+                   : textAlign === 'center' ? 'middle' : 'start';
+        var pl = parseFloat(styles.paddingLeft) || 0;
+        var pr = parseFloat(styles.paddingRight) || 0;
+        var pt = parseFloat(styles.paddingTop) || 0;
+        var tx = anchor === 'end' ? (w - pr) : anchor === 'middle' ? (w/2) : pl;
+        var ty = pt + fontSize;
+        var lines = text.split(/\\n/);
+        var tspans = lines.map(function(line, idx){
+          return '<tspan x="' + tx + '" dy="' + (idx === 0 ? 0 : lineHeight) + '">' + svgEscapeText(line) + '</tspan>';
+        }).join('');
+        parts.push('<text x="' + tx + '" y="' + ty + '"'
+          + ' font-family="' + svgEscapeAttr(fontFamily) + '"'
+          + ' font-size="' + fontSize + '"'
+          + ' font-weight="' + svgEscapeAttr(fontWeight) + '"'
+          + ' fill="' + fillColor + '"'
+          + ' text-anchor="' + anchor + '">' + tspans + '</text>');
+      }
+    } else {
+      parts.push(svgWalkChildren(el, absX, absY));
+    }
+    if (parts.length === 0) return '';
+    var label = (el.getAttribute && (el.getAttribute('data-od-id') || el.getAttribute('data-od-label'))) || tag;
+    var opacityAttr = opacity < 1 ? ' opacity="' + opacity + '"' : '';
+    return '<g data-od-source="' + svgEscapeAttr(label) + '"' + opacityAttr
+      + ' transform="translate(' + Math.round(x * 100) / 100 + ',' + Math.round(y * 100) / 100 + ')">' + parts.join('') + '</g>';
+  }
+  function renderComponentSvgSnapshot(id){
+    try {
+      var docW = Math.max(window.innerWidth || 0, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
+      var docH = Math.max(window.innerHeight || 0, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+      if (!docW || !docH) {
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'no document size' }, '*');
+        return;
+      }
+      var bodyRect = document.body.getBoundingClientRect();
+      var rootAbsX = bodyRect.left + (window.scrollX || 0);
+      var rootAbsY = bodyRect.top + (window.scrollY || 0);
+      var bodyStyles = window.getComputedStyle(document.body);
+      var bgRect = svgHasVisibleColor(bodyStyles.backgroundColor)
+        ? '<rect width="' + docW + '" height="' + docH + '" fill="' + bodyStyles.backgroundColor + '"/>'
+        : '';
+      var inner = svgWalkChildren(document.body, rootAbsX, rootAbsY);
+      var svg = '<?xml version="1.0" encoding="UTF-8"?>'
+        + '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
+        + ' width="' + docW + '" height="' + docH + '" viewBox="0 0 ' + docW + ' ' + docH + '">'
+        + bgRect + inner + '</svg>';
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, svg: svg, w: docW, h: docH }, '*');
+    } catch (err) {
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+    }
+  }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
-    if (!data || data.type !== 'od:snapshot' || !data.id) return;
-    waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+    if (!data || !data.id) return;
+    if (data.type === 'od:snapshot') {
+      waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+      return;
+    }
+    if (data.type === 'od:snapshot-svg') {
+      waitForImages().then(function(){ renderComponentSvgSnapshot(String(data.id)); });
+      return;
+    }
   });
 })();</script>`;
   return injectBeforeBodyEnd(doc, script);
@@ -912,9 +1081,16 @@ function meaningfulDomFallbackTarget(el) {
   function targetFrom(el, allowDomFallback, clickedEl){
     var id = el.getAttribute('data-od-id') || el.getAttribute('data-screen-label');
     var selector = annotatedSelectorFor(el);
-    if (!id && allowDomFallback && meaningfulDomFallbackTarget(el)) {
-      selector = domSelectorFor(el);
-      if (selector) id = 'dom:' + selector;
+    if (!id && allowDomFallback) {
+      // In inspect mode we want atomic picking: ANY visible element is a
+      // legal target. meaningfulDomFallbackTarget was tuned for comment
+      // mode (which prefers anchors / buttons / nodes with aria) and
+      // would reject plain wrapper divs the user wants to inspect.
+      var ok = inspectEnabled ? !!visibleTarget(el) : meaningfulDomFallbackTarget(el);
+      if (ok) {
+        selector = domSelectorFor(el);
+        if (selector) id = 'dom:' + selector;
+      }
     }
     if (!id || !selector) return null;
     var rect = el.getBoundingClientRect();
@@ -1010,10 +1186,34 @@ function meaningfulDomFallbackTarget(el) {
     window.parent.postMessage({ type: type, points: stroke.slice() }, '*');
   }
   function canUseDomFallback(){
+    // Inspect mode always allows DOM fallback so the user can pick ANY
+    // element — that's the point of atomic identification. Comment mode
+    // only enables fallback for unannotated artifacts so it doesn't
+    // accidentally pin freeform comments to arbitrary structural nodes.
+    if (inspectEnabled) return true;
     return commentEnabled && !inspectEnabled && document.querySelectorAll('[data-od-id], [data-screen-label]').length === 0;
   }
+  // Walk up from the clicked element looking for a usable target.
+  //
+  // - Inspect mode (atomic picking): the clicked element ITSELF wins
+  //   when it's a real element, no matter what annotated ancestor sits
+  //   above it. This lets the user click a single <span>, an icon
+  //   <path>, an empty spacer <div>, the body, anything — and land on
+  //   that exact node in the editor.
+  // - Other modes keep the original "find annotated ancestor first"
+  //   behavior so comments persist against stable IDs the agent chose.
   function closestTarget(event){
     var clicked = event.target;
+    if (inspectEnabled) {
+      // Promote text-only nodes (e.g. the user clicked on raw text inside
+      // a <p>) up to their owning element. Everything else stays at the
+      // exact element the pointer hit.
+      var atom = clicked;
+      while (atom && atom.nodeType !== 1) atom = atom.parentNode;
+      if (atom && atom !== document.documentElement) {
+        return { target: atom, clicked: clicked };
+      }
+    }
     var el = clicked;
     var fallback = null;
     var allowDomFallback = mode === 'picker' && canUseDomFallback();
@@ -1135,15 +1335,23 @@ function meaningfulDomFallbackTarget(el) {
   function pickerActive(){ return inspectEnabled || (commentEnabled && mode === 'picker'); }
   document.addEventListener('mouseover', function(ev){
     if (!pickerActive()) return;
+    // Inspect mode is click-only: with atomic picking the cursor now
+    // crosses dozens of nested elements per second when the user moves
+    // (or even scrolls), and each hover would round-trip through the
+    // host's React state. Skipping the dispatch when only inspect is
+    // active kills the visible flicker + scroll stutter without losing
+    // anything — the host doesn't render any inspect hover UI today.
+    if (inspectEnabled && !commentEnabled) return;
     var result = closestTarget(ev);
     if (!result) return;
-    var payload = targetFrom(result.target, commentEnabled && mode === 'picker' && !inspectEnabled);
+    var payload = targetFrom(result.target, (commentEnabled && mode === 'picker') || inspectEnabled);
     if (!payload || payload.elementId === hoveredId) return;
     hoveredId = payload.elementId;
     window.parent.postMessage(Object.assign({}, payload, { type: 'od:comment-hover' }), '*');
   }, true);
   document.addEventListener('mouseout', function(ev){
     if (!pickerActive()) return;
+    if (inspectEnabled && !commentEnabled) return;
     var result = closestTarget(ev);
     if (!result) return;
     var next = ev.relatedTarget;
@@ -1160,7 +1368,12 @@ function meaningfulDomFallbackTarget(el) {
     if (result) {
       ev.preventDefault();
       ev.stopPropagation();
-      var payload = targetFrom(result.target, commentEnabled && mode === 'picker' && !inspectEnabled, result.clicked);
+      // DOM fallback is enabled for inspect (so clicking ANY element —
+      // text, icon, div, body — locates its source) and for comment
+      // picker mode. Inspect mode keeps the override-style flow but the
+      // host-side handler also feeds the click into the editor's code
+      // highlight, so the user gets "click design → see code" for free.
+      var payload = targetFrom(result.target, (commentEnabled && mode === 'picker') || inspectEnabled, result.clicked);
       if (payload) window.parent.postMessage(payload, '*');
       return;
     }
@@ -1249,9 +1462,13 @@ function meaningfulDomFallbackTarget(el) {
   // as save input — it parses the artifact source itself — but emitting it
   // keeps the iframe → host channel symmetric across set/reset/extract.
   if (Object.keys(overrides).length) setTimeout(postOverrides, 0);
+  // Just one restore request right after init. The original 0/80/240ms
+  // triplet was a defensive re-assert against late layout shifts, but
+  // it fights the user when they start scrolling within that window
+  // (the host responds with the cached position, snapping the scroll
+  // back). One request lands the iframe at its previous position;
+  // further user scrolls win unopposed.
   setTimeout(requestPreviewScrollRestore, 0);
-  setTimeout(requestPreviewScrollRestore, 80);
-  setTimeout(requestPreviewScrollRestore, 240);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', postTargets);
   else setTimeout(postTargets, 0);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', postPreviewScroll);

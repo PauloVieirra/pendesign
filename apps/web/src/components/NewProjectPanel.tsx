@@ -98,7 +98,7 @@ const DESIGN_PLATFORMS: Array<{
   },
 ];
 
-export type CreateTab = 'prototype' | 'live-artifact' | 'deck' | 'template' | 'media' | 'other';
+export type CreateTab = 'prototype' | 'live-artifact' | 'deck' | 'template' | 'media' | 'other' | 'figma';
 export type MediaSurface = 'image' | 'video' | 'audio';
 
 export interface CreateInput {
@@ -106,6 +106,23 @@ export interface CreateInput {
   skillId: string | null;
   designSystemId: string | null;
   metadata: ProjectMetadata;
+}
+
+// Payload the panel hands the host when the user submits the "From Figma"
+// tab. The host (App.tsx) is responsible for: persisting the PAT into the
+// figma-context MCP server when `pat` is set, then POSTing a project
+// with pluginId='od-figma-migration' and the briefing inputs.
+export interface FigmaCreateInput {
+  name: string;
+  // Empty string means "keep whatever token is already saved". Trimmed
+  // before being passed up so we don't accidentally clear a saved token
+  // with a whitespace-only string.
+  pat: string;
+  figmaUrl: string;
+  componentsUrl: string;
+  outputFormat: 'react' | 'html';
+  cssFramework: 'tailwind' | 'bootstrap';
+  requestId?: string;
 }
 
 interface Props {
@@ -116,6 +133,10 @@ interface Props {
   onDeleteTemplate?: (id: string) => Promise<boolean>;
   promptTemplates: PromptTemplateSummary[];
   onCreate: (input: CreateInput & { requestId?: string }) => void;
+  // Optional figma-tab submit handler. When omitted, the figma tab still
+  // renders (the option appears in the modal) but the submit button
+  // surfaces a configuration hint instead of triggering a creation flow.
+  onCreateFigma?: (input: FigmaCreateInput) => void | Promise<void>;
   onImportClaudeDesign?: (file: File) => Promise<void> | void;
   // Web fallback: the user types an absolute baseDir into the manual
   // input and the renderer POSTs `/api/import/folder` itself. Browser
@@ -143,6 +164,7 @@ const TAB_LABEL_KEYS: Record<CreateTab, keyof Dict> = {
   template: 'newproj.tabTemplate',
   media: 'newproj.tabMedia',
   other: 'newproj.tabOther',
+  figma: 'newproj.tabFigma',
 };
 
 const MEDIA_SURFACE_LABEL_KEYS: Record<MediaSurface, keyof Dict> = {
@@ -181,6 +203,7 @@ export function NewProjectPanel({
   onDeleteTemplate,
   promptTemplates,
   onCreate,
+  onCreateFigma,
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
@@ -257,6 +280,46 @@ export function NewProjectPanel({
     useState<PromptTemplatePick | null>(null);
   const [videoPromptTemplate, setVideoPromptTemplate] =
     useState<PromptTemplatePick | null>(null);
+
+  // ── Figma tab state ──────────────────────────────────────────────────
+  // The figma tab is self-contained: PAT goes to the figma-context MCP
+  // server, the URLs + format choice become plugin inputs on the
+  // od-figma-migration scenario. Each piece lives in its own state hook
+  // so that flipping away to another tab and back preserves the form.
+  const [figmaPat, setFigmaPat] = useState('');
+  const [figmaUrl, setFigmaUrl] = useState('');
+  const [figmaComponentsUrl, setFigmaComponentsUrl] = useState('');
+  const [figmaOutputFormat, setFigmaOutputFormat] =
+    useState<'react' | 'html'>('react');
+  const [figmaCssFramework, setFigmaCssFramework] =
+    useState<'tailwind' | 'bootstrap'>('tailwind');
+  // True once we've confirmed via GET /api/mcp/servers that the user has
+  // a non-empty FIGMA_API_KEY saved. Drives the "leave blank to keep"
+  // hint copy so the user knows they don't have to re-paste.
+  const [figmaPatAlreadySaved, setFigmaPatAlreadySaved] = useState(false);
+  const [figmaSubmitting, setFigmaSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'figma') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/api/mcp/servers');
+        if (!resp.ok) return;
+        const body = (await resp.json()) as {
+          servers?: Array<{ id?: string; env?: Record<string, string> }>;
+        };
+        const figma = body.servers?.find((s) => s.id === 'figma-context');
+        const saved = typeof figma?.env?.FIGMA_API_KEY === 'string'
+          && figma!.env!.FIGMA_API_KEY!.length > 0;
+        if (!cancelled) setFigmaPatAlreadySaved(saved);
+      } catch {
+        // Network failure — leave the "already saved" flag false so the
+        // hint nudges the user to paste a token, which still works.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab]);
 
   // Design system is meaningful only for the structured/visual surfaces
   // (prototype, deck, template, and the freeform "other" canvas). The
@@ -420,7 +483,13 @@ export function NewProjectPanel({
   }, [tab, mediaSurface, skillIdForTab, videoModelTouched]);
 
   const canCreate =
-    !loading && (tab !== 'template' || templateId != null);
+    !loading
+    && (tab !== 'template' || templateId != null)
+    && (tab !== 'figma' || (
+      figmaUrl.trim().length > 0
+      && !figmaSubmitting
+      && (figmaPatAlreadySaved || figmaPat.trim().length > 0)
+    ));
 
   function updateTabScrollState() {
     const el = tabsRef.current;
@@ -467,8 +536,35 @@ export function NewProjectPanel({
     window.setTimeout(updateTabScrollState, 180);
   }, [tab]);
 
+  async function handleCreateFigma() {
+    if (!onCreateFigma) return;
+    if (figmaSubmitting) return;
+    const trimmedName = name.trim();
+    const trimmedFigmaUrl = figmaUrl.trim();
+    if (trimmedFigmaUrl.length === 0) return;
+    setFigmaSubmitting(true);
+    try {
+      const requestId = analytics.newRequestId();
+      await onCreateFigma({
+        name: trimmedName || 'Figma import',
+        pat: figmaPat.trim(),
+        figmaUrl: trimmedFigmaUrl,
+        componentsUrl: figmaComponentsUrl.trim(),
+        outputFormat: figmaOutputFormat,
+        cssFramework: figmaCssFramework,
+        requestId,
+      });
+    } finally {
+      setFigmaSubmitting(false);
+    }
+  }
+
   function handleCreate() {
     if (!canCreate) return;
+    if (tab === 'figma') {
+      void handleCreateFigma();
+      return;
+    }
     // Media surfaces don't carry a design system pick. Force the primary
     // and inspiration ids to empty there so the New Project panel can't
     // accidentally bind a stale DS that the user can no longer see in the
@@ -809,6 +905,80 @@ export function NewProjectPanel({
           />
         ) : null}
 
+        {tab === 'figma' ? (
+          <div className="newproj-figma" data-testid="new-project-figma">
+            <p className="newproj-figma-intro">{t('newproj.figma.intro')}</p>
+            <label className="newproj-field">
+              <span className="newproj-field-label">{t('newproj.figma.patLabel')}</span>
+              <input
+                type="password"
+                className="newproj-field-input"
+                data-testid="new-project-figma-pat"
+                placeholder={t('newproj.figma.patPlaceholder')}
+                value={figmaPat}
+                onChange={(e) => setFigmaPat(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <span className="newproj-field-hint">
+                {figmaPatAlreadySaved
+                  ? t('newproj.figma.patSaved')
+                  : t('newproj.figma.patHint')}
+              </span>
+            </label>
+            <label className="newproj-field">
+              <span className="newproj-field-label">{t('newproj.figma.screensUrlLabel')}</span>
+              <input
+                type="url"
+                className="newproj-field-input"
+                data-testid="new-project-figma-url"
+                placeholder={t('newproj.figma.screensUrlPlaceholder')}
+                value={figmaUrl}
+                onChange={(e) => setFigmaUrl(e.target.value)}
+                spellCheck={false}
+              />
+            </label>
+            <label className="newproj-field">
+              <span className="newproj-field-label">{t('newproj.figma.componentsUrlLabel')}</span>
+              <input
+                type="url"
+                className="newproj-field-input"
+                data-testid="new-project-figma-components-url"
+                placeholder={t('newproj.figma.componentsUrlPlaceholder')}
+                value={figmaComponentsUrl}
+                onChange={(e) => setFigmaComponentsUrl(e.target.value)}
+                spellCheck={false}
+              />
+            </label>
+            <div className="newproj-figma-row">
+              <label className="newproj-field">
+                <span className="newproj-field-label">{t('newproj.figma.outputFormatLabel')}</span>
+                <select
+                  className="newproj-field-input"
+                  data-testid="new-project-figma-output"
+                  value={figmaOutputFormat}
+                  onChange={(e) => setFigmaOutputFormat(e.target.value as 'react' | 'html')}
+                >
+                  <option value="react">{t('newproj.figma.outputFormatReact')}</option>
+                  <option value="html">{t('newproj.figma.outputFormatHtml')}</option>
+                </select>
+              </label>
+              <label className="newproj-field">
+                <span className="newproj-field-label">{t('newproj.figma.cssFrameworkLabel')}</span>
+                <select
+                  className="newproj-field-input"
+                  data-testid="new-project-figma-css"
+                  value={figmaCssFramework}
+                  onChange={(e) => setFigmaCssFramework(e.target.value as 'tailwind' | 'bootstrap')}
+                >
+                  <option value="tailwind">{t('newproj.figma.cssFrameworkTailwind')}</option>
+                  <option value="bootstrap">{t('newproj.figma.cssFrameworkBootstrap')}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        ) : null}
+
         <button
           className="primary newproj-create"
           data-testid="create-project"
@@ -822,8 +992,10 @@ export function NewProjectPanel({
         >
           <Icon name="plus" size={13} />
           <span>
-            {tab === 'template'
-              ? t('newproj.createFromTemplate')
+            {tab === 'figma'
+              ? t('newproj.figma.submit')
+              : tab === 'template'
+                ? t('newproj.createFromTemplate')
               : tab === 'live-artifact'
                 ? t('newproj.createLiveArtifact')
               : t('newproj.create')}
@@ -2494,8 +2666,12 @@ function buildMetadata(input: {
   inspirationIds: string[];
   promptTemplate: PromptTemplatePick | null;
 }): ProjectMetadata {
+  // The figma tab takes its own submit path (handleCreateFigma) and never
+  // reaches buildMetadata at runtime. Mapping it to 'prototype' here keeps
+  // TypeScript's CreateTab exhaustiveness happy without inventing a
+  // 'figma' ProjectKind row in the contract.
   const kind: ProjectKind =
-    input.tab === 'live-artifact'
+    input.tab === 'live-artifact' || input.tab === 'figma'
       ? 'prototype'
       : input.tab === 'media'
         ? input.mediaSurface
@@ -2686,6 +2862,12 @@ function titleForTab(
     }
     case 'other':
       return t('newproj.titleOther');
+    case 'figma':
+      // The Figma tab reuses the tab label as its panel title — there's
+      // already enough explanatory copy in the intro paragraph, and a
+      // separate i18n key would mostly duplicate "From Figma" in every
+      // locale file.
+      return t('newproj.tabFigma');
   }
 }
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runFigmaExtract } from '../src/plugins/atoms/figma-extract.js';
+import { extractNodeId, runFigmaExtract } from '../src/plugins/atoms/figma-extract.js';
 
 let cwd: string;
 
@@ -267,6 +267,118 @@ describe('runFigmaExtract — asset rasterisation', () => {
   });
 });
 
+describe('runFigmaExtract — components subtree (two-pass)', () => {
+  // A multi-page fixture: page 1 ('1:1') holds the screens, page 2
+  // ('1:2') holds a small component library. componentsNodeId must
+  // slice the second page out without touching the first.
+  const twoPageFixture = {
+    document: {
+      id: '0:0', name: 'Document', type: 'DOCUMENT',
+      children: [
+        {
+          id: '1:1', name: 'Screens', type: 'CANVAS',
+          children: [
+            {
+              id: '2:1', name: 'Home', type: 'FRAME',
+              absoluteBoundingBox: { x: 0, y: 0, width: 1280, height: 720 },
+              fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }],
+            },
+          ],
+        },
+        {
+          id: '1:2', name: 'Components', type: 'CANVAS',
+          children: [
+            {
+              id: '4:1', name: 'Button', type: 'COMPONENT',
+              cornerRadius: 8,
+              absoluteBoundingBox: { x: 0, y: 0, width: 120, height: 40 },
+              fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }],
+              children: [{
+                id: '4:2', name: 'Label', type: 'TEXT', characters: 'Click',
+              }],
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  it('writes figma/components.tree.json scoped to the components page', async () => {
+    const fetchFn = stubFetch({ body: twoPageFixture });
+    await runFigmaExtract({
+      cwd,
+      fileUrl: 'https://figma.com/design/ABC123/Project?node-id=1-1',
+      token: 'tok',
+      fetchFn: fetchFn as unknown as typeof fetch,
+      componentsNodeId: '1:2',
+    });
+    const componentsTree = JSON.parse(await readFile(path.join(cwd, 'figma', 'components.tree.json'), 'utf8'));
+    const ids = (componentsTree as Array<{ id: string }>).map((n) => n.id).sort();
+    expect(ids).toEqual(['1:2', '4:1', '4:2']);
+  });
+
+  it('writes figma/components.tokens.json shaped like the main tokens.json', async () => {
+    const fetchFn = stubFetch({ body: twoPageFixture });
+    await runFigmaExtract({
+      cwd,
+      fileUrl: 'https://figma.com/design/ABC123/Project?node-id=1-1',
+      token: 'tok',
+      fetchFn: fetchFn as unknown as typeof fetch,
+      componentsNodeId: '1:2',
+    });
+    const componentsTokens = JSON.parse(await readFile(path.join(cwd, 'figma', 'components.tokens.json'), 'utf8'));
+    expect(componentsTokens.colors.map((c: { value: string }) => c.value)).toContain('#000000');
+    expect(componentsTokens.radius.map((r: { value: string }) => r.value)).toContain('8px');
+  });
+
+  it('normalises URL-style "1-2" node ids to API-style "1:2"', async () => {
+    const fetchFn = stubFetch({ body: twoPageFixture });
+    await runFigmaExtract({
+      cwd,
+      fileUrl: 'https://figma.com/design/ABC123/Project',
+      token: 'tok',
+      fetchFn: fetchFn as unknown as typeof fetch,
+      componentsNodeId: '1-2', // URL form
+    });
+    const componentsTree = JSON.parse(await readFile(path.join(cwd, 'figma', 'components.tree.json'), 'utf8'));
+    expect((componentsTree as Array<{ id: string }>).find((n) => n.id === '4:1')).toBeDefined();
+  });
+
+  it('records an unsupportedNodes entry when componentsNodeId does not match', async () => {
+    const fetchFn = stubFetch({ body: twoPageFixture });
+    const report = await runFigmaExtract({
+      cwd,
+      fileUrl: 'https://figma.com/design/ABC123/Project',
+      token: 'tok',
+      fetchFn: fetchFn as unknown as typeof fetch,
+      componentsNodeId: '999:999',
+    });
+    const issue = report.meta.unsupportedNodes.find((u) => u.id === '999:999' && u.type === 'components-root');
+    expect(issue?.reason).toMatch(/did not match/);
+  });
+});
+
+describe('extractNodeId helper', () => {
+  it('returns undefined when the URL has no node-id', () => {
+    expect(extractNodeId('https://figma.com/design/ABC/Project')).toBeUndefined();
+  });
+
+  it('extracts node-id from a Figma design URL (URL form)', () => {
+    expect(extractNodeId('https://www.figma.com/design/ABC/Project?node-id=12-345&t=foo'))
+      .toBe('12:345');
+  });
+
+  it('preserves API-form node-id (X:Y) untouched', () => {
+    expect(extractNodeId('https://www.figma.com/file/ABC/Project?node-id=12:345'))
+      .toBe('12:345');
+  });
+
+  it('decodes URL-escaped node-id values', () => {
+    expect(extractNodeId('https://www.figma.com/design/ABC/Project?node-id=12%3A345'))
+      .toBe('12:345');
+  });
+});
+
 describe('runFigmaExtract — error paths', () => {
   it('throws when neither fileUrl nor fileKey resolves', async () => {
     await expect(runFigmaExtract({
@@ -283,7 +395,7 @@ describe('runFigmaExtract — error paths', () => {
       fileUrl: 'https://figma.com/file/ABC123/X',
       token: '',
       fetchFn: stubFetch({}) as unknown as typeof fetch,
-    })).rejects.toThrow(/missing OAuth token/);
+    })).rejects.toThrow(/missing Figma personal access token/);
   });
 
   it('surfaces non-2xx responses with the upstream status text', async () => {

@@ -177,7 +177,7 @@ function aggregateOutcome(stages: SimulateStageOutcome[]): SimulatePipelineResul
 export function parseSignalKv(args: ReadonlyArray<string>): { signals: UntilSignals; warnings: string[] } {
   const out: UntilSignals = {};
   const warnings: string[] = [];
-  const knownNumeric: Array<keyof UntilSignals> = ['critique.score', 'iterations'];
+  const knownNumeric: Array<keyof UntilSignals> = ['critique.score', 'iterations', 'figma.tree.nodes'];
   const knownBoolean: Array<keyof UntilSignals> = ['user.confirmed', 'preview.ok', 'build.passing', 'tests.passing'];
   for (const arg of args) {
     const eq = arg.indexOf('=');

@@ -203,6 +203,7 @@ const SUBCOMMAND_MAP = {
   artifacts: runArtifacts,
   media: runMedia,
   mcp: runMcp,
+  figma: runFigma,
   research: runResearch,
   plugin: runPlugin,
   ui: runUi,
@@ -834,6 +835,166 @@ For the copy-paste, per-client snippet (with absolute paths resolved
 for your machine, plus a one-click deeplink for Cursor), open Settings
 → MCP server in the Open Design app. The daemon must be running locally
 for tool calls to succeed.`);
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od figma …
+//
+// Thin wrapper around the MCP config and project-create endpoints.
+//   - `od figma connect --token <PAT>` patches mcp-config.json so the
+//     figma-context MCP server has FIGMA_API_KEY set and is enabled.
+//     One-shot equivalent of the Settings → MCP → figma-context form.
+//   - `od figma import <url>` POSTs to /api/projects with pluginId set
+//     to od-figma-migration and the briefing inputs the user usually
+//     fills in via the inline PluginInputsForm.
+// ---------------------------------------------------------------------------
+
+const FIGMA_STRING_FLAGS = new Set([
+  'daemon-url', 'token', 'components', 'output', 'css', 'name', 'frame',
+]);
+const FIGMA_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+async function runFigma(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    printFigmaHelp();
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  let flags;
+  try {
+    flags = parseFlags(rest, { string: FIGMA_STRING_FLAGS, boolean: FIGMA_BOOLEAN_FLAGS });
+  } catch (err) {
+    console.error(err.message);
+    printFigmaHelp();
+    process.exit(2);
+  }
+  const base = (await projectDaemonUrl(flags)).replace(/\/$/, '');
+  switch (sub) {
+    case 'connect': return runFigmaConnect(base, flags);
+    case 'import':  return runFigmaImport(base, flags, rest);
+    default:
+      console.error(`unknown subcommand: od figma ${sub}`);
+      printFigmaHelp();
+      process.exit(2);
+  }
+}
+
+async function runFigmaConnect(base, flags) {
+  const token = typeof flags.token === 'string' ? flags.token.trim() : '';
+  if (!token) {
+    console.error('--token <PAT> is required. Generate one at figma.com → Settings → Personal access tokens.');
+    process.exit(2);
+  }
+  const getResp = await fetch(`${base}/api/mcp/servers`);
+  if (!getResp.ok) return structuredHttpFailure(getResp);
+  const { servers = [], templates = [] } = await getResp.json();
+  const existingIdx = servers.findIndex((s) => s.id === 'figma-context');
+  const template = templates.find((t) => t.id === 'figma-context');
+  const next = existingIdx >= 0 ? { ...servers[existingIdx] } : {
+    id:         'figma-context',
+    label:      template?.label ?? 'Figma Context (read designs → code)',
+    templateId: 'figma-context',
+    transport:  template?.transport ?? 'stdio',
+    command:    template?.command ?? 'npx',
+    args:       template?.args ?? ['-y', 'figma-developer-mcp', '--stdio'],
+    enabled:    true,
+    env:        {},
+  };
+  next.enabled = true;
+  next.env = { ...(next.env ?? {}), FIGMA_API_KEY: token };
+  const nextServers = existingIdx >= 0
+    ? servers.map((s, i) => (i === existingIdx ? next : s))
+    : [...servers, next];
+  const putResp = await fetch(`${base}/api/mcp/servers`, {
+    method:  'PUT',
+    headers: { 'content-type': 'application/json' },
+    body:    JSON.stringify({ servers: nextServers }),
+  });
+  if (!putResp.ok) return structuredHttpFailure(putResp);
+  if (flags.json) {
+    const body = await putResp.json();
+    process.stdout.write(JSON.stringify({ ok: true, server: body.servers?.find((s) => s.id === 'figma-context') }, null, 2) + '\n');
+    return;
+  }
+  console.log('[figma] connected: figma-context MCP server enabled with FIGMA_API_KEY (token redacted)');
+}
+
+async function runFigmaImport(base, flags, rest) {
+  const figmaUrl = rest.find((a) => !a.startsWith('-'));
+  if (!figmaUrl) {
+    console.error('Usage: od figma import <figma-page-url> [--components <url>] [--output html|react] [--css tailwind|bootstrap]');
+    process.exit(2);
+  }
+  const outputFormat = typeof flags.output === 'string' ? flags.output : 'react';
+  if (outputFormat !== 'html' && outputFormat !== 'react') {
+    console.error(`--output must be "html" or "react" (got "${outputFormat}")`);
+    process.exit(2);
+  }
+  const cssFramework = typeof flags.css === 'string' ? flags.css : 'tailwind';
+  if (cssFramework !== 'tailwind' && cssFramework !== 'bootstrap') {
+    console.error(`--css must be "tailwind" or "bootstrap" (got "${cssFramework}")`);
+    process.exit(2);
+  }
+  const inputs = {
+    figmaUrl,
+    outputFormat,
+    cssFramework,
+  };
+  if (typeof flags.components === 'string' && flags.components.length > 0) {
+    inputs.componentsUrl = flags.components;
+  }
+  if (typeof flags.frame === 'string' && flags.frame.length > 0) {
+    inputs.frameName = flags.frame;
+  }
+  const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+  const name = typeof flags.name === 'string' && flags.name.length > 0
+    ? flags.name
+    : `Figma import — ${new URL(figmaUrl).pathname.split('/').filter(Boolean).slice(-1)[0] ?? 'project'}`;
+  const body = {
+    id,
+    name,
+    pluginId:     'od-figma-migration',
+    pluginInputs: inputs,
+  };
+  const resp = await fetch(`${base}/api/projects`, {
+    method:  'POST',
+    headers: { 'content-type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    console.error(`POST /api/projects failed: ${resp.status} ${JSON.stringify(data)}`);
+    process.exit(1);
+  }
+  if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+  console.log(`[figma] imported ${data.project?.id ?? id} (conversation ${data.conversationId ?? '-'})`);
+}
+
+function printFigmaHelp() {
+  console.log(`Usage:
+  od figma connect --token <PAT>
+      Save your Figma Personal Access Token. Equivalent to opening
+      Settings → MCP server → "Figma Context" and pasting the token.
+      Generate the PAT at figma.com → Settings → Personal access tokens.
+
+  od figma import <figma-page-url> [--components <url>]
+                  [--output html|react] [--css tailwind|bootstrap]
+                  [--frame "Name"] [--name "<project title>"]
+      Create a new figma-migration project. The figma-page-url is a
+      Figma page link (with ?node-id=…); --components points at a
+      second page in the same file that contains the project's
+      reusable component library.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON instead of human-readable output.
+
+Token resolution order at run time: this command's --token, the
+saved figma-context MCP server's env.FIGMA_API_KEY, then the
+FIGMA_TOKEN shell env var.`);
 }
 
 // ---------------------------------------------------------------------------

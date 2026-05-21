@@ -27,6 +27,9 @@ export interface UntilSignals {
   // collapsing pass/fail into critique.score.
   'build.passing'?:  boolean | undefined;
   'tests.passing'?:  boolean | undefined;
+  // Promoted by the figma-extract atom; surfaces the node count so a
+  // figma-migration plan can write `until: 'figma.tree.nodes >= 1'`.
+  'figma.tree.nodes'?: number | undefined;
 }
 
 const SIGNAL_KINDS: Record<keyof UntilSignals, SignalKind> = {
@@ -36,6 +39,7 @@ const SIGNAL_KINDS: Record<keyof UntilSignals, SignalKind> = {
   'preview.ok':     'boolean',
   'build.passing':  'boolean',
   'tests.passing':  'boolean',
+  'figma.tree.nodes': 'number',
 };
 
 export type UntilOp = '==' | '!=' | '>=' | '<=' | '>' | '<';

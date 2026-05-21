@@ -49,7 +49,7 @@ import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { NewProjectModal } from './NewProjectModal';
 import { PluginsView } from './PluginsView';
-import type { CreateInput, CreateTab } from './NewProjectPanel';
+import type { CreateInput, CreateTab, FigmaCreateInput } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import type {
   PluginShareAction,
@@ -297,6 +297,82 @@ export function EntryShell({
       ...input,
       ...(pluginId ? { pluginId } : {}),
       ...(pluginInputs ? { pluginInputs } : {}),
+    });
+  }
+
+  // Figma tab submit. Two-step:
+  //   1. If the user pasted a PAT, write it into the figma-context MCP
+  //      server's env.FIGMA_API_KEY via GET → mutate → PUT /api/mcp/servers.
+  //      An empty PAT means "keep the saved one"; the panel only allows
+  //      submit when either a token is pasted or one is already saved.
+  //   2. Create the project, binding the od-figma-migration scenario and
+  //      passing the briefing inputs (screens URL, components URL,
+  //      output format, CSS framework) as pluginInputs. The agent picks
+  //      them up via the scenario's renderPluginBriefTemplate.
+  async function handleCreateFigma(input: FigmaCreateInput) {
+    if (input.pat && input.pat.length > 0) {
+      try {
+        const resp = await fetch('/api/mcp/servers');
+        if (resp.ok) {
+          const body = (await resp.json()) as {
+            servers?: Array<Record<string, unknown>>;
+            templates?: Array<Record<string, unknown>>;
+          };
+          const servers = Array.isArray(body.servers) ? body.servers : [];
+          const templates = Array.isArray(body.templates) ? body.templates : [];
+          const existingIdx = servers.findIndex(
+            (s) => (s as { id?: string }).id === 'figma-context',
+          );
+          const template = templates.find(
+            (tpl) => (tpl as { id?: string }).id === 'figma-context',
+          ) as
+            | { label?: string; transport?: string; command?: string; args?: string[] }
+            | undefined;
+          const existing = existingIdx >= 0 ? servers[existingIdx]! : null;
+          const nextServer: Record<string, unknown> = existing
+            ? { ...existing }
+            : {
+                id:         'figma-context',
+                label:      template?.label ?? 'Figma Context (read designs → code)',
+                templateId: 'figma-context',
+                transport:  template?.transport ?? 'stdio',
+                command:    template?.command ?? 'npx',
+                args:       template?.args ?? ['-y', 'figma-developer-mcp', '--stdio'],
+              };
+          nextServer.enabled = true;
+          nextServer.env = {
+            ...((existing as { env?: Record<string, string> } | null)?.env ?? {}),
+            FIGMA_API_KEY: input.pat,
+          };
+          const nextServers = existingIdx >= 0
+            ? servers.map((s, i) => (i === existingIdx ? nextServer : s))
+            : [...servers, nextServer];
+          await fetch('/api/mcp/servers', {
+            method:  'PUT',
+            headers: { 'content-type': 'application/json' },
+            body:    JSON.stringify({ servers: nextServers }),
+          });
+        }
+      } catch {
+        // Token persistence is best-effort: if the daemon round-trip fails
+        // the project still gets created. The figma-extract atom will
+        // surface a clear "no PAT configured" note on the first run so
+        // the user can retry from Settings.
+      }
+    }
+    onCreateProject({
+      name:           input.name,
+      skillId:        null,
+      designSystemId: null,
+      metadata:       { kind: 'prototype', nameSource: 'user' },
+      pluginId:       'od-figma-migration',
+      pluginInputs:   {
+        figmaUrl:      input.figmaUrl,
+        componentsUrl: input.componentsUrl,
+        outputFormat:  input.outputFormat,
+        cssFramework:  input.cssFramework,
+      },
+      ...(input.requestId ? { } : {}),
     });
   }
 
@@ -555,6 +631,7 @@ export function EntryShell({
         connectorsLoading={connectorsLoading}
         loading={skillsLoading}
         onCreate={handleCreate}
+        onCreateFigma={handleCreateFigma}
         onImportClaudeDesign={onImportClaudeDesign}
         {...(onImportFolder ? { onImportFolder } : {})}
         onOpenConnectorsTab={() => {

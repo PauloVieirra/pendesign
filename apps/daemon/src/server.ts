@@ -8624,6 +8624,15 @@ export async function startServer({
     } else {
       registerBuiltInAtomWorkers();
       runStage = async ({ stage, iteration, snapshot: stageSnapshot }) => {
+        let cwdForStage;
+        try {
+          const projectRow = getProject(dbHandle, projectIdForRun);
+          cwdForStage = projectRow
+            ? resolveProjectDir(PROJECTS_DIR, projectRow.id, projectRow.metadata)
+            : undefined;
+        } catch {
+          cwdForStage = undefined;
+        }
         const outcome = await runStageWithRegistry({
           db:             dbHandle,
           runId:          run.id,
@@ -8632,6 +8641,8 @@ export async function startServer({
           stage,
           iteration,
           snapshot:       stageSnapshot,
+          cwd:            cwdForStage,
+          dataDir:        RUNTIME_DATA_DIR,
         });
         return {
           signals:         outcome.signals,

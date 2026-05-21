@@ -394,6 +394,111 @@ export function exportAsImage(dataUrl: string, title: string): void {
   }
 }
 
+/**
+ * Copy a snapshot data-URL onto the system clipboard as a PNG image. The
+ * primary consumer is the "Send to Figma" flow: Figma accepts pasted PNGs
+ * natively (Ctrl/Cmd+V drops them into the current frame), so the user can
+ * skip the download + drag dance. Returns `true` on success; on failure the
+ * caller is expected to fall back to download.
+ *
+ * Requires a secure context (https or localhost). Electron and the dev server
+ * both qualify; older Firefox builds may reject the `ClipboardItem` write.
+ */
+export async function copyImageSnapshotToClipboard(dataUrl: string): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.clipboard || typeof window.ClipboardItem !== 'function') {
+      return false;
+    }
+    const blob = dataUrlToBlob(dataUrl);
+    await navigator.clipboard.write([new window.ClipboardItem({ [blob.type || 'image/png']: blob })]);
+    return true;
+  } catch (err) {
+    console.warn('[copyImageSnapshotToClipboard] failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Request a componentized SVG snapshot from the preview iframe. Mirrors the
+ * shape of {@link requestPreviewSnapshot} but expects the bridge to respond
+ * with `svg` (XML string) instead of `dataUrl` (PNG). Each visible DOM
+ * element becomes a `<g>` in the resulting tree so Figma's SVG importer
+ * yields one node per source element instead of a flattened image.
+ */
+export function requestPreviewSvgSnapshot(
+  iframe: HTMLIFrameElement,
+  timeout = 6000,
+): Promise<{ svg: string; w: number; h: number } | null> {
+  const win = iframe.contentWindow;
+  if (!win) return Promise.resolve(null);
+  const id = `snap-svg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve) => {
+    let done = false;
+    function onMsg(ev: MessageEvent) {
+      if (ev.source !== win) return;
+      const d = ev.data as {
+        type?: string;
+        id?: string;
+        svg?: string;
+        w?: number;
+        h?: number;
+        error?: string;
+      } | null;
+      if (!d || d.type !== 'od:snapshot:result' || d.id !== id) return;
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onMsg);
+      if (typeof d.svg === 'string' && d.w && d.h) resolve({ svg: d.svg, w: d.w, h: d.h });
+      else resolve(null);
+    }
+    window.addEventListener('message', onMsg);
+    try {
+      win.postMessage({ type: 'od:snapshot-svg', id }, '*');
+    } catch {
+      /* sandboxed */
+    }
+    setTimeout(() => {
+      if (!done) {
+        done = true;
+        window.removeEventListener('message', onMsg);
+        resolve(null);
+      }
+    }, timeout);
+  });
+}
+
+/** Download an SVG snapshot string as a `.svg` file. */
+export function exportAsSvg(svg: string, title: string): void {
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  triggerDownload(blob, `${safeFilename(title, 'artifact')}.svg`);
+}
+
+/**
+ * Copy an SVG XML string to the clipboard as plain text. Figma recognises a
+ * pasted SVG document (string starting with `<svg` or `<?xml`) and imports it
+ * as a tree of layers, which is exactly the Send-to-Figma payload we want.
+ * Falls back to the image/svg+xml ClipboardItem on platforms where text-only
+ * paste won't fly, then to download in the caller.
+ */
+export async function copySvgSnapshotToClipboard(svg: string): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return false;
+    if (typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(svg);
+      return true;
+    }
+    if (typeof window.ClipboardItem === 'function') {
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      await navigator.clipboard.write([new window.ClipboardItem({ 'image/svg+xml': blob })]);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('[copySvgSnapshotToClipboard] failed:', err);
+    return false;
+  }
+}
+
 export type ProjectPdfExportResult = 'desktop' | 'fallback';
 
 export async function exportProjectAsPdf(opts: {

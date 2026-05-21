@@ -1031,6 +1031,8 @@ export interface Dict {
   'connectors.emptyNoMatchTitle': string;
   'connectors.emptyNoMatchBody': string;
   'connectors.emptyNoMatchAction': string;
+  'fileViewer.themeToggleToDark': string;
+  'fileViewer.themeToggleToLight': string;
 
   // New project panel
   'newproj.tabPrototype': string;
@@ -1039,6 +1041,23 @@ export interface Dict {
   'newproj.tabTemplate': string;
   'newproj.tabMedia': string;
   'newproj.tabOther': string;
+  'newproj.tabFigma': string;
+  'newproj.figma.intro': string;
+  'newproj.figma.patLabel': string;
+  'newproj.figma.patPlaceholder': string;
+  'newproj.figma.patHint': string;
+  'newproj.figma.patSaved': string;
+  'newproj.figma.screensUrlLabel': string;
+  'newproj.figma.screensUrlPlaceholder': string;
+  'newproj.figma.componentsUrlLabel': string;
+  'newproj.figma.componentsUrlPlaceholder': string;
+  'newproj.figma.outputFormatLabel': string;
+  'newproj.figma.outputFormatReact': string;
+  'newproj.figma.outputFormatHtml': string;
+  'newproj.figma.cssFrameworkLabel': string;
+  'newproj.figma.cssFrameworkTailwind': string;
+  'newproj.figma.cssFrameworkBootstrap': string;
+  'newproj.figma.submit': string;
   'newproj.titlePrototype': string;
   'newproj.titleLiveArtifact': string;
   'newproj.titleDeck': string;
