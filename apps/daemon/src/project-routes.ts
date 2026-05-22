@@ -4,6 +4,11 @@ import {
   type PluginManifest,
 } from '@open-design/contracts';
 import { createProjectArtifactFile } from './artifact-create.js';
+import { ingestDoc } from './rag.js';
+import {
+  deleteProjectDoc as dbDeleteProjectDoc,
+  listProjectDocs as dbListProjectDocs,
+} from './db.js';
 import { ArtifactRegressionError } from './artifact-stub-guard.js';
 import { listDesignSystems } from './design-systems.js';
 import {
@@ -294,12 +299,69 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
           }
         }
       }
+      // Step 3 of the New Project wizard ships user-attached docs in the
+      // same POST body. We ingest them right after the project row is
+      // committed so the daemon never has half-baked state (a project
+      // with no docs but a queued upload waiting). Failures here do NOT
+      // tear down the project — partial doc ingest is logged and
+      // surfaced in `docsResult` so the UI can show what landed.
+      const rawDocs = (req.body as { docs?: unknown })?.docs;
+      const docsResult: {
+        ingested: Array<{ docId: string; name: string; chunkCount: number; embedded: boolean }>;
+        failed: Array<{ name: string; reason: string }>;
+      } = { ingested: [], failed: [] };
+      if (Array.isArray(rawDocs) && rawDocs.length > 0) {
+        for (const entry of rawDocs) {
+          if (!entry || typeof entry !== 'object') continue;
+          const e = entry as { name?: unknown; content?: unknown };
+          const docName =
+            typeof e.name === 'string' && e.name.trim().length > 0
+              ? e.name.trim().slice(0, 256)
+              : null;
+          const content =
+            typeof e.content === 'string' && e.content.length > 0
+              ? e.content
+              : null;
+          if (!docName || !content) {
+            docsResult.failed.push({
+              name: docName ?? '(unnamed)',
+              reason: 'name and content are required',
+            });
+            continue;
+          }
+          try {
+            const result = await ingestDoc(db, id, { name: docName, content });
+            if (result.chunkCount > 0) {
+              docsResult.ingested.push({
+                docId: result.docId,
+                name: docName,
+                chunkCount: result.chunkCount,
+                embedded: result.embedded,
+              });
+            } else {
+              docsResult.failed.push({
+                name: docName,
+                reason: 'document is empty after trimming',
+              });
+            }
+          } catch (err: any) {
+            docsResult.failed.push({
+              name: docName,
+              reason: err?.message ? String(err.message) : 'ingest failed',
+            });
+          }
+        }
+      }
+
       /** @type {import('@open-design/contracts').CreateProjectResponse} */
       const body = {
         project: resolvedSnapshot?.ok ? getProject(db, id) ?? project : project,
         conversationId: cid,
         ...(resolvedSnapshot?.ok
           ? { appliedPluginSnapshotId: resolvedSnapshot.snapshotId }
+          : {}),
+        ...(docsResult.ingested.length > 0 || docsResult.failed.length > 0
+          ? { docsResult }
           : {}),
       };
       res.json(body);
@@ -468,6 +530,83 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       if (sub) Promise.resolve(sub.unsubscribe()).catch(() => {});
       if (!res.headersSent) sendApiError(res, 400, 'BAD_REQUEST', String(err?.message || err));
     }
+  });
+
+  // ---- Project documentation (RAG) -----------------------------------------
+  // Step 3 of the New Project wizard uploads .md/.txt docs here. Each doc is
+  // chunked, embedded with Voyage AI, and stored in project_docs scoped to
+  // this project. The retrieval surface used by the system prompt lives in
+  // apps/daemon/src/rag.ts — there is no global search endpoint.
+  app.get('/api/projects/:id/docs', (req, res) => {
+    if (!getProject(db, req.params.id)) {
+      return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+    }
+    res.json({ docs: dbListProjectDocs(db, req.params.id) });
+  });
+
+  app.post('/api/projects/:id/docs', async (req, res) => {
+    const projectId = req.params.id;
+    if (!getProject(db, projectId)) {
+      return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+    }
+    const body = (req.body ?? {}) as {
+      docs?: Array<{ name?: unknown; content?: unknown }>;
+    };
+    if (!Array.isArray(body.docs) || body.docs.length === 0) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'docs array is required');
+    }
+    const ingested: Array<{
+      docId: string;
+      name: string;
+      chunkCount: number;
+      embedded: boolean;
+    }> = [];
+    const failed: Array<{ name: string; reason: string }> = [];
+    for (const entry of body.docs) {
+      const name =
+        typeof entry.name === 'string' && entry.name.trim().length > 0
+          ? entry.name.trim().slice(0, 256)
+          : null;
+      const content =
+        typeof entry.content === 'string' && entry.content.length > 0
+          ? entry.content
+          : null;
+      if (!name || !content) {
+        failed.push({
+          name: name ?? '(unnamed)',
+          reason: 'name and content are required',
+        });
+        continue;
+      }
+      try {
+        const result = await ingestDoc(db, projectId, { name, content });
+        if (result.chunkCount > 0) {
+          ingested.push({
+            docId: result.docId,
+            name,
+            chunkCount: result.chunkCount,
+            embedded: result.embedded,
+          });
+        } else {
+          failed.push({ name, reason: 'document is empty after trimming' });
+        }
+      } catch (err: any) {
+        failed.push({
+          name,
+          reason: err?.message ? String(err.message) : 'ingest failed',
+        });
+      }
+    }
+    res.json({ ingested, failed });
+  });
+
+  app.delete('/api/projects/:id/docs/:docId', (req, res) => {
+    const projectId = req.params.id;
+    if (!getProject(db, projectId)) {
+      return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+    }
+    const removed = dbDeleteProjectDoc(db, projectId, req.params.docId);
+    res.json({ removedChunks: removed });
   });
 
   // ---- Conversations --------------------------------------------------------

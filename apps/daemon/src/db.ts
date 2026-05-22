@@ -268,9 +268,174 @@ function migrate(db: SqliteDb): void {
   if (routineCols.length > 0 && !routineCols.some((c: DbRow) => c.name === 'context_json')) {
     db.exec(`ALTER TABLE routines ADD COLUMN context_json TEXT`);
   }
+  // project_docs: per-project RAG store for the New Project wizard's Step 3
+  // documentation uploads. Each row is one *chunk* of a source document
+  // (~600 chars) with its Voyage AI embedding stored as a JSON-serialized
+  // Float32Array. ALL queries against this table MUST filter by project_id
+  // — that is the isolation guarantee the wizard promises to the user.
+  // The (project_id, doc_id, chunk_idx) composite makes that filter cheap.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_docs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      doc_id TEXT NOT NULL,
+      doc_name TEXT NOT NULL,
+      chunk_idx INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      embedding_json TEXT,
+      embedding_model TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_docs_project
+      ON project_docs(project_id, doc_id, chunk_idx);
+  `);
+
   migrateCritique(db);
   migrateMediaTasks(db);
   migratePlugins(db);
+}
+
+// ---------- project documentation (RAG) ----------
+
+export type ProjectDocRow = {
+  id: string;
+  projectId: string;
+  docId: string;
+  docName: string;
+  chunkIdx: number;
+  content: string;
+  embedding: number[] | null;
+  embeddingModel: string | null;
+  createdAt: number;
+};
+
+export type ProjectDocSummary = {
+  docId: string;
+  docName: string;
+  chunkCount: number;
+  totalChars: number;
+  createdAt: number;
+};
+
+export function insertProjectDocChunks(
+  db: SqliteDb,
+  rows: Array<{
+    projectId: string;
+    docId: string;
+    docName: string;
+    chunkIdx: number;
+    content: string;
+    embedding: number[] | null;
+    embeddingModel: string | null;
+  }>,
+): void {
+  if (rows.length === 0) return;
+  const insert = db.prepare(`
+    INSERT INTO project_docs (
+      id, project_id, doc_id, doc_name, chunk_idx,
+      content, embedding_json, embedding_model, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const now = Date.now();
+  const tx = db.transaction((items: typeof rows) => {
+    for (const item of items) {
+      insert.run(
+        randomUUID(),
+        item.projectId,
+        item.docId,
+        item.docName,
+        item.chunkIdx,
+        item.content,
+        item.embedding ? JSON.stringify(item.embedding) : null,
+        item.embeddingModel,
+        now,
+      );
+    }
+  });
+  tx(rows);
+}
+
+export function listProjectDocs(
+  db: SqliteDb,
+  projectId: string,
+): ProjectDocSummary[] {
+  const rows = db
+    .prepare(
+      `SELECT doc_id   AS docId,
+              doc_name AS docName,
+              COUNT(*) AS chunkCount,
+              SUM(LENGTH(content)) AS totalChars,
+              MIN(created_at) AS createdAt
+         FROM project_docs
+        WHERE project_id = ?
+        GROUP BY doc_id, doc_name
+        ORDER BY MIN(created_at) DESC`,
+    )
+    .all(projectId) as DbRow[];
+  return rows.map((row) => ({
+    docId: String(row.docId),
+    docName: String(row.docName),
+    chunkCount: Number(row.chunkCount),
+    totalChars: Number(row.totalChars),
+    createdAt: Number(row.createdAt),
+  }));
+}
+
+export function loadAllProjectDocChunks(
+  db: SqliteDb,
+  projectId: string,
+): ProjectDocRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, project_id AS projectId, doc_id AS docId,
+              doc_name AS docName, chunk_idx AS chunkIdx,
+              content, embedding_json AS embeddingJson,
+              embedding_model AS embeddingModel,
+              created_at AS createdAt
+         FROM project_docs
+        WHERE project_id = ?
+        ORDER BY chunk_idx ASC`,
+    )
+    .all(projectId) as DbRow[];
+  return rows.map((row) => ({
+    id: String(row.id),
+    projectId: String(row.projectId),
+    docId: String(row.docId),
+    docName: String(row.docName),
+    chunkIdx: Number(row.chunkIdx),
+    content: String(row.content),
+    embedding: row.embeddingJson ? safeParseFloatArray(row.embeddingJson) : null,
+    embeddingModel: row.embeddingModel ? String(row.embeddingModel) : null,
+    createdAt: Number(row.createdAt),
+  }));
+}
+
+export function deleteProjectDoc(
+  db: SqliteDb,
+  projectId: string,
+  docId: string,
+): number {
+  const result = db
+    .prepare(`DELETE FROM project_docs WHERE project_id = ? AND doc_id = ?`)
+    .run(projectId, docId);
+  return Number(result.changes ?? 0);
+}
+
+function safeParseFloatArray(json: string): number[] | null {
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return null;
+    const out: number[] = [];
+    for (const v of parsed) {
+      if (typeof v === 'number' && Number.isFinite(v)) out.push(v);
+      else return null;
+    }
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- deployments ----------

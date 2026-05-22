@@ -132,11 +132,20 @@ interface Props {
   templates: ProjectTemplate[];
   onDeleteTemplate?: (id: string) => Promise<boolean>;
   promptTemplates: PromptTemplateSummary[];
-  onCreate: (input: CreateInput & { requestId?: string }) => void;
+  // The host receives the project create payload AND the queued Step 3
+  // documentation (when any). Returning the created project id lets the
+  // panel POST docs to /api/projects/:id/docs after creation; if the host
+  // can't surface an id (legacy flow), it can return void and the docs
+  // are dropped with a console warning instead of being lost silently.
+  onCreate: (
+    input: CreateInput & { requestId?: string; docs?: ProjectDocInput[] },
+  ) => void | Promise<{ projectId?: string } | void>;
   // Optional figma-tab submit handler. When omitted, the figma tab still
   // renders (the option appears in the modal) but the submit button
   // surfaces a configuration hint instead of triggering a creation flow.
-  onCreateFigma?: (input: FigmaCreateInput) => void | Promise<void>;
+  onCreateFigma?: (
+    input: FigmaCreateInput & { docs?: ProjectDocInput[] },
+  ) => void | Promise<{ projectId?: string } | void>;
   onImportClaudeDesign?: (file: File) => Promise<void> | void;
   // Web fallback: the user types an absolute baseDir into the manual
   // input and the renderer POSTs `/api/import/folder` itself. Browser
@@ -166,6 +175,42 @@ const TAB_LABEL_KEYS: Record<CreateTab, keyof Dict> = {
   other: 'newproj.tabOther',
   figma: 'newproj.tabFigma',
 };
+
+// Tabs surfaced in the New Project UI. Other CreateTab branches stay in
+// code (logic preserved) but are hidden from the user — see
+// docs/funcoes-desativadas.md for the disablement record.
+const VISIBLE_TABS: readonly CreateTab[] = ['prototype', 'figma'];
+
+function resolveInitialTab(requested: CreateTab): CreateTab {
+  return VISIBLE_TABS.includes(requested) ? requested : 'prototype';
+}
+
+// Wizard step model. The legacy tab strip ("Prototype" / "From Figma") was
+// reshaped into a 3-step flow:
+//   Step 1 = configure the prototype (former Prototype tab).
+//   Step 2 = configure Figma import (former From Figma tab — optional).
+//   Step 3 = upload project documentation (new). The docs are embedded with
+//            Voyage AI and stored under project_docs, isolated by project_id
+//            so RAG retrieval can never bleed across projects.
+// See docs/funcoes-desativadas.md for the full rationale.
+type WizardStep = 1 | 2 | 3;
+const WIZARD_STEP_COUNT = 3;
+
+// Step 3 input — a document the user wants to feed into the project's
+// long-term context store. We currently accept plain text/markdown only;
+// PDFs and DOCX live in the deactivated-functions backlog.
+export interface ProjectDocInput {
+  // Stable client id used as the React key while the file sits in the
+  // composer queue. Discarded once the daemon assigns a real id on upload.
+  clientId: string;
+  name: string;
+  // Raw text content. Files are read with FileReader.readAsText before they
+  // hit state so the server never has to decode binary payloads.
+  content: string;
+  // Bytes — purely informational for the UI ("12 KB"). The daemon
+  // re-measures content length when persisting.
+  size: number;
+}
 
 const MEDIA_SURFACE_LABEL_KEYS: Record<MediaSurface, keyof Dict> = {
   image: 'newproj.surfaceImage',
@@ -228,7 +273,25 @@ export function NewProjectPanel({
   const [importFolderError, setImportFolderError] = useState<
     { message: string; details?: string } | null
   >(null);
-  const [tab, setTab] = useState<CreateTab>(initialTab);
+  const [tab, setTab] = useState<CreateTab>(() => resolveInitialTab(initialTab));
+  // Wizard step state. `tab` is now derived from `step` — step 1 forces the
+  // prototype branch, step 2 forces the figma branch. Step 3 (docs) reuses
+  // the tab that was active at step 2, so the final submit still knows
+  // whether the user came through the prototype or figma path.
+  const [step, setStep] = useState<WizardStep>(1);
+  const [docs, setDocs] = useState<ProjectDocInput[]>([]);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const docsInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Keep `tab` aligned with the active step. The branch-specific submit
+  // logic and metadata builders downstream of this still key off `tab`, so
+  // forcing it here keeps the legacy contract intact without touching every
+  // hook that already filters on tab === 'prototype' vs 'figma'.
+  useEffect(() => {
+    if (step === 1 && tab !== 'prototype') setTab('prototype');
+    if (step === 2 && tab !== 'figma') setTab('figma');
+  }, [step, tab]);
   // Media tab consolidates image / video / audio. The active surface picks
   // which set of options + skill resolution applies; submission still maps
   // back to the existing image/video/audio ProjectKind branches so the
@@ -482,14 +545,80 @@ export function NewProjectPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, mediaSurface, skillIdForTab, videoModelTouched]);
 
+  // The figma branch is only "valid" once URL + PAT are present. In the
+  // wizard, Step 2 is optional — if the user left it empty we fall back to
+  // the prototype branch on submit, so canCreate only enforces figma
+  // requirements when the active step is actually Figma.
+  const figmaFormFilled =
+    figmaUrl.trim().length > 0
+    && (figmaPatAlreadySaved || figmaPat.trim().length > 0);
   const canCreate =
     !loading
+    && !submitting
     && (tab !== 'template' || templateId != null)
-    && (tab !== 'figma' || (
-      figmaUrl.trim().length > 0
-      && !figmaSubmitting
-      && (figmaPatAlreadySaved || figmaPat.trim().length > 0)
-    ));
+    && (tab !== 'figma' || (figmaFormFilled && !figmaSubmitting));
+
+  // Navigation rules: Step 2 is skippable, but the Next button is disabled
+  // on Step 2 if the user started filling figma fields and left them in a
+  // half-filled state — partial credentials would silently fail in the
+  // daemon, so we surface that earlier.
+  const figmaPartiallyFilled =
+    figmaUrl.trim().length > 0
+    || (figmaPat.trim().length > 0 && !figmaPatAlreadySaved)
+    || figmaComponentsUrl.trim().length > 0;
+  const canAdvance =
+    step === 1
+      ? true
+      : step === 2
+        ? !figmaPartiallyFilled || figmaFormFilled
+        : false;
+
+  function goToStep(target: WizardStep) {
+    if (submitting) return;
+    if (target < 1 || target > WIZARD_STEP_COUNT) return;
+    setStep(target as WizardStep);
+  }
+
+  async function ingestDocFiles(files: FileList | File[] | null) {
+    if (!files) return;
+    const accepted: ProjectDocInput[] = [];
+    const rejected: string[] = [];
+    const list = Array.from(files);
+    for (const file of list) {
+      const lower = file.name.toLowerCase();
+      const isMarkdown = lower.endsWith('.md') || lower.endsWith('.markdown');
+      const isText = lower.endsWith('.txt');
+      if (!isMarkdown && !isText) {
+        rejected.push(file.name);
+        continue;
+      }
+      try {
+        const content = await file.text();
+        accepted.push({
+          clientId: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          content,
+          size: file.size,
+        });
+      } catch {
+        rejected.push(file.name);
+      }
+    }
+    if (accepted.length > 0) {
+      setDocs((current) => [...current, ...accepted]);
+    }
+    if (rejected.length > 0) {
+      setDocError(
+        `Não foi possível anexar: ${rejected.join(', ')}. Apenas .md e .txt são aceitos.`,
+      );
+    } else if (accepted.length > 0) {
+      setDocError(null);
+    }
+  }
+
+  function removeDoc(clientId: string) {
+    setDocs((current) => current.filter((d) => d.clientId !== clientId));
+  }
 
   function updateTabScrollState() {
     const el = tabsRef.current;
@@ -538,11 +667,12 @@ export function NewProjectPanel({
 
   async function handleCreateFigma() {
     if (!onCreateFigma) return;
-    if (figmaSubmitting) return;
+    if (figmaSubmitting || submitting) return;
     const trimmedName = name.trim();
     const trimmedFigmaUrl = figmaUrl.trim();
     if (trimmedFigmaUrl.length === 0) return;
     setFigmaSubmitting(true);
+    setSubmitting(true);
     try {
       const requestId = analytics.newRequestId();
       await onCreateFigma({
@@ -553,14 +683,16 @@ export function NewProjectPanel({
         outputFormat: figmaOutputFormat,
         cssFramework: figmaCssFramework,
         requestId,
+        docs: docs.length > 0 ? docs : undefined,
       });
     } finally {
       setFigmaSubmitting(false);
+      setSubmitting(false);
     }
   }
 
   function handleCreate() {
-    if (!canCreate) return;
+    if (!canCreate || submitting) return;
     if (tab === 'figma') {
       void handleCreateFigma();
       return;
@@ -620,16 +752,24 @@ export function NewProjectPanel({
       },
       { requestId },
     );
-    onCreate({
-      name: trimmedName || autoName(tab, mediaSurface, t),
-      skillId: skillIdForTab,
-      designSystemId: primaryDs,
-      metadata: {
-        ...metadata,
-        nameSource: trimmedName ? 'user' : 'generated',
-      },
-      requestId,
-    });
+    setSubmitting(true);
+    try {
+      void Promise.resolve(
+        onCreate({
+          name: trimmedName || autoName(tab, mediaSurface, t),
+          skillId: skillIdForTab,
+          designSystemId: primaryDs,
+          metadata: {
+            ...metadata,
+            nameSource: trimmedName ? 'user' : 'generated',
+          },
+          requestId,
+          docs: docs.length > 0 ? docs : undefined,
+        }),
+      ).finally(() => setSubmitting(false));
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   async function handleImportPicked(ev: React.ChangeEvent<HTMLInputElement>) {
@@ -702,60 +842,33 @@ export function NewProjectPanel({
 
   return (
     <div className="newproj" data-testid="new-project-panel">
-      <div className={`newproj-tabs-shell${tabScroll.left ? ' can-left' : ''}${tabScroll.right ? ' can-right' : ''}`}>
-        <button
-          type="button"
-          className={`newproj-tabs-arrow left${tabScroll.left ? '' : ' hidden'}`}
-          onClick={() => scrollTabs(-1)}
-          aria-label="Scroll project types left"
-          tabIndex={tabScroll.left ? 0 : -1}
-        >
-          <Icon name="chevron-left" size={16} strokeWidth={2} />
-        </button>
-        <div className="newproj-tabs" role="tablist" ref={tabsRef}>
-          {(Object.keys(TAB_LABEL_KEYS) as CreateTab[]).map((entry) => (
-            <button
-              key={entry}
-              role="tab"
-              data-testid={`new-project-tab-${entry}`}
-              aria-selected={tab === entry}
-              className={`newproj-tab ${tab === entry ? 'active' : ''}`}
-              onClick={() => setTab(entry)}
-            >
-              {t(TAB_LABEL_KEYS[entry])}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className={`newproj-tabs-arrow right${tabScroll.right ? '' : ' hidden'}`}
-          onClick={() => scrollTabs(1)}
-          aria-label="Scroll project types right"
-          tabIndex={tabScroll.right ? 0 : -1}
-        >
-          <Icon name="chevron-right" size={16} strokeWidth={2} />
-        </button>
-      </div>
+      <WizardStepper
+        step={step}
+        labels={['Configurar', 'Figma (opcional)', 'Documentação']}
+        onJump={goToStep}
+      />
       <div className="newproj-body">
         <h3 className="newproj-title">
-          <span className="newproj-title-text">{titleForTab(tab, mediaSurface, t)}</span>
-          {tab === 'live-artifact' ? (
-            // "Beta" is an internationally adopted brand-style status marker;
-            // intentionally not run through t() (consistent with short product
-            // status pills that read the same across our supported locales).
-            <span className="newproj-title-badge" aria-label="Beta feature">Beta</span>
-          ) : null}
+          <span className="newproj-title-text">
+            {step === 1
+              ? `Passo 1 — ${t('newproj.titlePrototype')}`
+              : step === 2
+                ? 'Passo 2 — Importar do Figma (opcional)'
+                : 'Passo 3 — Documentação do projeto'}
+          </span>
         </h3>
 
-        <input
-          className="newproj-name"
-          data-testid="new-project-name"
-          placeholder={t('newproj.namePlaceholder')}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+        {step === 1 ? (
+          <input
+            className="newproj-name"
+            data-testid="new-project-name"
+            placeholder={t('newproj.namePlaceholder')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        ) : null}
 
-        {showDesignSystemPicker ? (
+        {step === 1 && showDesignSystemPicker ? (
           <DesignSystemPicker
             designSystems={designSystems}
             defaultDesignSystemId={defaultDesignSystemId}
@@ -767,7 +880,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'media' ? (
+        {step === 1 && tab === 'media' ? (
           <div
             className="newproj-media-segmented"
             role="tablist"
@@ -789,7 +902,7 @@ export function NewProjectPanel({
           </div>
         ) : null}
 
-        {tab === 'media' && mediaSurface === 'image' ? (
+        {step === 1 && tab === 'media' && mediaSurface === 'image' ? (
           <PromptTemplatePicker
             surface="image"
             templates={promptTemplates}
@@ -798,7 +911,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'media' && mediaSurface === 'video' ? (
+        {step === 1 && tab === 'media' && mediaSurface === 'video' ? (
           <PromptTemplatePicker
             surface="video"
             templates={promptTemplates}
@@ -807,11 +920,11 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'prototype' || tab === 'live-artifact' || tab === 'template' || tab === 'other' ? (
+        {step === 1 && (tab === 'prototype' || tab === 'live-artifact' || tab === 'template' || tab === 'other') ? (
           <PlatformPicker value={platformTargets} onChange={setPlatformTargets} />
         ) : null}
 
-        {tab === 'prototype' || tab === 'live-artifact' || tab === 'template' || tab === 'other' ? (
+        {step === 1 && (tab === 'prototype' || tab === 'live-artifact' || tab === 'template' || tab === 'other') ? (
           <SurfaceOptions
             includeLandingPage={includeLandingPage}
             includeOsWidgets={includeOsWidgets}
@@ -822,11 +935,11 @@ export function NewProjectPanel({
 
         {/* Live artifact always renders at high fidelity — its whole point
             is data-bound polished UI, so the wireframe option is hidden. */}
-        {tab === 'prototype' ? (
+        {step === 1 && tab === 'prototype' ? (
           <FidelityPicker value={fidelity} onChange={setFidelity} />
         ) : null}
 
-        {tab === 'live-artifact' ? (
+        {step === 1 && tab === 'live-artifact' ? (
           <ConnectorsSection
             connectors={connectors}
             loading={connectorsLoading}
@@ -834,7 +947,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'deck' ? (
+        {step === 1 && tab === 'deck' ? (
           <ToggleRow
             label={t('newproj.toggleSpeakerNotes')}
             hint={t('newproj.toggleSpeakerNotesHint')}
@@ -843,7 +956,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'template' ? (
+        {step === 1 && tab === 'template' ? (
           <>
             <TemplatePicker
               templates={templates}
@@ -860,7 +973,7 @@ export function NewProjectPanel({
           </>
         ) : null}
 
-        {tab === 'media' && mediaSurface === 'image' ? (
+        {step === 1 && tab === 'media' && mediaSurface === 'image' ? (
           <MediaProjectOptions
             surface="image"
             imageModel={imageModel}
@@ -871,7 +984,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'media' && mediaSurface === 'video' ? (
+        {step === 1 && tab === 'media' && mediaSurface === 'video' ? (
           <MediaProjectOptions
             surface="video"
             videoModel={videoModel}
@@ -884,7 +997,7 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'media' && mediaSurface === 'audio' ? (
+        {step === 1 && tab === 'media' && mediaSurface === 'audio' ? (
           <MediaProjectOptions
             surface="audio"
             audioKind={audioKind}
@@ -905,9 +1018,13 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {tab === 'figma' ? (
+        {step === 2 ? (
           <div className="newproj-figma" data-testid="new-project-figma">
             <p className="newproj-figma-intro">{t('newproj.figma.intro')}</p>
+            <p className="newproj-step-hint">
+              Este passo é opcional. Você pode pular se não quer importar do
+              Figma — o projeto será criado como protótipo em branco.
+            </p>
             <label className="newproj-field">
               <span className="newproj-field-label">{t('newproj.figma.patLabel')}</span>
               <input
@@ -979,28 +1096,36 @@ export function NewProjectPanel({
           </div>
         ) : null}
 
-        <button
-          className="primary newproj-create"
-          data-testid="create-project"
-          onClick={handleCreate}
-          disabled={!canCreate}
-          title={
-            tab === 'template' && templateId == null
-              ? t('newproj.createDisabledTitle')
-              : undefined
-          }
-        >
-          <Icon name="plus" size={13} />
-          <span>
-            {tab === 'figma'
-              ? t('newproj.figma.submit')
-              : tab === 'template'
-                ? t('newproj.createFromTemplate')
-              : tab === 'live-artifact'
-                ? t('newproj.createLiveArtifact')
-              : t('newproj.create')}
-          </span>
-        </button>
+        {step === 3 ? (
+          <DocumentationStep
+            docs={docs}
+            onPickFiles={() => docsInputRef.current?.click()}
+            onRemove={removeDoc}
+            error={docError}
+          />
+        ) : null}
+        <input
+          ref={docsInputRef}
+          type="file"
+          accept=".md,.markdown,.txt,text/markdown,text/plain"
+          multiple
+          hidden
+          onChange={(e) => {
+            void ingestDocFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+
+        <WizardFooter
+          step={step}
+          canAdvance={canAdvance}
+          canSave={canCreate}
+          submitting={submitting}
+          onBack={() => goToStep((step - 1) as WizardStep)}
+          onNext={() => goToStep((step + 1) as WizardStep)}
+          onSave={handleCreate}
+          figmaConfigured={figmaFormFilled}
+        />
         {onImportClaudeDesign ? (
           <>
             <input
@@ -1062,6 +1187,175 @@ export function NewProjectPanel({
       ) : null}
     </div>
   );
+}
+
+function WizardStepper({
+  step,
+  labels,
+  onJump,
+}: {
+  step: WizardStep;
+  labels: [string, string, string];
+  onJump: (target: WizardStep) => void;
+}) {
+  return (
+    <div className="newproj-stepper" role="list" aria-label="Wizard steps">
+      {labels.map((label, idx) => {
+        const target = (idx + 1) as WizardStep;
+        const state = target === step ? 'active' : target < step ? 'done' : 'pending';
+        return (
+          <button
+            key={label}
+            type="button"
+            role="listitem"
+            className={`newproj-step newproj-step-${state}`}
+            aria-current={target === step ? 'step' : undefined}
+            data-testid={`new-project-step-${target}`}
+            onClick={() => onJump(target)}
+          >
+            <span className="newproj-step-index" aria-hidden>{target}</span>
+            <span className="newproj-step-label">{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function WizardFooter({
+  step,
+  canAdvance,
+  canSave,
+  submitting,
+  figmaConfigured,
+  onBack,
+  onNext,
+  onSave,
+}: {
+  step: WizardStep;
+  canAdvance: boolean;
+  canSave: boolean;
+  submitting: boolean;
+  figmaConfigured: boolean;
+  onBack: () => void;
+  onNext: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="newproj-wizard-footer" data-testid="new-project-wizard-footer">
+      <button
+        type="button"
+        className="ghost newproj-wizard-back"
+        onClick={onBack}
+        disabled={step === 1 || submitting}
+      >
+        <Icon name="chevron-left" size={13} />
+        <span>Voltar</span>
+      </button>
+      {step < 3 ? (
+        <button
+          type="button"
+          className="primary newproj-wizard-next"
+          data-testid="new-project-wizard-next"
+          onClick={onNext}
+          disabled={!canAdvance || submitting}
+        >
+          <span>
+            {step === 2
+              ? (figmaConfigured ? 'Avançar' : 'Pular e continuar')
+              : 'Avançar'}
+          </span>
+          <Icon name="chevron-right" size={13} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="primary newproj-wizard-save"
+          data-testid="create-project"
+          onClick={onSave}
+          disabled={!canSave}
+        >
+          <Icon name="check" size={13} />
+          <span>{submitting ? 'Salvando…' : 'Salvar projeto'}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DocumentationStep({
+  docs,
+  onPickFiles,
+  onRemove,
+  error,
+}: {
+  docs: ProjectDocInput[];
+  onPickFiles: () => void;
+  onRemove: (clientId: string) => void;
+  error: string | null;
+}) {
+  return (
+    <div className="newproj-docs" data-testid="new-project-docs">
+      <p className="newproj-docs-intro">
+        Anexe documentos de regras, requisitos, briefings ou qualquer contexto
+        que ajude a IA a entender o que precisa ser construído. Os arquivos são
+        indexados em um RAG isolado por projeto (Voyage AI + SQLite) e
+        consultados automaticamente em cada turno de conversa.
+      </p>
+      <button
+        type="button"
+        className="newproj-docs-drop"
+        onClick={onPickFiles}
+        data-testid="new-project-docs-add"
+      >
+        <Icon name="plus" size={14} />
+        <span className="newproj-docs-drop-title">Adicionar arquivos</span>
+        <span className="newproj-docs-drop-sub">
+          .md e .txt — múltiplos arquivos aceitos
+        </span>
+      </button>
+      {error ? (
+        <div className="newproj-docs-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {docs.length === 0 ? (
+        <p className="newproj-docs-empty">
+          Nenhum documento anexado ainda. O projeto pode ser salvo sem
+          documentação — você poderá adicionar depois nas configurações.
+        </p>
+      ) : (
+        <ul className="newproj-docs-list" aria-label="Documentos anexados">
+          {docs.map((doc) => (
+            <li key={doc.clientId} className="newproj-docs-item">
+              <div className="newproj-docs-item-meta">
+                <Icon name="file" size={13} />
+                <span className="newproj-docs-item-name">{doc.name}</span>
+                <span className="newproj-docs-item-size">
+                  {formatBytes(doc.size)}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="newproj-docs-item-remove"
+                onClick={() => onRemove(doc.clientId)}
+                aria-label={`Remover ${doc.name}`}
+                title="Remover"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function PlatformPicker({

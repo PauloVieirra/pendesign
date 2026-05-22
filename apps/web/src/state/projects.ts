@@ -63,7 +63,19 @@ export async function createProject(input: {
   pluginId?: string;
   appliedPluginSnapshotId?: string;
   pluginInputs?: Record<string, unknown>;
-}): Promise<{ project: Project; conversationId: string; appliedPluginSnapshotId?: string } | null> {
+  // New Project wizard Step 3 attaches user docs (.md/.txt) for the
+  // per-project RAG. Each entry is { name, content } as plain text. The
+  // daemon chunks + embeds (Voyage AI) on ingest, isolated by project_id.
+  docs?: Array<{ name: string; content: string }>;
+}): Promise<{
+  project: Project;
+  conversationId: string;
+  appliedPluginSnapshotId?: string;
+  docsResult?: {
+    ingested: Array<{ docId: string; name: string; chunkCount: number; embedded: boolean }>;
+    failed: Array<{ name: string; reason: string }>;
+  };
+} | null> {
   try {
     // `randomUUID` falls back to `crypto.getRandomValues` / `Math.random`
     // when `crypto.randomUUID` is unavailable. Open Design served over
@@ -82,6 +94,10 @@ export async function createProject(input: {
       project: Project;
       conversationId: string;
       appliedPluginSnapshotId?: string;
+      docsResult?: {
+        ingested: Array<{ docId: string; name: string; chunkCount: number; embedded: boolean }>;
+        failed: Array<{ name: string; reason: string }>;
+      };
     };
   } catch {
     return null;

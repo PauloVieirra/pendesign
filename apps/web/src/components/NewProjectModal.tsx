@@ -18,7 +18,13 @@ import type {
   SkillSummary,
 } from '../types';
 import { Icon } from './Icon';
-import { NewProjectPanel, type CreateInput, type CreateTab, type FigmaCreateInput } from './NewProjectPanel';
+import {
+  NewProjectPanel,
+  type CreateInput,
+  type CreateTab,
+  type FigmaCreateInput,
+  type ProjectDocInput,
+} from './NewProjectPanel';
 
 interface Props {
   open: boolean;
@@ -31,8 +37,15 @@ interface Props {
   connectors?: ConnectorDetail[];
   connectorsLoading?: boolean;
   loading?: boolean;
-  onCreate: (input: CreateInput) => void;
-  onCreateFigma?: (input: FigmaCreateInput) => void | Promise<void>;
+  // Carries the wizard's full payload, including Step 3 docs (when any)
+  // and the optional analytics requestId. The host (App.tsx) forwards the
+  // docs to /api/projects so the daemon can ingest them under project_docs.
+  onCreate: (
+    input: CreateInput & { requestId?: string; docs?: ProjectDocInput[] },
+  ) => void;
+  onCreateFigma?: (
+    input: FigmaCreateInput & { docs?: ProjectDocInput[] },
+  ) => void | Promise<void>;
   onImportClaudeDesign?: (file: File) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onOpenConnectorsTab?: () => void;
@@ -128,7 +141,9 @@ export function NewProjectModal({
             }}
             {...(onCreateFigma
               ? {
-                  onCreateFigma: async (input: FigmaCreateInput) => {
+                  onCreateFigma: async (
+                    input: FigmaCreateInput & { docs?: ProjectDocInput[] },
+                  ) => {
                     await onCreateFigma(input);
                     onClose();
                   },

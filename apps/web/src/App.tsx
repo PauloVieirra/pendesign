@@ -754,6 +754,9 @@ export function App() {
         autoSendFirstMessage?: boolean;
         requestId?: string;
         pendingFiles?: File[];
+        // Wizard Step 3 docs. Forwarded to /api/projects so the daemon
+        // can chunk + embed them under project_docs, isolated by id.
+        docs?: Array<{ name: string; content: string }>;
       },
     ) => {
       // Honor an explicit `null` design system — the create panel defaults
@@ -779,6 +782,11 @@ export function App() {
           ? { appliedPluginSnapshotId: input.appliedPluginSnapshotId }
           : {}),
         ...(input.pluginInputs ? { pluginInputs: input.pluginInputs } : {}),
+        ...(input.docs && input.docs.length > 0
+          ? {
+              docs: input.docs.map((d) => ({ name: d.name, content: d.content })),
+            }
+          : {}),
       });
       if (!result) {
         trackProjectCreateResult(

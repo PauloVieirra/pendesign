@@ -20,6 +20,8 @@ import {
   renderCodexImagegenOverride,
   shouldRenderCodexImagegenOverride,
 } from './prompts/system.js';
+import { formatRagSection } from './rag.js';
+import { loadAllProjectDocChunks } from './db.js';
 import { expandHomePrefix, resolveProjectRelativePath } from './home-expansion.js';
 import { createCommandInvocation } from '@open-design/platform';
 import { SIDECAR_DEFAULTS, SIDECAR_ENV } from '@open-design/sidecar-proto';
@@ -8540,6 +8542,43 @@ export async function startServer({
       }
     }
 
+    // Step 3 of the New Project wizard ingests user-supplied docs into
+    // the per-project RAG (project_docs table). Every chunk in that table
+    // is scoped by project_id — the SQL filter here is the isolation
+    // boundary that guarantees Project A never sees Project B's docs.
+    // We materialize ALL chunks (no semantic query at run-start time)
+    // and cap by total characters so a single huge document can't dwarf
+    // the rest of the system prompt. ~12k chars is roughly 3k tokens,
+    // which leaves plenty of room for the design system + skill body.
+    let projectDocsRagSection: string | undefined;
+    if (typeof projectId === 'string' && projectId) {
+      try {
+        const chunks = loadAllProjectDocChunks(db, projectId);
+        if (chunks.length > 0) {
+          const RAG_CHAR_BUDGET = 12_000;
+          const picked: typeof chunks = [];
+          let total = 0;
+          for (const chunk of chunks) {
+            if (total + chunk.content.length > RAG_CHAR_BUDGET) break;
+            picked.push(chunk);
+            total += chunk.content.length;
+          }
+          const section = formatRagSection(
+            picked.map((chunk) => ({
+              docId: chunk.docId,
+              docName: chunk.docName,
+              chunkIdx: chunk.chunkIdx,
+              content: chunk.content,
+              score: 1,
+            })),
+          );
+          if (section) projectDocsRagSection = section;
+        }
+      } catch (err) {
+        console.warn('[rag] loadAllProjectDocChunks failed:', err);
+      }
+    }
+
     const prompt = composeSystemPrompt({
       agentId,
       includeCodexImagegenOverride: false,
@@ -8578,6 +8617,7 @@ export async function startServer({
       ...(activeStageBlocks ? { activeStageBlocks } : {}),
       userInstructions,
       projectInstructions,
+      projectDocsRagSection,
     });
     // The chat handler also needs to know where the active skill lives
     // on disk so it can stage a per-project copy of its side files

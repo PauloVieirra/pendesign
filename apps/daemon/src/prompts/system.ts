@@ -278,6 +278,14 @@ export interface ComposeInput {
   // Free-form instructions the user set on this specific project.
   // Injected after user-level instructions and before the design system.
   projectInstructions?: string | undefined;
+  // Pre-rendered Markdown section produced by the per-project RAG (top-K
+  // chunks from project_docs scoped to this project). The caller is
+  // responsible for running the retrieval at conversation time; this field
+  // is purely a slot in the prompt. When undefined/empty, the section is
+  // omitted entirely — we never emit a placeholder header for an empty RAG.
+  // Strictly per-project: callers MUST pass projectId to the RAG search;
+  // see apps/daemon/src/rag.ts.
+  projectDocsRagSection?: string | undefined;
 }
 
 export function composeSystemPrompt({
@@ -307,6 +315,7 @@ export function composeSystemPrompt({
   streamFormat,
   userInstructions,
   projectInstructions,
+  projectDocsRagSection,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -355,6 +364,10 @@ export function composeSystemPrompt({
     parts.push(
       `\n\n## Custom instructions (project-level)\n\nThe user has set the following instructions for this specific project. They take precedence over user-level custom instructions whenever both address the same topic (e.g. if user-level says "use spaces" but project-level says "use tabs", use tabs).\n\n${projectInstructions.trim()}`,
     );
+  }
+
+  if (projectDocsRagSection && projectDocsRagSection.trim().length > 0) {
+    parts.push(`\n\n${projectDocsRagSection.trim()}`);
   }
 
   if (activeDesignSystemBody && activeDesignSystemBody.length > 0) {
