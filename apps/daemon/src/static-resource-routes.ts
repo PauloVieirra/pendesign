@@ -20,9 +20,17 @@ import {
   importLocalDesignSystemProject,
 } from './design-system-import.js';
 import {
+  applyCreateCollection,
+  applyCreateGroup,
+  applyCreateVariable,
+  applyDeleteCollection,
+  applyDeleteGroup,
+  applyDeleteVariable,
+  applyUpdateVariable,
   migrateFromTokensCss,
   readVariables,
   saveVariables,
+  VariablesError,
   withDsLock,
   type VariablesFile,
 } from './design-system-variables.js';
@@ -412,6 +420,166 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       res.json({ variables: body });
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err?.message ?? err));
+    }
+  });
+
+  async function loadOrMigrate(dir: string, key: string): Promise<VariablesFile> {
+    const existing = await readVariables(dir);
+    if (existing) return existing;
+    let css = '';
+    try { css = await fsReadFile(path.join(dir, 'tokens.css'), 'utf8'); } catch {}
+    const migrated = migrateFromTokensCss(css);
+    await withDsLock(key, () => saveVariables(dir, migrated));
+    return migrated;
+  }
+
+  function variablesErrorToStatus(err: unknown): { status: number; code: string; message: string } | null {
+    if (err instanceof VariablesError) {
+      return { status: err.code === 'NOT_FOUND' ? 404 : 400, code: err.code, message: err.message };
+    }
+    return null;
+  }
+
+  app.put('/api/design-systems/:id/variables/:variableId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const patch = req.body as Partial<{ name: string; type: string; value: unknown }>;
+      if (!patch || typeof patch !== 'object') {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'patch body required');
+      }
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyUpdateVariable(current, { variableId: req.params.variableId, patch: patch as any });
+        await saveVariables(resolved.dir, next);
+        return next;
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      const mapped = variablesErrorToStatus(err);
+      if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.delete('/api/design-systems/:id/variables/:variableId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyDeleteVariable(current, { variableId: req.params.variableId });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.post('/api/design-systems/:id/variables/collections', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+      if (!name) return sendApiError(res, 400, 'BAD_REQUEST', 'collection name required');
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyCreateCollection(current, { name });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.delete('/api/design-systems/:id/variables/collections/:collectionId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyDeleteCollection(current, { collectionId: req.params.collectionId });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.post('/api/design-systems/:id/variables/collections/:collectionId/groups', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+      if (!name) return sendApiError(res, 400, 'BAD_REQUEST', 'group name required');
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyCreateGroup(current, { collectionId: req.params.collectionId, name });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      const mapped = variablesErrorToStatus(err);
+      if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.delete('/api/design-systems/:id/variables/collections/:collectionId/groups/:groupId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyDeleteGroup(current, {
+          collectionId: req.params.collectionId,
+          groupId: req.params.groupId,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      const mapped = variablesErrorToStatus(err);
+      if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.post('/api/design-systems/:id/variables/collections/:collectionId/groups/:groupId/variables', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const { name, type, value } = req.body ?? {};
+      if (typeof name !== 'string' || !name.trim()) return sendApiError(res, 400, 'BAD_REQUEST', 'variable name required');
+      if (!['color', 'number', 'string', 'boolean'].includes(type)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'type must be color | number | string | boolean');
+      }
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyCreateVariable(current, {
+          collectionId: req.params.collectionId,
+          groupId: req.params.groupId,
+          name: name.trim(),
+          type,
+          value,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      const mapped = variablesErrorToStatus(err);
+      if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
     }
   });
 
