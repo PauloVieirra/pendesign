@@ -100,3 +100,120 @@ function formatValue(variable: Variable): string {
   // boolean → CSS uses 0/1
   return variable.value ? '1' : '0';
 }
+
+const VAR_RE = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
+
+interface MigrationBucket {
+  collectionName: string;
+  type: VariableType;
+  rawValue: string;
+  group: string;
+  varName: string;
+}
+
+function classifyVariable(name: string, rawValue: string): MigrationBucket {
+  const value = rawValue.trim();
+  if (name.startsWith('color-')) {
+    const rest = name.slice('color-'.length);
+    const parts = rest.split('-');
+    const group = parts.length > 1 ? (parts[0] ?? 'Default') : 'Default';
+    const varName = parts.length > 1 ? parts.slice(1).join('-') : (parts[0] ?? rest);
+    return { collectionName: 'Colors', type: 'color', rawValue: value, group: titleCase(group), varName };
+  }
+  if (name.startsWith('font-')) {
+    return { collectionName: 'Typography', type: inferTypoType(name, value), rawValue: value, group: 'Default', varName: name.slice('font-'.length) };
+  }
+  if (name.startsWith('space-')) {
+    return { collectionName: 'Spacing', type: 'number', rawValue: stripPx(value), group: 'Default', varName: name.slice('space-'.length) };
+  }
+  if (name.startsWith('radius-')) {
+    return { collectionName: 'Radii', type: 'number', rawValue: stripPx(value), group: 'Default', varName: name.slice('radius-'.length) };
+  }
+  if (name.startsWith('shadow-')) {
+    return { collectionName: 'Effects', type: 'string', rawValue: value, group: 'Default', varName: name.slice('shadow-'.length) };
+  }
+  return { collectionName: 'Other', type: guessTypeFromValue(value), rawValue: value, group: 'Default', varName: name };
+}
+
+function inferTypoType(name: string, value: string): VariableType {
+  if (/family/.test(name)) return 'string';
+  return /^[0-9.]+/.test(value.trim()) ? 'number' : 'string';
+}
+
+function stripPx(value: string): string {
+  const m = /^(-?\d+(?:\.\d+)?)\s*px$/.exec(value.trim());
+  return m && m[1] !== undefined ? m[1] : value;
+}
+
+function guessTypeFromValue(value: string): VariableType {
+  if (/^#[0-9a-fA-F]{3,8}$/.test(value)) return 'color';
+  if (/^-?\d+(?:\.\d+)?(?:px|rem|em)?$/.test(value)) return 'number';
+  if (/^(true|false)$/i.test(value)) return 'boolean';
+  return 'string';
+}
+
+function coerceValue(type: VariableType, raw: string): string | number | boolean {
+  if (type === 'number') {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (type === 'boolean') return /^true$/i.test(raw.trim());
+  return raw;
+}
+
+function titleCase(value: string): string {
+  if (value.length === 0) return value;
+  const first = value[0];
+  return first === undefined ? value : first.toUpperCase() + value.slice(1);
+}
+
+export function migrateFromTokensCss(css: string): VariablesFile {
+  if (!css || !css.trim()) {
+    return {
+      version: 1,
+      collections: [
+        {
+          id: newCollectionId(),
+          name: 'Default',
+          groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
+        },
+      ],
+    };
+  }
+  const buckets = new Map<string, Map<string, Variable[]>>();
+  VAR_RE.lastIndex = 0;
+  let match;
+  while ((match = VAR_RE.exec(css)) !== null) {
+    const rawName = match[1];
+    const rawValue = match[2];
+    if (rawName === undefined || rawValue === undefined) continue;
+    const cls = classifyVariable(rawName, rawValue);
+    const variable: Variable = {
+      id: newVariableId(),
+      name: cls.varName,
+      type: cls.type,
+      value: coerceValue(cls.type, cls.rawValue),
+    };
+    const collection = buckets.get(cls.collectionName) ?? new Map<string, Variable[]>();
+    const group = collection.get(cls.group) ?? [];
+    group.push(variable);
+    collection.set(cls.group, group);
+    buckets.set(cls.collectionName, collection);
+  }
+  const collections: VariableCollection[] = [];
+  for (const [collectionName, groups] of buckets) {
+    const groupArray: VariableGroup[] = [];
+    for (const [groupName, variables] of groups) {
+      groupArray.push({ id: newGroupId(), name: groupName, variables });
+    }
+    collections.push({ id: newCollectionId(), name: collectionName, groups: groupArray });
+  }
+  if (collections.length === 0) {
+    collections.push({
+      id: newCollectionId(),
+      name: 'Default',
+      groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
+    });
+  }
+  return { version: 1, collections };
+}

@@ -107,3 +107,33 @@ test('renderTokensCss serializes number/string/boolean variables', () => {
   assert.match(css, /--m-g-fam:\s*Inter, sans-serif;/);
   assert.match(css, /--m-g-on:\s*1;/);
 });
+
+import { migrateFromTokensCss } from '../src/design-system-variables.js';
+
+test('migrateFromTokensCss groups color tokens into Colors collection', () => {
+  const css = `:root { --color-rausch: #ff385c; --color-ink: #222222; }`;
+  const file = migrateFromTokensCss(css);
+  const colors = file.collections.find((c) => c.name === 'Colors');
+  assert.ok(colors, 'Colors collection missing');
+  const flat = colors!.groups.flatMap((g) => g.variables);
+  assert.equal(flat.length, 2);
+  assert.deepEqual(flat.map((v) => v.value), ['#ff385c', '#222222']);
+  for (const v of flat) assert.equal(v.type, 'color');
+});
+
+test('migrateFromTokensCss puts space and radius into separate collections', () => {
+  const css = `:root { --space-sm: 8px; --space-md: 16px; --radius-lg: 12px; }`;
+  const file = migrateFromTokensCss(css);
+  const space = file.collections.find((c) => c.name === 'Spacing');
+  const radius = file.collections.find((c) => c.name === 'Radii');
+  assert.ok(space && radius);
+  assert.equal(space!.groups.flatMap((g) => g.variables).length, 2);
+  assert.equal(radius!.groups.flatMap((g) => g.variables).length, 1);
+});
+
+test('migrateFromTokensCss returns single default collection when input is empty', () => {
+  const file = migrateFromTokensCss('');
+  assert.equal(file.version, 1);
+  assert.equal(file.collections.length, 1);
+  assert.equal(file.collections[0].name, 'Default');
+});
