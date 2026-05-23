@@ -33,6 +33,7 @@ import type {
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { CenteredLoader } from './Loading';
 import { DesignsTab } from './DesignsTab';
+import { DesignSystemManagerView } from './design-system-manager/DesignSystemManagerView';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
@@ -107,6 +108,18 @@ function defaultPluginInputsForCreate(
 }
 
 // Theme options exposed in the avatar-popover appearance submenu.
+
+// DS Manager (plan task 19): looks up the design system pinned to a project so
+// the EntryShell can hand it to `DesignSystemManagerView`. Returns `null` when
+// the project is missing or has no DS attached, which the manager view treats
+// as the empty-state entry point (attach / import / pick from library).
+function designSystemIdForProject(
+  projectId: string,
+  projects: ReadonlyArray<{ id: string; designSystemId?: string | null }>,
+): string | null {
+  const project = projects.find((p) => p.id === projectId);
+  return project?.designSystemId ?? null;
+}
 
 interface Props {
   skills: SkillSummary[];
@@ -583,7 +596,19 @@ export function EntryShell({
               />
             ) : null}
             {view === 'design-systems' ? (
-              designSystemsLoading ? (
+              route.kind === 'home' && route.projectContext ? (
+                <DesignSystemManagerView
+                  projectId={route.projectContext}
+                  designSystemId={designSystemIdForProject(route.projectContext, projects)}
+                  projectName={
+                    projects.find((p) => p.id === route.projectContext)?.name ?? 'this project'
+                  }
+                  onAttachDsRequested={(kind) => {
+                    if (kind === 'create') onCreateDesignSystem?.();
+                    else navigate({ kind: 'home', view: 'design-systems' });
+                  }}
+                />
+              ) : designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />
               ) : (
                 <div className="entry-section">
