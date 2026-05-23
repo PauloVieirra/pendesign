@@ -8,6 +8,7 @@ import {
   writeVariables,
   type VariablesFile,
 } from '../src/design-system-variables.js';
+import { newVariableId, newCollectionId, newGroupId } from '../src/design-system-variables.js';
 
 test('readVariables returns parsed JSON, writeVariables roundtrips it', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-'));
@@ -33,4 +34,20 @@ test('readVariables returns parsed JSON, writeVariables roundtrips it', async ()
   await writeVariables(dir, file);
   const read = await readVariables(dir);
   assert.deepEqual(read, file);
+});
+
+test('newVariableId / newCollectionId / newGroupId return unique values across rapid calls', () => {
+  for (const [factory, prefix] of [
+    [newVariableId, 'v_'],
+    [newCollectionId, 'c_'],
+    [newGroupId, 'g_'],
+  ] as const) {
+    const seen = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      const id = factory();
+      assert.match(id, new RegExp(`^${prefix}[A-Za-z0-9_-]{6,}$`));
+      assert.ok(!seen.has(id), `duplicate id ${id}`);
+      seen.add(id);
+    }
+  }
 });

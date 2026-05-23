@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 export type VariableType = 'color' | 'number' | 'string' | 'boolean';
 
@@ -44,4 +45,18 @@ export async function readVariables(dsDir: string): Promise<VariablesFile | null
 export async function writeVariables(dsDir: string, data: VariablesFile): Promise<void> {
   await mkdir(dsDir, { recursive: true });
   await writeFile(path.join(dsDir, VARIABLES_FILE_NAME), JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+function shortToken(): string {
+  return randomBytes(6).toString('base64url');
+}
+
+export function newVariableId(): string {
+  return `v_${shortToken()}`;
+}
+export function newCollectionId(): string {
+  return `c_${shortToken()}`;
+}
+export function newGroupId(): string {
+  return `g_${shortToken()}`;
 }
