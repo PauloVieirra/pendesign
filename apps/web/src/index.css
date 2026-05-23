@@ -26121,15 +26121,17 @@ body.desktop-pet-shell .pet-task-item {
 }
 .ds-var-picker__trigger:hover { color: var(--accent, #2563eb); }
 .ds-var-picker__popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  /* Rendered via React portal into <body> so the popover escapes
+     ancestor `overflow: hidden` / `transform` stacking contexts on
+     the property panel. Coordinates are computed in JS against the
+     trigger's bounding rect (see VariablePicker.tsx useLayoutEffect). */
+  position: fixed;
   width: 280px;
   background: var(--surface, #fff);
   border: 1px solid var(--border, #d4d4d4);
   border-radius: var(--radius-sm, 6px);
   box-shadow: 0 8px 24px -8px rgba(0,0,0,0.15);
-  z-index: 80;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   max-height: 320px;

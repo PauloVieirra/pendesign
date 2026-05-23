@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Variable, VariableType, VariablesFile } from '../../providers/design-system-variables';
 import { Icon } from '../Icon';
 
@@ -25,11 +26,46 @@ export function VariablePicker({ variables, filterType, onPick, ariaLabel }: Pro
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Reposition the popover relative to the trigger. We render it via a
+  // portal into <body>, so the property panel's clipping ancestors
+  // (overflow: hidden / scroll) no longer chop it off — but that
+  // means we have to do the positioning math ourselves. Re-measure on
+  // open + on viewport scroll/resize so the popover tracks the trigger
+  // if the user scrolls the side panel.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const trigger = wrapRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const popoverWidth = 280;
+      // Prefer right-aligned to the trigger; clamp to viewport.
+      let left = rect.right - popoverWidth;
+      if (left < 8) left = 8;
+      const maxLeft = window.innerWidth - popoverWidth - 8;
+      if (left > maxLeft) left = Math.max(8, maxLeft);
+      const top = rect.bottom + 4;
+      setPopoverPos({ top, left });
+    }
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true); // capture to catch nested scrollers
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function onClick(ev: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(ev.target as Node)) setOpen(false);
+      const target = ev.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     }
     window.addEventListener('mousedown', onClick);
     return () => window.removeEventListener('mousedown', onClick);
@@ -63,44 +99,52 @@ export function VariablePicker({ variables, filterType, onPick, ariaLabel }: Pro
       >
         <Icon name="link" size={11} />
       </button>
-      {open ? (
-        <div className="ds-var-picker__popover" role="dialog">
-          <input
-            type="search"
-            className="ds-var-picker__search"
-            value={query}
-            onChange={(ev) => setQuery(ev.target.value)}
-            placeholder="Search variable…"
-            autoFocus
-          />
-          <ul className="ds-var-picker__list">
-            {!variables ? (
-              <li className="ds-var-picker__empty">Loading…</li>
-            ) : matches.length === 0 ? (
-              <li className="ds-var-picker__empty">No variables found.</li>
-            ) : matches.map((m) => (
-              <li key={m.variable.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onPick(m.slug, m.variable);
-                    setOpen(false);
-                  }}
-                >
-                  {m.variable.type === 'color' ? (
-                    <span className="ds-var-picker__swatch" style={{ background: String(m.variable.value) }} />
-                  ) : (
-                    <span className="ds-var-picker__type">{m.variable.type}</span>
-                  )}
-                  <span className="ds-var-picker__label">
-                    {m.collectionName}/{m.groupName}/<strong>{m.variable.name}</strong>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {open && popoverPos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="ds-var-picker__popover"
+              role="dialog"
+              style={{ top: popoverPos.top, left: popoverPos.left }}
+            >
+              <input
+                type="search"
+                className="ds-var-picker__search"
+                value={query}
+                onChange={(ev) => setQuery(ev.target.value)}
+                placeholder="Search variable…"
+                autoFocus
+              />
+              <ul className="ds-var-picker__list">
+                {!variables ? (
+                  <li className="ds-var-picker__empty">Loading…</li>
+                ) : matches.length === 0 ? (
+                  <li className="ds-var-picker__empty">No variables found.</li>
+                ) : matches.map((m) => (
+                  <li key={m.variable.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPick(m.slug, m.variable);
+                        setOpen(false);
+                      }}
+                    >
+                      {m.variable.type === 'color' ? (
+                        <span className="ds-var-picker__swatch" style={{ background: String(m.variable.value) }} />
+                      ) : (
+                        <span className="ds-var-picker__type">{m.variable.type}</span>
+                      )}
+                      <span className="ds-var-picker__label">
+                        {m.collectionName}/{m.groupName}/<strong>{m.variable.name}</strong>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
     </span>
   );
 }
