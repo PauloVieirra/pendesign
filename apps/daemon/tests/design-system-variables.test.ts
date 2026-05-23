@@ -51,3 +51,59 @@ test('newVariableId / newCollectionId / newGroupId return unique values across r
     }
   }
 });
+
+import { renderTokensCss } from '../src/design-system-variables.js';
+
+test('renderTokensCss emits CSS variables with collection/group/name slugs', () => {
+  const css = renderTokensCss({
+    version: 1,
+    collections: [
+      {
+        id: 'c_1', name: 'Cores',
+        groups: [
+          { id: 'g_1', name: 'Orange',
+            variables: [
+              { id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' },
+              { id: 'v_2', name: '200', type: 'color', value: '#FAD8CD' },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  assert.match(css, /--cores-orange-100:\s*#FDEEE9;/);
+  assert.match(css, /--cores-orange-200:\s*#FAD8CD;/);
+});
+
+test('renderTokensCss disambiguates colliding slugs with numeric suffix', () => {
+  const css = renderTokensCss({
+    version: 1,
+    collections: [
+      {
+        id: 'c_1', name: 'A',
+        groups: [{ id: 'g_1', name: 'X',
+          variables: [
+            { id: 'v_1', name: '100', type: 'color', value: '#ffffff' },
+            { id: 'v_2', name: '100', type: 'color', value: '#000000' },
+          ],
+        }],
+      },
+    ],
+  });
+  assert.match(css, /--a-x-100:\s*#ffffff;/);
+  assert.match(css, /--a-x-100-2:\s*#000000;/);
+});
+
+test('renderTokensCss serializes number/string/boolean variables', () => {
+  const css = renderTokensCss({
+    version: 1,
+    collections: [{ id: 'c_1', name: 'M', groups: [{ id: 'g_1', name: 'G', variables: [
+      { id: 'v_1', name: 'gap', type: 'number', value: 16 },
+      { id: 'v_2', name: 'fam', type: 'string', value: 'Inter, sans-serif' },
+      { id: 'v_3', name: 'on', type: 'boolean', value: true },
+    ] }] }],
+  });
+  assert.match(css, /--m-g-gap:\s*16px;/);
+  assert.match(css, /--m-g-fam:\s*Inter, sans-serif;/);
+  assert.match(css, /--m-g-on:\s*1;/);
+});

@@ -60,3 +60,43 @@ export function newCollectionId(): string {
 export function newGroupId(): string {
   return `g_${shortToken()}`;
 }
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+}
+
+export function renderTokensCss(file: VariablesFile): string {
+  const lines: string[] = [
+    '/* Generated from variables.json. Edits made here will be overwritten on next save. */',
+    ':root {',
+  ];
+  const used = new Set<string>();
+  for (const collection of file.collections) {
+    for (const group of collection.groups) {
+      for (const variable of group.variables) {
+        const baseName = `--${slug(collection.name)}-${slug(group.name)}-${slug(variable.name)}`;
+        let name = baseName;
+        let suffix = 2;
+        while (used.has(name)) {
+          name = `${baseName}-${suffix}`;
+          suffix += 1;
+        }
+        used.add(name);
+        lines.push(`  ${name}: ${formatValue(variable)};`);
+      }
+    }
+  }
+  lines.push('}', '');
+  return lines.join('\n');
+}
+
+function formatValue(variable: Variable): string {
+  if (variable.type === 'color' || variable.type === 'string') {
+    return String(variable.value);
+  }
+  if (variable.type === 'number') {
+    return `${Number(variable.value)}px`;
+  }
+  // boolean → CSS uses 0/1
+  return variable.value ? '1' : '0';
+}
