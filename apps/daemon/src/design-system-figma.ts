@@ -8,6 +8,15 @@ import {
   nextAvailableSlug,
   slugify,
 } from './design-system-import.js';
+import {
+  newCollectionId,
+  newGroupId,
+  newVariableId,
+  saveVariables,
+  type Variable,
+  type VariableCollection,
+  type VariablesFile,
+} from './design-system-variables.js';
 
 export type FigmaImportResult = LocalDesignSystemImportResult & {
   /** Surfaced to the UI as inline hints (no error path). */
@@ -457,13 +466,18 @@ export async function importFigmaDesignSystem(
   const outDir = path.join(userDesignSystemsRoot, id);
   await mkdir(outDir, { recursive: true });
 
-  const tokensCss = renderTokensCss(colors, fonts, shadows, spacings, radii);
+  const variablesFile: VariablesFile = {
+    version: 1,
+    collections: buildVariablesCollectionsFromFigma(colors, fonts, shadows, spacings, radii),
+  };
   const designMd = renderDesignMd(id, displayName, figmaUrl, colors, fonts, shadows, spacings, radii);
   const manifest = renderManifest(id, displayName, figmaUrl, fileKey, fileBody, colors, fonts, shadows);
 
-  const files = ['DESIGN.md', 'tokens.css', 'manifest.json'];
+  const files = ['DESIGN.md', 'tokens.css', 'manifest.json', 'variables.json'];
   await writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
-  await writeFile(path.join(outDir, 'tokens.css'), tokensCss, 'utf8');
+  // saveVariables writes BOTH variables.json AND a regenerated tokens.css,
+  // keeping the two derived artifacts in lock-step.
+  await saveVariables(outDir, variablesFile);
   await writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 
   const warnings: string[] = [];
@@ -719,57 +733,6 @@ function dedupeAndScale(values: number[], cap: number): number[] {
 // Output renderers.
 // ───────────────────────────────────────────────────────────────────────
 
-function cssVarName(prefix: string, raw: string): string {
-  const slug = raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return `--${prefix}-${slug || 'token'}`;
-}
-
-function renderTokensCss(
-  colors: FigmaColor[],
-  fonts: FigmaFont[],
-  shadows: FigmaShadow[],
-  spacings: FigmaSpacing[],
-  radii: FigmaRadius[],
-): string {
-  const lines: string[] = [];
-  lines.push('/* Generated from Figma. Source-of-truth lives in the Figma file styles. */');
-  lines.push(':root {');
-  if (colors.length > 0) {
-    lines.push('  /* Colors */');
-    for (const c of colors) lines.push(`  ${cssVarName('color', c.name)}: ${c.hex};`);
-  }
-  if (fonts.length > 0) {
-    lines.push('  /* Typography */');
-    for (const f of fonts) {
-      const safeFamily = /[\s,]/.test(f.family) ? `"${f.family.replace(/"/g, '\\"')}"` : f.family;
-      const slug = (f.name || 'text').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      lines.push(`  --font-${slug}-family: ${safeFamily};`);
-      lines.push(`  --font-${slug}-size: ${f.size}px;`);
-      lines.push(`  --font-${slug}-weight: ${f.weight};`);
-      if (f.lineHeight) lines.push(`  --font-${slug}-line-height: ${f.lineHeight};`);
-      if (f.letterSpacing != null) lines.push(`  --font-${slug}-letter-spacing: ${roundTo(f.letterSpacing, 2)}px;`);
-    }
-  }
-  if (shadows.length > 0) {
-    lines.push('  /* Elevations */');
-    for (const s of shadows) lines.push(`  ${cssVarName('shadow', s.name)}: ${s.value};`);
-  }
-  if (spacings.length > 0) {
-    lines.push('  /* Spacing */');
-    for (const s of spacings) lines.push(`  ${cssVarName('space', s.name)}: ${s.value}px;`);
-  }
-  if (radii.length > 0) {
-    lines.push('  /* Radii */');
-    for (const r of radii) lines.push(`  ${cssVarName('radius', r.name)}: ${r.value}px;`);
-  }
-  lines.push('}');
-  lines.push('');
-  return lines.join('\n');
-}
-
 function renderDesignMd(
   id: string,
   displayName: string,
@@ -856,6 +819,76 @@ function renderManifest(
     swatches,
     isEditable: true,
   };
+}
+
+function buildVariablesCollectionsFromFigma(
+  colors: FigmaColor[],
+  fonts: FigmaFont[],
+  shadows: FigmaShadow[],
+  spacings: FigmaSpacing[],
+  radii: FigmaRadius[],
+): VariableCollection[] {
+  const out: VariableCollection[] = [];
+  if (colors.length > 0) {
+    const groupsMap = new Map<string, Variable[]>();
+    for (const c of colors) {
+      const parts = c.name.split('/');
+      const group = parts.length > 1 ? parts[0]! : 'Default';
+      const varName = parts.length > 1 ? parts.slice(1).join('/') : (parts[0] ?? 'unnamed');
+      const list = groupsMap.get(group) ?? [];
+      list.push({ id: newVariableId(), name: varName, type: 'color', value: c.hex });
+      groupsMap.set(group, list);
+    }
+    out.push({
+      id: newCollectionId(),
+      name: 'Colors',
+      groups: Array.from(groupsMap.entries()).map(([name, variables]) => ({
+        id: newGroupId(), name, variables,
+      })),
+    });
+  }
+  if (fonts.length > 0) {
+    const variables: Variable[] = [];
+    for (const f of fonts) {
+      const slug = f.name.replace(/[^A-Za-z0-9]+/g, '_');
+      variables.push({ id: newVariableId(), name: `${slug}_family`, type: 'string', value: f.family });
+      variables.push({ id: newVariableId(), name: `${slug}_size`, type: 'number', value: f.size });
+      variables.push({ id: newVariableId(), name: `${slug}_weight`, type: 'number', value: f.weight });
+      if (f.lineHeight != null) variables.push({ id: newVariableId(), name: `${slug}_line_height`, type: 'string', value: f.lineHeight });
+    }
+    out.push({
+      id: newCollectionId(), name: 'Typography',
+      groups: [{ id: newGroupId(), name: 'Default', variables }],
+    });
+  }
+  if (shadows.length > 0) {
+    out.push({
+      id: newCollectionId(), name: 'Effects',
+      groups: [{
+        id: newGroupId(), name: 'Default',
+        variables: shadows.map((s) => ({ id: newVariableId(), name: s.name, type: 'string' as const, value: s.value })),
+      }],
+    });
+  }
+  if (spacings.length > 0) {
+    out.push({
+      id: newCollectionId(), name: 'Spacing',
+      groups: [{
+        id: newGroupId(), name: 'Default',
+        variables: spacings.map((s) => ({ id: newVariableId(), name: s.name, type: 'number' as const, value: s.value })),
+      }],
+    });
+  }
+  if (radii.length > 0) {
+    out.push({
+      id: newCollectionId(), name: 'Radii',
+      groups: [{
+        id: newGroupId(), name: 'Default',
+        variables: radii.map((r) => ({ id: newVariableId(), name: r.name, type: 'number' as const, value: r.value })),
+      }],
+    });
+  }
+  return out;
 }
 
 // Re-export so callers can wrap the same error shape.
