@@ -108,15 +108,6 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
         >
           <Icon name="kanban" size={18} />
         </NavButton>
-        <NavButton
-          active={view === 'design-systems'}
-          ariaLabel={t('entry.navDesignSystems')}
-          tooltip={t('entry.navDesignSystems')}
-          onClick={() => onViewChange('design-systems')}
-          testId="entry-nav-design-systems"
-        >
-          <Icon name="palette" size={18} />
-        </NavButton>
       </div>
       <div className="entry-nav-rail__footer">
         <div className="entry-nav-rail__divider" role="separator" />

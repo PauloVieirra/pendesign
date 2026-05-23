@@ -603,10 +603,7 @@ export function EntryShell({
                   projectName={
                     projects.find((p) => p.id === route.projectContext)?.name ?? 'this project'
                   }
-                  onAttachDsRequested={(kind) => {
-                    if (kind === 'create') onCreateDesignSystem?.();
-                    else navigate({ kind: 'home', view: 'design-systems' });
-                  }}
+                  onAttachDsRequested={() => onCreateDesignSystem?.()}
                 />
               ) : designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />

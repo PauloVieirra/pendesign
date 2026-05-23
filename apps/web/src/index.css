@@ -26181,3 +26181,72 @@ body.desktop-pet-shell .pet-task-item {
 }
 .ds-var-picker__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
 .ds-var-picker__empty { padding: 12px; color: var(--text-muted, #6a6a6a); font-size: 12px; }
+
+/* ---- DS Manager top bar (close + title) ------------------------- */
+.ds-mgr-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ds-mgr-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.ds-mgr-topbar__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.ds-mgr-topbar__close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, #fff);
+  color: var(--text, inherit);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ds-mgr-topbar__close:hover { background: var(--bg-subtle, #f7f7f7); }
+
+/* ---- In-pane empty banner --------------------------------------- */
+.ds-mgr-empty-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+.ds-mgr-empty-banner__inner {
+  max-width: 420px;
+  text-align: center;
+  border: 1px dashed var(--border, #d4d4d4);
+  border-radius: var(--radius-sm, 8px);
+  padding: 24px;
+}
+.ds-mgr-empty-banner__inner h3 { margin: 0 0 8px; font-size: 16px; }
+.ds-mgr-empty-banner__inner p { margin: 0 0 16px; color: var(--text-muted, #6a6a6a); font-size: 13px; }
+.ds-mgr-empty-banner__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ds-mgr-empty-banner__actions button {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #d4d4d4);
+  background: var(--surface, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.ds-mgr-empty-banner__actions button.primary {
+  background: var(--accent, #2563eb);
+  color: var(--accent-on, #fff);
+  border-color: var(--accent, #2563eb);
+}
+.ds-mgr-empty-banner__hint { margin: 12px 0 0; color: var(--text-muted, #6a6a6a); font-size: 12px; }
+.ds-mgr-empty-banner__error { margin: 12px 0 0; color: rgb(170, 30, 30); font-size: 12px; }
