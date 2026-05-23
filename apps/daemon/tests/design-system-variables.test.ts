@@ -137,3 +137,21 @@ test('migrateFromTokensCss returns single default collection when input is empty
   assert.equal(file.collections.length, 1);
   assert.equal(file.collections[0].name, 'Default');
 });
+
+import { saveVariables } from '../src/design-system-variables.js';
+import { readFile } from 'node:fs/promises';
+
+test('saveVariables writes variables.json AND regenerated tokens.css', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-save-'));
+  const file: VariablesFile = {
+    version: 1,
+    collections: [{ id: 'c_1', name: 'Cores', groups: [{ id: 'g_1', name: 'Orange',
+      variables: [{ id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' }],
+    }] }],
+  };
+  await saveVariables(dir, file);
+  const json = JSON.parse(await readFile(path.join(dir, 'variables.json'), 'utf8'));
+  const css = await readFile(path.join(dir, 'tokens.css'), 'utf8');
+  assert.equal(json.collections[0].groups[0].variables[0].value, '#FDEEE9');
+  assert.match(css, /--cores-orange-100:\s*#FDEEE9;/);
+});

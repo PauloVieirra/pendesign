@@ -217,3 +217,11 @@ export function migrateFromTokensCss(css: string): VariablesFile {
   }
   return { version: 1, collections };
 }
+
+const TOKENS_CSS_FILE_NAME = 'tokens.css';
+
+export async function saveVariables(dsDir: string, data: VariablesFile): Promise<void> {
+  await mkdir(dsDir, { recursive: true });
+  await writeFile(path.join(dsDir, VARIABLES_FILE_NAME), JSON.stringify(data, null, 2) + '\n', 'utf8');
+  await writeFile(path.join(dsDir, TOKENS_CSS_FILE_NAME), renderTokensCss(data), 'utf8');
+}
