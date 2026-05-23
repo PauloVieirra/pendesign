@@ -155,3 +155,39 @@ test('saveVariables writes variables.json AND regenerated tokens.css', async () 
   assert.equal(json.collections[0].groups[0].variables[0].value, '#FDEEE9');
   assert.match(css, /--cores-orange-100:\s*#FDEEE9;/);
 });
+
+import { withDsLock } from '../src/design-system-variables.js';
+
+test('withDsLock serializes concurrent writes to the same key', async () => {
+  const events: string[] = [];
+  const a = withDsLock('ds-x', async () => {
+    events.push('a-start');
+    await new Promise((r) => setTimeout(r, 30));
+    events.push('a-end');
+    return 'a';
+  });
+  const b = withDsLock('ds-x', async () => {
+    events.push('b-start');
+    events.push('b-end');
+    return 'b';
+  });
+  const [va, vb] = await Promise.all([a, b]);
+  assert.equal(va, 'a');
+  assert.equal(vb, 'b');
+  assert.deepEqual(events, ['a-start', 'a-end', 'b-start', 'b-end']);
+});
+
+test('withDsLock does NOT block different keys', async () => {
+  const events: string[] = [];
+  const a = withDsLock('ds-1', async () => {
+    events.push('a-start');
+    await new Promise((r) => setTimeout(r, 30));
+    events.push('a-end');
+  });
+  const b = withDsLock('ds-2', async () => {
+    events.push('b-start');
+    events.push('b-end');
+  });
+  await Promise.all([a, b]);
+  assert.deepEqual(events, ['a-start', 'b-start', 'b-end', 'a-end']);
+});

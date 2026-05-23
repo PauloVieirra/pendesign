@@ -225,3 +225,16 @@ export async function saveVariables(dsDir: string, data: VariablesFile): Promise
   await writeFile(path.join(dsDir, VARIABLES_FILE_NAME), JSON.stringify(data, null, 2) + '\n', 'utf8');
   await writeFile(path.join(dsDir, TOKENS_CSS_FILE_NAME), renderTokensCss(data), 'utf8');
 }
+
+const dsLocks = new Map<string, Promise<unknown>>();
+
+export async function withDsLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = dsLocks.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => fn());
+  dsLocks.set(key, next);
+  try {
+    return await next;
+  } finally {
+    if (dsLocks.get(key) === next) dsLocks.delete(key);
+  }
+}
