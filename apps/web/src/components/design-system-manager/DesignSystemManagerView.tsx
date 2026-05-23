@@ -96,7 +96,9 @@ export function DesignSystemManagerView({
     [designSystemId, variables, refetch],
   );
 
-  if (!designSystemId) {
+  const dsIsMissingOrLocked = !designSystemId
+    || (loadError != null && /not editable|DS_NOT_FOUND/i.test(loadError));
+  if (dsIsMissingOrLocked) {
     return (
       <DesignSystemEmptyState
         projectName={projectName}
