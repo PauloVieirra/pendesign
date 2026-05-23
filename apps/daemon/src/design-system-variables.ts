@@ -238,3 +238,82 @@ export async function withDsLock<T>(key: string, fn: () => Promise<T>): Promise<
     if (dsLocks.get(key) === next) dsLocks.delete(key);
   }
 }
+
+export class VariablesError extends Error {
+  constructor(readonly code: 'NOT_FOUND' | 'BAD_REQUEST', message: string) {
+    super(message);
+    this.name = 'VariablesError';
+  }
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function applyCreateCollection(file: VariablesFile, params: { name: string }): VariablesFile {
+  const next = clone(file);
+  next.collections.push({
+    id: newCollectionId(),
+    name: params.name.trim() || 'New collection',
+    groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
+  });
+  return next;
+}
+
+export function applyDeleteCollection(file: VariablesFile, params: { collectionId: string }): VariablesFile {
+  const next = clone(file);
+  next.collections = next.collections.filter((c) => c.id !== params.collectionId);
+  return next;
+}
+
+export function applyCreateGroup(file: VariablesFile, params: { collectionId: string; name: string }): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection ${params.collectionId} not found`);
+  collection.groups.push({ id: newGroupId(), name: params.name.trim() || 'New group', variables: [] });
+  return next;
+}
+
+export function applyDeleteGroup(file: VariablesFile, params: { collectionId: string; groupId: string }): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection ${params.collectionId} not found`);
+  collection.groups = collection.groups.filter((g) => g.id !== params.groupId);
+  return next;
+}
+
+export function applyCreateVariable(file: VariablesFile, params: { collectionId: string; groupId: string; name: string; type: VariableType; value: Variable['value'] }): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection ${params.collectionId} not found`);
+  const group = collection.groups.find((g) => g.id === params.groupId);
+  if (!group) throw new VariablesError('NOT_FOUND', `group ${params.groupId} not found`);
+  group.variables.push({ id: newVariableId(), name: params.name, type: params.type, value: params.value });
+  return next;
+}
+
+export function applyUpdateVariable(file: VariablesFile, params: { variableId: string; patch: Partial<Pick<Variable, 'name' | 'type' | 'value'>> }): VariablesFile {
+  const next = clone(file);
+  for (const collection of next.collections) {
+    for (const group of collection.groups) {
+      const idx = group.variables.findIndex((v) => v.id === params.variableId);
+      if (idx >= 0) {
+        const existing = group.variables[idx];
+        if (!existing) continue;
+        group.variables[idx] = { ...existing, ...params.patch } as Variable;
+        return next;
+      }
+    }
+  }
+  throw new VariablesError('NOT_FOUND', `variable ${params.variableId} not found`);
+}
+
+export function applyDeleteVariable(file: VariablesFile, params: { variableId: string }): VariablesFile {
+  const next = clone(file);
+  for (const collection of next.collections) {
+    for (const group of collection.groups) {
+      group.variables = group.variables.filter((v) => v.id !== params.variableId);
+    }
+  }
+  return next;
+}

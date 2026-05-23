@@ -191,3 +191,67 @@ test('withDsLock does NOT block different keys', async () => {
   await Promise.all([a, b]);
   assert.deepEqual(events, ['a-start', 'b-start', 'b-end', 'a-end']);
 });
+
+import {
+  applyCreateCollection,
+  applyDeleteCollection,
+  applyCreateGroup,
+  applyDeleteGroup,
+  applyCreateVariable,
+  applyUpdateVariable,
+  applyDeleteVariable,
+} from '../src/design-system-variables.js';
+
+function makeFile(): VariablesFile {
+  return {
+    version: 1,
+    collections: [
+      { id: 'c_1', name: 'Cores', groups: [
+        { id: 'g_1', name: 'Orange', variables: [
+          { id: 'v_1', name: '100', type: 'color', value: '#aaaaaa' },
+        ] },
+      ] },
+    ],
+  };
+}
+
+test('applyCreateCollection appends a collection with a default group', () => {
+  const next = applyCreateCollection(makeFile(), { name: 'Spacing' });
+  assert.equal(next.collections.length, 2);
+  assert.equal(next.collections[1]!.name, 'Spacing');
+  assert.equal(next.collections[1]!.groups.length, 1);
+});
+
+test('applyDeleteCollection removes by id', () => {
+  const next = applyDeleteCollection(makeFile(), { collectionId: 'c_1' });
+  assert.equal(next.collections.length, 0);
+});
+
+test('applyCreateGroup adds a group to the target collection', () => {
+  const next = applyCreateGroup(makeFile(), { collectionId: 'c_1', name: 'Blue' });
+  assert.equal(next.collections[0]!.groups.length, 2);
+  assert.equal(next.collections[0]!.groups[1]!.name, 'Blue');
+});
+
+test('applyDeleteGroup removes a group by id', () => {
+  const next = applyDeleteGroup(makeFile(), { collectionId: 'c_1', groupId: 'g_1' });
+  assert.equal(next.collections[0]!.groups.length, 0);
+});
+
+test('applyCreateVariable appends to the target group', () => {
+  const next = applyCreateVariable(makeFile(), {
+    collectionId: 'c_1', groupId: 'g_1',
+    name: '200', type: 'color', value: '#bbbbbb',
+  });
+  assert.equal(next.collections[0]!.groups[0]!.variables.length, 2);
+});
+
+test('applyUpdateVariable changes value by id', () => {
+  const next = applyUpdateVariable(makeFile(), { variableId: 'v_1', patch: { value: '#cccccc' } });
+  assert.equal(next.collections[0]!.groups[0]!.variables[0]!.value, '#cccccc');
+});
+
+test('applyDeleteVariable removes by id', () => {
+  const next = applyDeleteVariable(makeFile(), { variableId: 'v_1' });
+  assert.equal(next.collections[0]!.groups[0]!.variables.length, 0);
+});
