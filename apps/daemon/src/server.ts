@@ -4176,6 +4176,8 @@ export async function startServer({
 
   // Resource catalog
   registerStaticResourceRoutes(app, {
+    db,
+    events: projectEventDeps,
     http: httpDeps,
     paths: pathDeps,
     resources: {

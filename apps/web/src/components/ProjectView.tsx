@@ -408,6 +408,7 @@ function shouldFetchElevenLabsVoiceOptions(project: Project): boolean {
 function projectEventToAgentEvent(evt: ProjectEvent): LiveArtifactEventItem['event'] | null {
   if (evt.type === 'file-changed') return null;
   if (evt.type === 'conversation-created') return null;
+  if (evt.type === 'design-system-changed') return null;
   if (evt.type === 'live_artifact') {
     return {
       kind: 'live_artifact',
@@ -992,6 +993,20 @@ export function ProjectView({
       setDesignMdRefreshKey((n) => n + 1);
       return;
     }
+    if (evt.type === 'design-system-changed') {
+      // Subproject B: ignore unless this project actually references the
+      // changed DS. The daemon fan-out broadcasts to every active sink so
+      // the web is responsible for the filter (cheaper than indexing sinks
+      // by DS id on the server). The source-patch already wrote the new
+      // tokens into the project's HTML files; bumping filesRefresh forces a
+      // file-list refetch, which propagates fresh mtimes into the FileViewer
+      // iframes' `?v=${mtime}` cache-bust so the preview reloads.
+      if (evt.projectId !== project.id) return;
+      if (evt.designSystemId !== project.designSystemId) return;
+      setFilesRefresh((n) => n + 1);
+      setDesignMdRefreshKey((n) => n + 1);
+      return;
+    }
     if (evt.type === 'conversation-created') {
       // A new conversation was inserted into this project by a path the
       // open project view can't observe through its own state (currently:
@@ -1037,7 +1052,7 @@ export function ProjectView({
     // Live artifact events come from chat-turn-emitted artifacts; they
     // also imply the conversation transcript changed.
     setDesignMdRefreshKey((n) => n + 1);
-  }, [onProjectsRefresh, refreshLiveArtifacts, project.id]);
+  }, [onProjectsRefresh, refreshLiveArtifacts, project.id, project.designSystemId]);
   useProjectFileEvents(project.id, daemonLive, handleProjectEvent);
 
   // When the URL points at a specific file, fire an open request so the

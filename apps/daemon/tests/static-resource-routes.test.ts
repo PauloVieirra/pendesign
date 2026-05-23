@@ -21,6 +21,13 @@ describe('static resource mutation routes', () => {
         const app = express();
         app.use(express.json({ limit: '4mb' }));
         registerStaticResourceRoutes(app, {
+          // Subproject B: variables-mutation handlers consult the projects
+          // DB + active SSE sink registry to propagate changes to open
+          // project views. Tests don't exercise that propagation, so we
+          // stub both: a null-ish db short-circuits the patch helper, and
+          // an empty event-sink map makes the SSE fan-out a no-op.
+          db: null as any,
+          events: { activeProjectEventSinks: new Map() } as any,
           http: {
             createSseResponse: () => undefined,
             isLocalSameOrigin,

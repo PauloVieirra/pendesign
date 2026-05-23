@@ -18,10 +18,25 @@ export type ProjectConversationCreatedEvent = ProjectConversationCreatedSsePaylo
 
 export type ProjectLiveArtifactEvent = LiveArtifactSsePayload | LiveArtifactRefreshSsePayload;
 
+// Subproject B (DS↔project wiring). When the DS Manager rewrites a
+// variable, the daemon source-patches the matching `:root { ... }` blocks
+// in this project's HTML files and emits this event so the FileViewer can
+// reload its iframe against the freshly-patched source. The daemon fans
+// out to all active project sinks; the web filters by comparing
+// `designSystemId` against the project's own `designSystemId` so projects
+// that don't reference this DS ignore the event.
+export interface ProjectDesignSystemChangedEvent {
+  type: 'design-system-changed';
+  projectId: string;
+  designSystemId: string;
+  ts: number;
+}
+
 export type ProjectEvent =
   | ProjectFileChangeEvent
   | ProjectConversationCreatedEvent
-  | ProjectLiveArtifactEvent;
+  | ProjectLiveArtifactEvent
+  | ProjectDesignSystemChangedEvent;
 
 export interface ProjectEventsConnectionOptions {
   /** Test seam: substitute a mock EventSource constructor. */
@@ -113,6 +128,22 @@ export function createProjectEventsConnection(
     };
     es.addEventListener('live_artifact', handleLiveArtifactEvent);
     es.addEventListener('live_artifact_refresh', handleLiveArtifactEvent);
+    es.addEventListener('design-system-changed', (evt) => {
+      try {
+        const data = JSON.parse(
+          (evt as MessageEvent).data,
+        ) as ProjectDesignSystemChangedEvent;
+        onChange(data);
+      } catch (err) {
+        if (
+          typeof process !== 'undefined' &&
+          process.env?.NODE_ENV === 'development'
+        ) {
+          // eslint-disable-next-line no-console
+          console.warn('[project-events] malformed design-system-changed payload', err);
+        }
+      }
+    });
     es.addEventListener('conversation-created', (evt) => {
       try {
         const data = JSON.parse(
