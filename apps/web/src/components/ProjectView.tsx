@@ -3451,6 +3451,7 @@ export function ProjectView({
           onDesignSystemNeedsWork={sendDesignSystemFeedback}
           designSystemReview={project.metadata?.designSystemReview}
           onDesignSystemReviewDecision={persistDesignSystemReviewDecision}
+          projectDesignSystemId={project.designSystemId ?? null}
         />
       </div>
       {projectActionsToast ? (

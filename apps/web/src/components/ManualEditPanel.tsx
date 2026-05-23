@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+import type { VariablesFile } from '../providers/design-system-variables';
+import { VariablePicker } from './design-system-manager/VariablePicker';
 
 export interface ManualEditDraft {
   text: string;
@@ -32,6 +34,7 @@ export function ManualEditPanel({
   onError,
   onClearSelection,
   pageStylesEnabled = true,
+  dsVariables = null,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -42,6 +45,9 @@ export function ManualEditPanel({
   canRedo: boolean;
   busy?: boolean;
   pageStylesEnabled?: boolean;
+  /** Design-system variables sourced via fetchVariables. Enables the color
+   * variable picker in ColorRow. Null = no DS attached, picker is hidden. */
+  dsVariables?: VariablesFile | null;
   onSelectTarget: (target: ManualEditTarget) => void;
   onDraftChange: (draft: ManualEditDraft) => void;
   onStyleChange?: (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
@@ -91,11 +97,13 @@ export function ManualEditPanel({
               layoutEnabled={targetForInspector.isLayoutContainer}
               onClearSelection={onClearSelection}
               onChange={changeTargetStyle}
+              dsVariables={dsVariables}
             />
           </>
         ) : !targetForInspector ? (
           <PageInspector
             enabled={pageStylesEnabled}
+            dsVariables={dsVariables}
             onStyleChange={(styles) => {
               const normalized = normalizeManualEditStyles(styles, { layoutEnabled: true });
               if (!normalized.ok) {
@@ -275,9 +283,11 @@ function ContentInspector({
 function PageInspector({
   enabled,
   onStyleChange,
+  dsVariables = null,
 }: {
   enabled: boolean;
   onStyleChange: (styles: Partial<ManualEditStyles>) => void;
+  dsVariables?: VariablesFile | null;
 }) {
   const [bg, setBg] = useState('');
   const [font, setFont] = useState('');
@@ -305,7 +315,7 @@ function PageInspector({
       <Section title="PAGE">
         {enabled ? (
           <>
-            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} />
+            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} />
             <FontRow value={font} onChange={(value) => update({ font: value })} />
             <UnitRow label="Base size" value={size} onChange={(value) => update({ size: value })} unit="px" autoUnit />
           </>
@@ -391,8 +401,15 @@ export function normalizeManualEditStyles(
       continue;
     }
     if (COLOR_STYLE_PROPS.has(rawKey)) {
+      // Accept CSS var() bindings (from Subproject C's DS variable picker)
+      // unchanged — they resolve at runtime against the :root block injected
+      // by Subproject D.
+      if (/^var\(--[a-z0-9-]+\)$/i.test(value)) {
+        normalized[rawKey] = value;
+        continue;
+      }
       const color = normalizeHexColor(value);
-      if (!color) return { ok: false, error: `${styleLabel(rawKey)} must be a hex color.` };
+      if (!color) return { ok: false, error: `${styleLabel(rawKey)} must be a hex color or var(--token).` };
       normalized[rawKey] = color;
       continue;
     }
@@ -452,12 +469,13 @@ function styleLabel(key: keyof ManualEditStyles): string {
 }
 
 function StyleInspector({
-  styles, layoutEnabled, onClearSelection, onChange,
+  styles, layoutEnabled, onClearSelection, onChange, dsVariables = null,
 }: {
   styles: ManualEditStyles;
   layoutEnabled: boolean;
   onClearSelection: () => void;
   onChange: (key: keyof ManualEditStyles, value: string) => void;
+  dsVariables?: VariablesFile | null;
 }) {
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
 
@@ -475,7 +493,7 @@ function StyleInspector({
           <DropdownRow label="Weight" value={styles.fontWeight} onChange={(v) => u('fontWeight', v)} options={WEIGHT_OPTS} />
         </PairRow>
         <PairRow>
-          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} />
+          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} variables={dsVariables} />
           <DropdownRow label="Align" value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={ALIGN_OPTS} />
         </PairRow>
         <PairRow>
@@ -507,7 +525,7 @@ function StyleInspector({
 
       <Section title="BOX">
         <PairRow>
-          <ColorRow label="Fill" value={styles.backgroundColor} onChange={(v) => u('backgroundColor', v)} />
+          <ColorRow label="Fill" value={styles.backgroundColor} onChange={(v) => u('backgroundColor', v)} variables={dsVariables} />
           <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" />
         </PairRow>
 
@@ -525,7 +543,7 @@ function StyleInspector({
 
         <PairRow>
           <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
-          <ColorRow label="Border" value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact />
+          <ColorRow label="Border" value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact variables={dsVariables} />
         </PairRow>
         <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit />
       </Section>
@@ -649,8 +667,11 @@ function parseFontFamilies(value: string): string[] {
     .filter(Boolean);
 }
 
-function ColorRow({ label, value, onChange, compact }: {
+function ColorRow({ label, value, onChange, compact, variables = null }: {
   label: string; value: string; onChange: (v: string) => void; compact?: boolean;
+  /** Project's DS variables; when present, a small link affordance lets
+   * the user bind this color to a token (writes `var(--<slug>)`). */
+  variables?: VariablesFile | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -672,6 +693,14 @@ function ColorRow({ label, value, onChange, compact }: {
           onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
         <input value={value} placeholder="#000000"
           onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => setOpen(true)} />
+        {variables ? (
+          <VariablePicker
+            variables={variables}
+            filterType="color"
+            ariaLabel={`Bind ${label} to design system variable`}
+            onPick={(slug) => onChange(`var(${slug})`)}
+          />
+        ) : null}
         {open ? (
           <div className="cc-color-popover">
             <div className="cc-color-grid">

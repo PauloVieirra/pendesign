@@ -193,7 +193,7 @@ describe('ManualEditPanel', () => {
   it('rejects invalid style values before host preview/persistence', () => {
     expect(normalizeManualEditStyles({ color: 'tomato' }, { layoutEnabled: true })).toEqual({
       ok: false,
-      error: 'color must be a hex color.',
+      error: 'color must be a hex color or var(--token).',
     });
     expect(normalizeManualEditStyles({ lineHeight: '-1px' }, { layoutEnabled: true })).toEqual({
       ok: false,

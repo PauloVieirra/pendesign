@@ -103,6 +103,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { fetchVariables, type VariablesFile } from '../providers/design-system-variables';
 import { EditModeMediaPopover, emptyEditModeMediaPopoverState, type EditModeMediaPopoverState } from './EditModeMediaPopover';
 import { EditModeLinkBubble, emptyEditModeLinkBubbleState, type EditModeLinkBubbleState } from './EditModeLinkBubble';
 import { EditModeColorPopover, emptyEditModeColorPopoverState, type EditModeColorPopoverState } from './EditModeColorPopover';
@@ -642,6 +643,10 @@ interface Props {
   onRemovePreviewComment?: (commentId: string) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[]) => Promise<void> | void;
   onFileSaved?: () => Promise<void> | void;
+  /** Project's design-system id; HtmlViewer uses it to fetch variables.json
+   * when manual-edit mode is active so ColorRow's variable picker has data
+   * (Subproject C). */
+  projectDesignSystemId?: string | null;
 }
 
 export function FileViewer({
@@ -658,6 +663,7 @@ export function FileViewer({
   onRemovePreviewComment,
   onSendBoardCommentAttachments,
   onFileSaved,
+  projectDesignSystemId = null,
 }: Props) {
   const rendererMatch = artifactRendererRegistry.resolve({
     file,
@@ -705,6 +711,7 @@ export function FileViewer({
         onRemovePreviewComment={onRemovePreviewComment}
         onSendBoardCommentAttachments={onSendBoardCommentAttachments}
         onFileSaved={onFileSaved}
+        projectDesignSystemId={projectDesignSystemId}
       />
     );
   }
@@ -3440,6 +3447,7 @@ function HtmlViewer({
   onRemovePreviewComment,
   onSendBoardCommentAttachments,
   onFileSaved,
+  projectDesignSystemId = null,
 }: {
   projectId: string;
   projectKind: TrackingProjectKind;
@@ -3454,6 +3462,7 @@ function HtmlViewer({
   onRemovePreviewComment?: (commentId: string) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[]) => Promise<void> | void;
   onFileSaved?: () => Promise<void> | void;
+  projectDesignSystemId?: string | null;
 }) {
   const t = useT();
   const analytics = useAnalytics();
@@ -3610,6 +3619,23 @@ function HtmlViewer({
   // for hint managing hint box state
   const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditModeRaw] = useState(false);
+  // Subproject C: lazy-load the project's DS variables once the user enters
+  // Edit mode so ColorRow can offer the variable-picker affordance. Cleared
+  // when Edit mode exits or when the project DS changes.
+  const [dsVariables, setDsVariables] = useState<VariablesFile | null>(null);
+  useEffect(() => {
+    if (!manualEditMode || !projectDesignSystemId) {
+      setDsVariables(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchVariables(projectDesignSystemId).then((result) => {
+      if (cancelled) return;
+      if ('error' in result) return;
+      setDsVariables(result.variables);
+    });
+    return () => { cancelled = true; };
+  }, [manualEditMode, projectDesignSystemId]);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const consoleLog = useConsoleLog();
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
@@ -6036,6 +6062,7 @@ function HtmlViewer({
             canRedo={manualEditUndone.length > 0}
             busy={manualEditSaving}
             pageStylesEnabled={manualEditPageStylesEnabled}
+            dsVariables={dsVariables}
             onSelectTarget={selectManualEditTarget}
             onDraftChange={setManualEditDraft}
             onStyleChange={(id, styles, label) => {

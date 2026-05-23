@@ -93,6 +93,10 @@ interface Props {
     details?: DesignSystemReviewDetails,
   ) => void;
   onUseDesignSystem?: (id: string, title: string) => void;
+  /** Project's design-system id; FileViewer/HtmlViewer fetch variables.json
+   * from it when manual-edit mode is active so ColorRow can offer the
+   * variable picker (Subproject C). */
+  projectDesignSystemId?: string | null;
 }
 
 interface SketchState {
@@ -205,6 +209,7 @@ export function FileWorkspace({
   designSystemReview,
   onDesignSystemReviewDecision,
   onUseDesignSystem,
+  projectDesignSystemId = null,
 }: Props) {
   const t = useT();
   const defaultRootTab = designSystemProject ? DESIGN_SYSTEM_TAB : DESIGN_FILES_TAB;
@@ -948,6 +953,7 @@ export function FileWorkspace({
             onRemovePreviewComment={onRemovePreviewComment}
             onSendBoardCommentAttachments={onSendBoardCommentAttachments}
             onFileSaved={onRefreshFiles}
+            projectDesignSystemId={projectDesignSystemId}
           />
         ) : (
           <div className="viewer-empty">
