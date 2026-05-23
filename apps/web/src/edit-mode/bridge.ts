@@ -1072,6 +1072,33 @@ export function buildManualEditBridge(enabled: boolean): string {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
       return;
     }
+    // Project-scoped DS tokens: host posts the project's tokens.css
+    // content so any var(--token) references the user just bound via
+    // the property panel actually resolve at runtime. Without this, a
+    // freshly generated project (no :root block in source yet) accepts
+    // the binding but the colour stays unresolved because the variable
+    // is undefined. We inject the CSS as a singleton style element
+    // tagged data-od-ds-runtime-tokens so repeated posts overwrite
+    // cleanly and source code is untouched.
+    if (ev.data.type === 'od:ds-tokens') {
+      var css = typeof ev.data.css === 'string' ? ev.data.css : '';
+      var slot = document.querySelector('style[data-od-ds-runtime-tokens]');
+      if (!css) {
+        if (slot && slot.parentNode) slot.parentNode.removeChild(slot);
+        return;
+      }
+      if (!slot) {
+        slot = document.createElement('style');
+        slot.setAttribute('data-od-ds-runtime-tokens', '');
+        // Append to <head> so cascade order is consistent.
+        (document.head || document.documentElement).appendChild(slot);
+      }
+      // Only update when content actually changes so a no-op post does
+      // not invalidate the cascade for elements computed against the
+      // current rules.
+      if (slot.textContent !== css) slot.textContent = css;
+      return;
+    }
     // Content live-preview: the host inspector echoes every keystroke in the
     // text / link / image fields straight to the iframe so the user sees the
     // change without waiting for the debounced disk save to reload the

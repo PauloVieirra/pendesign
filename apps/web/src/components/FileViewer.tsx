@@ -3623,9 +3623,17 @@ function HtmlViewer({
   // Edit mode so ColorRow can offer the variable-picker affordance. Cleared
   // when Edit mode exits or when the project DS changes.
   const [dsVariables, setDsVariables] = useState<VariablesFile | null>(null);
+  // We also fetch the raw tokens.css string. The bridge inside the iframe
+  // injects it as a <style data-od-ds-runtime-tokens> so `var(--<token>)`
+  // references the user just bound via the picker actually resolve at
+  // runtime — even in projects whose source HTML never declared the
+  // :root block (old projects, or projects where the agent hasn't
+  // regenerated yet).
+  const [dsTokensCssRaw, setDsTokensCssRaw] = useState<string>('');
   useEffect(() => {
     if (!manualEditMode || !projectDesignSystemId) {
       setDsVariables(null);
+      setDsTokensCssRaw('');
       return;
     }
     let cancelled = false;
@@ -3634,8 +3642,20 @@ function HtmlViewer({
       if ('error' in result) return;
       setDsVariables(result.variables);
     });
+    void fetch(`/api/design-systems/${encodeURIComponent(projectDesignSystemId)}/tokens.css`)
+      .then((resp) => (resp.ok ? resp.text() : ''))
+      .then((text) => {
+        if (cancelled) return;
+        setDsTokensCssRaw(text);
+      })
+      .catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
-  }, [manualEditMode, projectDesignSystemId]);
+    // filesRefreshKey is bumped by Subproject B's SSE 'design-system-changed'
+    // event (see ProjectView.handleProjectEvent). Re-running this effect
+    // when it ticks re-fetches the tokens.css so iframe injection picks
+    // up edits the user made in the Manager.
+  }, [manualEditMode, projectDesignSystemId, filesRefreshKey]);
+
   const [consoleOpen, setConsoleOpen] = useState(false);
   const consoleLog = useConsoleLog();
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
@@ -4365,6 +4385,21 @@ function HtmlViewer({
     const staticPreview = manualEditMode || viewMode === 'dual';
     win.postMessage({ type: 'od-static-preview', enabled: staticPreview }, '*');
   }, [manualEditMode, viewMode, srcDoc]);
+
+  // Post the project's DS tokens.css into the iframe so `var(--<token>)`
+  // references the user just bound via the property panel actually
+  // resolve at runtime — even in projects whose source HTML never
+  // declared the :root block (old projects, or projects where the
+  // agent hasn't regenerated yet). The bridge installs a singleton
+  // <style data-od-ds-runtime-tokens> slot, so re-posts overwrite
+  // cleanly without piling up rules. We re-post whenever srcDoc
+  // rebuilds (fresh bridge, no state) or when the CSS string itself
+  // changes (DS edit landed via Subproject B's SSE-driven refetch).
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od:ds-tokens', css: dsTokensCssRaw }, '*');
+  }, [dsTokensCssRaw, srcDoc]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const win = iframeRef.current?.contentWindow;
