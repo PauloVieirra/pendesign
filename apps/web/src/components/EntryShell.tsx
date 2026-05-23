@@ -34,6 +34,7 @@ import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { CenteredLoader } from './Loading';
 import { DesignsTab } from './DesignsTab';
 import { DesignSystemManagerView } from './design-system-manager/DesignSystemManagerView';
+import { createEmptyDesignSystemForProject } from '../providers/design-system-variables';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
@@ -180,6 +181,7 @@ interface Props {
   onCreateDesignSystem?: () => void;
   onOpenDesignSystem?: (id: string) => void;
   onDesignSystemsRefresh?: () => Promise<void> | void;
+  onProjectsRefresh?: () => Promise<void> | void;
   onPersistComposioKey: (composio: AppConfig['composio']) => Promise<void> | void;
   onOpenSettings: (
     section?:
@@ -235,6 +237,7 @@ export function EntryShell({
   onCreateDesignSystem,
   onOpenDesignSystem,
   onDesignSystemsRefresh,
+  onProjectsRefresh,
   onPersistComposioKey,
   onOpenSettings,
 }: Props) {
@@ -604,6 +607,24 @@ export function EntryShell({
                     projects.find((p) => p.id === route.projectContext)?.name ?? 'this project'
                   }
                   onAttachDsRequested={() => onCreateDesignSystem?.()}
+                  onCreateEmpty={async () => {
+                    const projectId = route.projectContext;
+                    if (!projectId) return;
+                    const result = await createEmptyDesignSystemForProject(projectId);
+                    if ('error' in result) return;
+                    // Refresh DS catalog + project list so the new
+                    // designSystemId flows into the Manager's props on the
+                    // next render. If the parent didn't supply a project
+                    // refresher, fall back to the navigate-to-self trick.
+                    if (typeof onDesignSystemsRefresh === 'function') {
+                      await onDesignSystemsRefresh();
+                    }
+                    if (typeof onProjectsRefresh === 'function') {
+                      await onProjectsRefresh();
+                    } else {
+                      navigate({ kind: 'home', view: 'design-systems', projectContext: projectId });
+                    }
+                  }}
                 />
               ) : designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />

@@ -21,6 +21,7 @@ interface Props {
   designSystemId: string | null;
   projectName: string;
   onAttachDsRequested: (kind: 'create' | 'figma' | 'library') => void;
+  onCreateEmpty: () => Promise<void> | void;
 }
 
 function isDsLocked(error: string | null): boolean {
@@ -32,6 +33,7 @@ export function DesignSystemManagerView({
   designSystemId,
   projectName,
   onAttachDsRequested,
+  onCreateEmpty,
 }: Props) {
   const [variables, setVariables] = useState<VariablesFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -172,7 +174,7 @@ export function DesignSystemManagerView({
           />
         ) : (
           <DesignSystemEmptyBanner
-            onCreate={() => onAttachDsRequested('create')}
+            onCreate={onCreateEmpty}
             onImport={() => onAttachDsRequested('figma')}
             isLoading={loading}
             errorMessage={bannerErrorMessage}
@@ -192,7 +194,7 @@ function DesignSystemEmptyBanner({
   isLoading,
   errorMessage,
 }: {
-  onCreate: () => void;
+  onCreate: () => Promise<void> | void;
   onImport: () => void;
   isLoading: boolean;
   errorMessage: string | null;
@@ -200,23 +202,23 @@ function DesignSystemEmptyBanner({
   return (
     <section className="ds-mgr-empty-banner">
       <div className="ds-mgr-empty-banner__inner">
-        <h3>No design system attached</h3>
-        <p>Start fresh or pull in tokens from an existing system.</p>
+        <h3>Start your design system</h3>
+        <p>Create an empty system and add tokens manually, or import from an existing source.</p>
         <div className="ds-mgr-empty-banner__actions">
           <button
             type="button"
             className="primary"
-            onClick={onCreate}
+            onClick={() => { void onCreate(); }}
             data-testid="ds-mgr-empty-create"
           >
-            Create new design system
+            Create empty
           </button>
           <button
             type="button"
             onClick={onImport}
             data-testid="ds-mgr-empty-import"
           >
-            Import design system
+            Import from Figma / repo / disk
           </button>
         </div>
         {isLoading ? <p className="ds-mgr-empty-banner__hint">Loading…</p> : null}

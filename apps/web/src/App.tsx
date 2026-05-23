@@ -1321,6 +1321,7 @@ export function App() {
         onCreateDesignSystem={() => navigate({ kind: 'design-system-create' })}
         onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}
         onDesignSystemsRefresh={refreshDesignSystems}
+        onProjectsRefresh={refreshProjects}
         onPersistComposioKey={handleConfigPersistComposioKey}
         onOpenSettings={openSettings}
       />

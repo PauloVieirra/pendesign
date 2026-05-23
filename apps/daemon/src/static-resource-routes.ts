@@ -17,7 +17,10 @@ import { syncCommunityPets } from './community-pets-sync.js';
 import { readDesignSystem } from './design-systems.js';
 import {
   LocalDesignSystemImportError,
+  cleanDisplayName,
   importLocalDesignSystemProject,
+  nextAvailableSlug,
+  slugify,
 } from './design-system-import.js';
 import {
   applyCreateCollection,
@@ -28,6 +31,8 @@ import {
   applyDeleteVariable,
   applyUpdateVariable,
   migrateFromTokensCss,
+  newCollectionId,
+  newGroupId,
   readVariables,
   saveVariables,
   VariablesError,
@@ -1327,6 +1332,75 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       res.status(201).json({ designSystem, warnings: result.warnings, stats: result.stats });
     } catch (err: any) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err && err.message ? err.message : err));
+    }
+  });
+
+  // Create an EMPTY design system attached to a project. Bypasses the full
+  // DesignSystemCreationFlow wizard for users who want to start blank and
+  // add tokens manually via the Manager. The slug is derived from the
+  // project name with a short token suffix so multiple projects can host
+  // "<project>-ds" without colliding. Writes the minimum scaffold the
+  // catalog list expects (DESIGN.md + tokens.css + manifest.json +
+  // variables.json), then updates the project's designSystemId so the
+  // Manager picks it up on the next fetch.
+  app.post('/api/projects/:projectId/design-system/create-empty', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const { getProject, updateProject } = await import('./db.js');
+      const project = getProject(db, req.params.projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', `project ${req.params.projectId} not found`);
+      }
+      const fsp = await import('node:fs/promises');
+      const before = await listAllDesignSystems();
+      const baseSlug = slugify(`${project.name || 'project'}-ds`);
+      const id = await nextAvailableSlug(USER_DESIGN_SYSTEMS_DIR, baseSlug, before.map((s) => s.id));
+      const outDir = path.join(USER_DESIGN_SYSTEMS_DIR, id);
+      await fsp.mkdir(outDir, { recursive: true });
+
+      const displayName = cleanDisplayName(project.name ? `${project.name} DS` : 'New design system');
+      const designMd = `# ${displayName}\n\n> Category: User\n\nEmpty design system attached to project ${project.name ?? project.id}. Add color, typography, spacing, and other tokens from the Design Systems manager.\n`;
+      await fsp.writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
+      const manifest = {
+        id,
+        name: displayName,
+        summary: 'Empty design system — add tokens from the manager.',
+        category: 'User',
+        source: { type: 'manual', projectId: req.params.projectId, createdAt: new Date().toISOString() },
+        isEditable: true,
+      };
+      await fsp.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+      // Seed an empty variables.json so the Manager's fetch hits the
+      // already-migrated fast path (no tokens.css to parse). saveVariables
+      // also regenerates tokens.css to keep the two derived artifacts in
+      // lock-step.
+      await saveVariables(outDir, {
+        version: 1,
+        collections: [
+          {
+            id: newCollectionId(),
+            name: 'Default',
+            groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
+          },
+        ],
+      });
+
+      // Attach the new DS to the project.
+      const fullDsId = `user:${id}`;
+      try {
+        updateProject(db, req.params.projectId, { designSystemId: fullDsId });
+      } catch (err: any) {
+        // Roll back the on-disk DS so we don't leave an orphan.
+        try { await fsp.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        return sendApiError(res, 500, 'ATTACH_FAILED', `failed to attach DS to project: ${String(err?.message ?? err)}`);
+      }
+
+      const systems = await listAllDesignSystems();
+      const designSystem = systems.find((s) => s.id === fullDsId);
+      res.status(201).json({ designSystem, designSystemId: fullDsId });
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err?.message ?? err));
     }
   });
 

@@ -101,3 +101,10 @@ export function deleteGroup(dsId: string, collectionId: string, groupId: string)
     { method: 'DELETE' },
   );
 }
+
+export function createEmptyDesignSystemForProject(projectId: string) {
+  return jsonFetch<{ designSystem: { id: string; title?: string; summary?: string }; designSystemId: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/design-system/create-empty`,
+    { method: 'POST' },
+  );
+}
