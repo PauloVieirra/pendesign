@@ -8379,8 +8379,26 @@ export async function startServer({
       const editingOwnDraftDesignSystem =
         project?.metadata?.importedFrom === 'design-system'
         && project.designSystemId === effectiveDesignSystemId;
+      // A user-owned DS the project explicitly references is always feedable to
+      // the agent — the user picked it specifically for this project, so the
+      // "is it published in the library?" gate (which exists to keep the home
+      // gallery focused) does not apply. Without this, a freshly imported DS
+      // (status defaults to 'draft' in the catalog) silently fails to reach
+      // the system prompt, and the agent generates code with raw hex instead
+      // of var(--*) references.
+      const projectOwnsUserDesignSystem =
+        summary?.source === 'user'
+        && typeof project?.designSystemId === 'string'
+        && project.designSystemId === effectiveDesignSystemId;
       designSystemTitle = summary?.title;
-      if (summary && (isProjectUsableDesignSystem(summary) || editingOwnDraftDesignSystem)) {
+      if (
+        summary
+        && (
+          isProjectUsableDesignSystem(summary)
+          || editingOwnDraftDesignSystem
+          || projectOwnsUserDesignSystem
+        )
+      ) {
         const workspaceBody = await readDesignSystemWorkspaceTextFile(db, summary, 'DESIGN.md');
         const registryBody = await readAvailableDesignSystem(effectiveDesignSystemId);
         designSystemBody = (workspaceBody ?? registryBody) ?? undefined;
