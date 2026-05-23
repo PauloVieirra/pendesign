@@ -214,6 +214,52 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!enabled) return;
     window.parent.postMessage({ type: 'od-edit-targets', targets: allTargets() }, '*');
   }
+  // CSS-only neutralising is not enough: pages using the Web Animations
+  // API directly (Framer Motion, GSAP, anime.js) or rAF-driven keyframe
+  // updates do not honour our animation-duration override. Walking
+  // document.getAnimations() and calling .finish() on each is the safe
+  // cross-library kill switch. We run it on a short interval while
+  // static-preview is on so animations spawned after the initial pass
+  // (interaction-triggered, scroll-triggered, mutation-spawned) also
+  // get caught.
+  var staticPreviewHalterTimer = null;
+  function finishAllAnimations(){
+    try {
+      if (typeof document.getAnimations !== 'function') return;
+      var list = document.getAnimations();
+      for (var i = 0; i < list.length; i++) {
+        var a = list[i];
+        var infinite = false;
+        try {
+          if (a.effect && typeof a.effect.getComputedTiming === 'function') {
+            var t = a.effect.getComputedTiming();
+            if (t && t.iterations === Infinity) infinite = true;
+          }
+        } catch(_) {}
+        try {
+          // finish() snaps finite animations to their end frame.
+          // For Infinity iterations finish() throws InvalidStateError,
+          // so cancel() instead (drops the animation, element returns
+          // to its base CSS which the static-preview rule then
+          // overrides to keep visible / static).
+          if (infinite) a.cancel();
+          else a.finish();
+        } catch(_) {
+          try { a.cancel(); } catch(__) {}
+        }
+      }
+    } catch(_) {}
+  }
+  function startStaticPreviewAnimationHalter(){
+    if (staticPreviewHalterTimer != null) return;
+    finishAllAnimations();
+    staticPreviewHalterTimer = window.setInterval(finishAllAnimations, 500);
+  }
+  function stopStaticPreviewAnimationHalter(){
+    if (staticPreviewHalterTimer == null) return;
+    window.clearInterval(staticPreviewHalterTimer);
+    staticPreviewHalterTimer = null;
+  }
   function clearSelectedTarget(){
     var selected = document.querySelectorAll('[data-od-edit-selected]');
     for (var i = 0; i < selected.length; i++) selected[i].removeAttribute('data-od-edit-selected');
@@ -995,6 +1041,29 @@ export function buildManualEditBridge(enabled: boolean): string {
       if (enabled) setTimeout(postTargets, 0);
       return;
     }
+    // Static-preview signal: host sets this in any side-by-side or
+    // inspect-focused view (Edit, Dual code+design) where the user is
+    // looking AT the design rather than letting it animate. Drives the
+    // CSS that completes finite reveals (opacity 0 to 1 transitions
+    // pending IntersectionObserver) so content does not stay hidden when
+    // the iframe viewport is constrained and IO never fires.
+    if (ev.data.type === 'od-static-preview') {
+      // Skip when the state would not change. The bridge in srcdoc.ts
+      // observes ALL document mutations to drive od:comment-targets posts,
+      // and a redundant toggle on documentElement re-fires that observer
+      // even when nothing visible changes. Combined with the host effect
+      // that re-posts this message on every srcDoc rebuild, that fed a
+      // setLiveCommentTargets -> re-render -> attribute toggle loop and
+      // tripped React's "Maximum update depth exceeded" guard.
+      var staticWant = !!ev.data.enabled;
+      var staticHave = document.documentElement.hasAttribute('data-od-static-preview');
+      if (staticWant !== staticHave) {
+        document.documentElement.toggleAttribute('data-od-static-preview', staticWant);
+      }
+      if (staticWant) startStaticPreviewAnimationHalter();
+      else stopStaticPreviewAnimationHalter();
+      return;
+    }
     if (ev.data.type === 'od-edit-selected-target') {
       setSelectedTarget(ev.data.id || null);
       return;
@@ -1098,6 +1167,17 @@ export function buildManualEditBridge(enabled: boolean): string {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', postTargets);
   else setTimeout(postTargets, 0);
   document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
+  // Initialise static-preview on by default: the bridge is only injected
+  // when the host wants Edit or Dual rendering, both of which need the
+  // IntersectionObserver-reveal neutralising CSS to run BEFORE we wait
+  // for the host's od-static-preview postMessage. Without this, reveals
+  // that mount during the brief window before the host's effect fires
+  // (and crucially, in Dual mode where they would otherwise never fire
+  // at all) stay invisible. The host can still toggle it off later via
+  // od-static-preview { enabled: false } when entering a mode that
+  // wants the artifact's reveal animations live.
+  document.documentElement.toggleAttribute('data-od-static-preview', true);
+  startStaticPreviewAnimationHalter();
 })();</script>`;
 }
 
@@ -1129,5 +1209,40 @@ html[data-od-edit-mode] img:hover,
 html[data-od-edit-mode] picture:hover,
 html[data-od-edit-mode] svg:hover { cursor: zoom-in !important; }
 html[data-od-edit-mode] img:hover::after { content: ''; }
+/* Static preview mode neutralises generated animations, transitions,
+   and IntersectionObserver-driven reveals. Triggered by both Edit and
+   Dual (code+design) views via the od-static-preview postMessage.
+
+   We cannot just set animation:none -- landings routinely keep elements
+   at opacity 0 / translateY(20px) and reveal them through a finite
+   animation:fadeIn forwards, so zeroing the animation traps them in
+   the pre-animation state. Instead we keep the animation-name
+   reference and force every keyframe to run for 1ms exactly once,
+   fill-mode both, so finite reveals snap to their end state and
+   infinite loops (spin/shimmer/pulse) settle on a single resolved
+   frame.
+
+   The opacity override covers the JS-driven reveal pattern:
+   .reveal { opacity: 0 } + IntersectionObserver adding .is-visible.
+   When the iframe is shorter than the page (Dual / Edit side-panel),
+   IO never fires for elements below the iframe viewport and the page
+   stays mostly blank. Forcing opacity:1 makes everything inspectable;
+   genuinely hidden surfaces (display:none, visibility:hidden, [hidden],
+   aria-hidden=true) stay hidden. !important + ::before/::after are
+   required because reveals frequently target pseudo-elements. */
+html[data-od-static-preview] *,
+html[data-od-static-preview] *::before,
+html[data-od-static-preview] *::after {
+  animation-duration: 0.001s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: both !important;
+  animation-play-state: running !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+html[data-od-static-preview] *:not([hidden]):not([aria-hidden="true"]) {
+  opacity: 1 !important;
+}
 </style>`;
 }

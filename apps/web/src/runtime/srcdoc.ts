@@ -20,6 +20,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
+import { buildConsoleBridge } from './console-bridge';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -29,6 +30,18 @@ export type SrcdocOptions = {
   inspectBridge?: boolean;
   selectionBridge?: boolean;
   editBridge?: boolean;
+  /**
+   * Initial `enabled` state for the manual-edit bridge's click /
+   * inline-edit / outline behaviour. The host eventually drives this
+   * via `od-edit-mode` postMessages, but the bridge runs immediately
+   * on iframe load — before the host's first message arrives — and
+   * hardcoding `enabled=true` lights up edit affordances (blue dashed
+   * outlines, click interception) during that race. Dual mode injects
+   * the bridge purely for the static-preview CSS and should boot with
+   * `enabled=false` so the design pane stays a read-only viewer until
+   * Edit is explicitly turned on.
+   */
+  editBridgeInitialEnabled?: boolean;
   paletteBridge?: boolean;
   initialPalette?: string | null;
 };
@@ -53,7 +66,10 @@ export function buildSrcdoc(
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
   const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
   const withShim = injectSandboxShim(withBase);
-  const withDeck = options.deck ? injectDeckBridge(withShim, options.initialSlideIndex) : withShim;
+  // Console bridge must come first so it captures errors thrown by any
+  // of the other injected bridges as well as the artifact's own scripts.
+  const withConsole = injectBeforeHeadEnd(withShim, buildConsoleBridge());
+  const withDeck = options.deck ? injectDeckBridge(withConsole, options.initialSlideIndex) : withConsole;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
   // to either the comment popover (annotate) or the inspect panel
@@ -71,7 +87,9 @@ export function buildSrcdoc(
   const withPalette = options.paletteBridge
     ? injectPaletteBridge(withSelection, { initialPalette: options.initialPalette ?? null })
     : withSelection;
-  const withEdit = options.editBridge ? injectManualEditBridge(withPalette) : withPalette;
+  const withEdit = options.editBridge
+    ? injectManualEditBridge(withPalette, options.editBridgeInitialEnabled === true)
+    : withPalette;
   return injectSrcdocTransportActivationBridge(injectSnapshotBridge(withEdit));
 }
 
@@ -645,9 +663,9 @@ function annotateMissingOdIds(doc: string): string {
   }
 }
 
-function injectManualEditBridge(doc: string): string {
+function injectManualEditBridge(doc: string, initialEnabled: boolean): string {
   const withStyle = injectBeforeHeadEnd(doc, buildManualEditBridgeStyle());
-  return injectBeforeBodyEnd(withStyle, buildManualEditBridge(true));
+  return injectBeforeBodyEnd(withStyle, buildManualEditBridge(initialEnabled));
 }
 
 function injectBeforeHeadEnd(doc: string, payload: string): string {
@@ -1448,7 +1466,23 @@ function meaningfulDomFallbackTarget(el) {
     schedulePostTargets();
     schedulePostPreviewScroll();
   }, true);
-  var mo = new MutationObserver(schedulePostTargets);
+  // Ignore mutations that only touch our own data-od-* signalling
+  // attributes on the documentElement. Those are how the host toggles
+  // edit / inspect / comment / static-preview modes inside the iframe;
+  // re-firing schedulePostTargets for them caused a host-iframe ping-pong
+  // (parent setLiveCommentTargets -> re-render -> attribute toggle ->
+  // schedulePostTargets -> repeat) that tripped React's "Maximum update
+  // depth exceeded" guard.
+  var mo = new MutationObserver(function(records){
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (r.type === 'attributes' && r.target === document.documentElement) {
+        if (typeof r.attributeName === 'string' && r.attributeName.indexOf('data-od-') === 0) continue;
+      }
+      schedulePostTargets();
+      return;
+    }
+  });
   mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
   // Reflect the host-requested initial modes on the documentElement so
   // the cursor/hover styles match what the bridge picks up on click.

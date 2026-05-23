@@ -287,7 +287,9 @@ export function NewProjectPanel({
   // Keep `tab` aligned with the active step. The branch-specific submit
   // logic and metadata builders downstream of this still key off `tab`, so
   // forcing it here keeps the legacy contract intact without touching every
-  // hook that already filters on tab === 'prototype' vs 'figma'.
+  // hook that already filters on tab === 'prototype' vs 'figma'. The Step 3
+  // counterpart of this effect lives below, after the Figma state
+  // declarations (its deps would otherwise hit the TDZ).
   useEffect(() => {
     if (step === 1 && tab !== 'prototype') setTab('prototype');
     if (step === 2 && tab !== 'figma') setTab('figma');
@@ -361,6 +363,24 @@ export function NewProjectPanel({
   // hint copy so the user knows they don't have to re-paste.
   const [figmaPatAlreadySaved, setFigmaPatAlreadySaved] = useState(false);
   const [figmaSubmitting, setFigmaSubmitting] = useState(false);
+
+  // Step 3 needs the submit branch resolved. Step 2 (Figma) is optional —
+  // when the user skipped it (all fields empty), restore the prototype
+  // branch so `canCreate` and `handleCreate` dispatch the right path. If
+  // any Figma field is non-empty we keep `tab` on 'figma' so `canCreate`
+  // can surface the partial-fill state to the user instead of silently
+  // submitting through the prototype path.
+  useEffect(() => {
+    if (
+      step === 3
+      && tab === 'figma'
+      && figmaUrl.trim().length === 0
+      && figmaPat.trim().length === 0
+      && figmaComponentsUrl.trim().length === 0
+    ) {
+      setTab('prototype');
+    }
+  }, [step, tab, figmaUrl, figmaPat, figmaComponentsUrl]);
 
   useEffect(() => {
     if (tab !== 'figma') return;
@@ -572,6 +592,20 @@ export function NewProjectPanel({
       : step === 2
         ? !figmaPartiallyFilled || figmaFormFilled
         : false;
+
+  // Step 3 feedback for the disabled Save button. Empty/clean state is
+  // already handled by the effect that flips `tab` back to 'prototype', so
+  // the only remaining blocker is a partially filled Figma form carried in
+  // from Step 2. Stay silent during submit (button copy already changes to
+  // "Salvando…") and during the parent's initial loading state.
+  const saveDisabledReason: string | null =
+    step === 3 && !canCreate && !submitting && !loading
+      ? tab === 'figma' && !figmaFormFilled
+        ? 'O passo "Importar do Figma" está incompleto. Preencha a URL do arquivo e o token de acesso (PAT), ou volte e limpe os campos para pular esta etapa.'
+        : tab === 'template' && templateId == null
+          ? 'Escolha um template para continuar, ou volte ao passo 1.'
+          : null
+      : null;
 
   function goToStep(target: WizardStep) {
     if (submitting) return;
@@ -1125,6 +1159,7 @@ export function NewProjectPanel({
           onNext={() => goToStep((step + 1) as WizardStep)}
           onSave={handleCreate}
           figmaConfigured={figmaFormFilled}
+          saveDisabledReason={saveDisabledReason}
         />
         {onImportClaudeDesign ? (
           <>
@@ -1231,6 +1266,7 @@ function WizardFooter({
   onBack,
   onNext,
   onSave,
+  saveDisabledReason,
 }: {
   step: WizardStep;
   canAdvance: boolean;
@@ -1240,46 +1276,62 @@ function WizardFooter({
   onBack: () => void;
   onNext: () => void;
   onSave: () => void;
+  saveDisabledReason?: string | null;
 }) {
   return (
-    <div className="newproj-wizard-footer" data-testid="new-project-wizard-footer">
-      <button
-        type="button"
-        className="ghost newproj-wizard-back"
-        onClick={onBack}
-        disabled={step === 1 || submitting}
-      >
-        <Icon name="chevron-left" size={13} />
-        <span>Voltar</span>
-      </button>
-      {step < 3 ? (
+    <>
+      {saveDisabledReason ? (
+        <div
+          className="newproj-wizard-reason"
+          role="alert"
+          data-testid="new-project-wizard-reason"
+        >
+          {saveDisabledReason}
+        </div>
+      ) : null}
+      <div className="newproj-wizard-footer" data-testid="new-project-wizard-footer">
         <button
           type="button"
-          className="primary newproj-wizard-next"
-          data-testid="new-project-wizard-next"
-          onClick={onNext}
-          disabled={!canAdvance || submitting}
+          className="ghost newproj-wizard-back"
+          onClick={onBack}
+          disabled={step === 1 || submitting}
         >
-          <span>
-            {step === 2
-              ? (figmaConfigured ? 'Avançar' : 'Pular e continuar')
-              : 'Avançar'}
-          </span>
-          <Icon name="chevron-right" size={13} />
+          <Icon name="chevron-left" size={13} />
+          <span>Voltar</span>
         </button>
-      ) : (
-        <button
-          type="button"
-          className="primary newproj-wizard-save"
-          data-testid="create-project"
-          onClick={onSave}
-          disabled={!canSave}
-        >
-          <Icon name="check" size={13} />
-          <span>{submitting ? 'Salvando…' : 'Salvar projeto'}</span>
-        </button>
-      )}
-    </div>
+        {step < 3 ? (
+          <button
+            type="button"
+            className="primary newproj-wizard-next"
+            data-testid="new-project-wizard-next"
+            onClick={onNext}
+            disabled={!canAdvance || submitting}
+          >
+            <span>
+              {step === 2
+                ? (figmaConfigured ? 'Avançar' : 'Pular e continuar')
+                : 'Avançar'}
+            </span>
+            <Icon name="chevron-right" size={13} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary newproj-wizard-save"
+            data-testid="create-project"
+            onClick={onSave}
+            disabled={!canSave}
+            title={saveDisabledReason ?? undefined}
+            aria-describedby={
+              saveDisabledReason ? 'new-project-wizard-reason' : undefined
+            }
+          >
+            <Icon name="check" size={13} />
+            <span>{submitting ? 'Salvando…' : 'Salvar projeto'}</span>
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

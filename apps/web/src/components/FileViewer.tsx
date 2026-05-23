@@ -79,6 +79,8 @@ import type {
   ProjectFile,
 } from '../types';
 import { Icon } from './Icon';
+import { ConsoleLogDrawer, useConsoleLog } from './ConsoleLogDrawer';
+import { navigate as routerNavigate } from '../router';
 import { ThemeToggle } from './ThemeToggle';
 import { Toast } from './Toast';
 import { PaletteTweaks, type PaletteId } from './PaletteTweaks';
@@ -3548,7 +3550,13 @@ function HtmlViewer({
   }
 
   const [source, setSource] = useState<string | null>(liveHtml ?? null);
-  const [inlinedSource, setInlinedSource] = useState<string | null>(null);
+  // Tagged with the source string that produced it so we can detect a
+  // stale entry from a previous file/source — if it does not match the
+  // current source, the live preview falls back to blank (single paint)
+  // instead of showing the raw source then re-painting with the inlined
+  // version (the double-paint that caused visible flicker on every
+  // open).
+  const [inlinedSource, setInlinedSource] = useState<{ source: string; inlined: string } | null>(null);
   const [zoom, setZoom] = useState(100);
   const [previewViewport, setPreviewViewport] = useState<PreviewViewportId>('web');
   const [responsiveSize, setResponsiveSize] = useState<{ width: number; height: number } | null>(null);
@@ -3602,6 +3610,8 @@ function HtmlViewer({
   // for hint managing hint box state
   const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditModeRaw] = useState(false);
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const consoleLog = useConsoleLog();
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditViewportWidth, setManualEditViewportWidth] = useState<number | null>(null);
   const [previewBodyRef, previewBodySize] = usePreviewCanvasSize<HTMLDivElement>();
@@ -3617,7 +3627,16 @@ function HtmlViewer({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
+  // Track the iframe contentWindow we last posted to AND the html we
+  // posted. When the iframe is remounted (e.g. viewMode toggle changes
+  // its JSX parent), the new contentWindow differs and we re-post. When
+  // the same iframe just runs document.write inside itself, the
+  // contentWindow is the same and we skip — avoiding the onLoad ->
+  // document.write -> onLoad reload loop that fired Babel/Tailwind on a
+  // ~330ms cycle and caused the Preview-mode "piscar".
+  const activatedSrcDocTransportRef = useRef<
+    { contentWindow: Window | null; html: string } | null
+  >(null);
   const isActivePreviewIframeSource = useCallback((source: MessageEventSource | null) => {
     return !!source && source === iframeRef.current?.contentWindow;
   }, []);
@@ -4003,7 +4022,18 @@ function HtmlViewer({
     return /class\s*=\s*['"][^'"]*\bslide\b/i.test(source);
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
-  const livePreviewSource = inlinedSource ?? source;
+  // Only expose the inlined value when its tag matches the current
+  // source. If the file just switched and inlining is still resolving,
+  // we keep livePreviewSource at null so the srcDoc memo returns ''
+  // and the iframe stays blank — one render with the inlined output
+  // beats two renders (raw source first, inlined version second) when
+  // the page boots heavy in-iframe tooling like Babel-standalone or
+  // Tailwind CDN that runs on every reload.
+  const livePreviewSource = inlinedSource && inlinedSource.source === source
+    ? inlinedSource.inlined
+    : source && (!hasRelativeAssetRefs(source) || effectiveDeck)
+      ? source
+      : null;
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
@@ -4079,12 +4109,23 @@ function HtmlViewer({
   }, [basePreviewSrcUrl, filesRefreshKey, useUrlLoadPreview]);
 
   useEffect(() => {
-    setInlinedSource(null);
-    if (useUrlLoadPreview) return;
-    if (!source || effectiveDeck || !hasRelativeAssetRefs(source)) return;
+    if (useUrlLoadPreview || !source || effectiveDeck || !hasRelativeAssetRefs(source)) {
+      // No inlining needed (URL-load handles its own fetches, deck has
+      // its own bridge, or the page has no relative refs to resolve).
+      // Drop any stale entry so the livePreviewSource memo falls back
+      // to the raw source path immediately.
+      setInlinedSource(null);
+      return;
+    }
+    // Do NOT reset to null before we have the new inlined value:
+    // doing so makes livePreviewSource transition through the raw
+    // `source` before settling on the inlined string, which forces
+    // the srcDoc iframe to render twice. The tagged tuple lets the
+    // memo gate stale entries instead, so the iframe stays blank
+    // until inlining finishes and then paints exactly once.
     let cancelled = false;
     void inlineRelativeAssets(source, projectId, file.name).then((next) => {
-      if (!cancelled) setInlinedSource(next);
+      if (!cancelled) setInlinedSource({ source, inlined: next });
     });
     return () => {
       cancelled = true;
@@ -4097,11 +4138,21 @@ function HtmlViewer({
       baseHref: projectRawUrl(projectId, baseDirFor(file.name)),
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
       selectionBridge: true,
-      editBridge: manualEditMode,
+      // Inject the edit bridge whenever we need static-preview behaviour
+      // (Edit OR Dual). In Dual we are not editing, but the bridge's
+      // od-static-preview handler and its companion CSS are what stop
+      // IntersectionObserver-driven reveals from leaving the center of
+      // the page blank; the edit affordances themselves stay inert
+      // because they gate on `enabled` / `data-od-edit-mode`.
+      editBridge: manualEditMode || viewMode === 'dual',
+      // Boot the bridge with edit affordances OFF in Dual so the design
+      // pane is a read-only viewer; the host still flips it on later
+      // via od-edit-mode when the user enters Edit explicitly.
+      editBridgeInitialEnabled: manualEditMode,
       paletteBridge: true,
       initialPalette: selectedPalette,
     }) : ''),
-    [previewSource, effectiveDeck, projectId, file.name, previewStateKey, manualEditMode, selectedPalette],
+    [previewSource, effectiveDeck, projectId, file.name, previewStateKey, manualEditMode, viewMode, selectedPalette],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
   const [hasLazySrcDocTransport, setHasLazySrcDocTransport] = useState(useUrlLoadPreview);
@@ -4116,14 +4167,15 @@ function HtmlViewer({
   const activateSrcDocTransport = useCallback((target: HTMLIFrameElement | null = srcDocPreviewIframeRef.current) => {
     const win = target?.contentWindow;
     if (!win || !srcDoc || useUrlLoadPreview || !useLazySrcDocTransport) return false;
-    if (activatedSrcDocTransportHtmlRef.current === srcDoc) return false;
+    const last = activatedSrcDocTransportRef.current;
+    if (last && last.contentWindow === win && last.html === srcDoc) return false;
     win.postMessage({ type: 'od:srcdoc-transport-activate', html: srcDoc }, '*');
-    activatedSrcDocTransportHtmlRef.current = srcDoc;
+    activatedSrcDocTransportRef.current = { contentWindow: win, html: srcDoc };
     return true;
   }, [srcDoc, useLazySrcDocTransport, useUrlLoadPreview]);
   useEffect(() => {
     if (useUrlLoadPreview) {
-      activatedSrcDocTransportHtmlRef.current = null;
+      activatedSrcDocTransportRef.current = null;
       if (!wasUrlLoadPreviewRef.current) {
         setSrcDocTransportResetKey((key) => key + 1);
       }
@@ -4274,6 +4326,19 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
   }, [manualEditMode, selectedManualEditTarget?.id, srcDoc]);
+
+  // Static-preview signal: in Edit and Dual (code+design split) the user
+  // is inspecting the design as a static reference. The bridge uses this
+  // attribute to neutralise CSS animations and force IntersectionObserver-
+  // driven reveals visible -- without it, .reveal { opacity:0 } elements
+  // below the iframe viewport never get their .is-visible class and the
+  // design pane looks blank. Preview-only mode keeps animations live.
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    const staticPreview = manualEditMode || viewMode === 'dual';
+    win.postMessage({ type: 'od-static-preview', enabled: staticPreview }, '*');
+  }, [manualEditMode, viewMode, srcDoc]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const win = iframeRef.current?.contentWindow;
@@ -6105,19 +6170,14 @@ function HtmlViewer({
                   onLoad={() => {
                     const frame = srcDocPreviewIframeRef.current;
                     if (!useUrlLoadPreview) iframeRef.current = frame;
-                    // Clear the activation guard before re-activating: when the
-                    // user toggles viewMode (Preview ↔ Dual), this iframe is
-                    // unmounted and remounted because the JSX parent type
-                    // changes (viewer-body direct child ↔ SplitPane right
-                    // side). The activation effect fires once before the new
-                    // contentWindow's bootstrapper is ready, posting a message
-                    // that nothing receives, then stamps the ref as
-                    // "activated". Without clearing here, the freshly-loaded
-                    // bootstrapper never gets its content message and the
-                    // pane renders blank until the user nudges things by
-                    // switching files. onLoad is the canonical "iframe is
-                    // fresh" signal, so it's the right place to reset.
-                    activatedSrcDocTransportHtmlRef.current = null;
+                    // Re-activate against the (potentially new) contentWindow.
+                    // The activation guard now keys on contentWindow + html
+                    // together, so a remount yields a new window and gets a
+                    // fresh post, while a same-iframe document.write keeps the
+                    // same window and is a no-op — that no-op is what stopped
+                    // the load -> activate -> document.write -> load cycle
+                    // that previously fired Babel / Tailwind on ~330ms ticks
+                    // and made Preview mode flicker.
                     activateSrcDocTransport(frame);
                     dcViewportRestoreAtRef.current = Date.now();
                     frame?.contentWindow?.postMessage({
@@ -6488,37 +6548,14 @@ function HtmlViewer({
               <div className="palette-tweaks-anchor">
                 <button
                   type="button"
-                  className={`viewer-action${selectedPalette || palettePopoverOpen ? ' active' : ''}`}
-                  data-testid="palette-tweaks-toggle"
-                  title="Tweaks"
-                  aria-haspopup="dialog"
-                  aria-expanded={palettePopoverOpen}
-                  onClick={() => setPalettePopoverOpen((v) => !v)}
+                  className="viewer-action"
+                  data-testid="design-systems-toggle"
+                  title="Design Systems — open the project's design tokens"
+                  onClick={() => routerNavigate({ kind: 'home', view: 'design-systems', projectContext: projectId })}
                 >
                   <Icon name="tweaks" size={13} />
-                  <span>Tweaks</span>
-                  {selectedPalette ? (
-                    <span
-                      className="palette-tweaks-badge"
-                      aria-hidden
-                      style={{
-                        backgroundColor:
-                          selectedPalette === 'coral' ? '#ff5a3c' :
-                          selectedPalette === 'electric' ? '#7c3aed' :
-                          selectedPalette === 'acid-forest' ? '#16a34a' :
-                          selectedPalette === 'risograph' ? '#e11d48' :
-                          '#0a0a0a',
-                      }}
-                    />
-                  ) : null}
+                  <span>Design Systems</span>
                 </button>
-                <PaletteTweaks
-                  open={palettePopoverOpen}
-                  selected={selectedPalette}
-                  onChange={setSelectedPalette}
-                  onPreview={setPreviewPalette}
-                  onClose={() => setPalettePopoverOpen(false)}
-                />
               </div>
               <button
                 className={`viewer-action${drawOverlayOpen ? ' active' : ''}`}
@@ -6669,6 +6706,22 @@ function HtmlViewer({
           >
             <Icon name="edit" size={13} />
             <span>{t('fileViewer.edit')}</span>
+          </button>
+          <button
+            className={`viewer-action${consoleOpen ? ' active' : ''}${consoleLog.errorCount > 0 ? ' has-error' : ''}`}
+            type="button"
+            data-testid="console-log-toggle"
+            title="Console — logs and errors from the rendered design"
+            aria-pressed={consoleOpen}
+            onClick={() => setConsoleOpen((v) => !v)}
+          >
+            <Icon name="file-code" size={13} />
+            <span>Console</span>
+            {consoleLog.errorCount > 0 ? (
+              <span className="viewer-action-badge" aria-label={`${consoleLog.errorCount} errors`}>
+                {consoleLog.errorCount > 99 ? '99+' : consoleLog.errorCount}
+              </span>
+            ) : null}
           </button>
         </div>
       </div>
@@ -7320,6 +7373,12 @@ function HtmlViewer({
           onDismiss={() => setFigmaToast(null)}
         />
       ) : null}
+      <ConsoleLogDrawer
+        open={consoleOpen}
+        onClose={() => setConsoleOpen(false)}
+        entries={consoleLog.entries}
+        onClear={consoleLog.clear}
+      />
     </div>
   );
 }

@@ -19,6 +19,8 @@ import {
   importLocalDesignSystemProject,
 } from './design-system-import.js';
 import { importGitHubDesignSystemProject } from './design-system-github-import.js';
+import { FigmaImportError, importFigmaDesignSystem } from './design-system-figma.js';
+import { getFigmaPat, readMcpConfig, writeMcpConfig } from './mcp-config.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
@@ -650,6 +652,249 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
         return sendApiError(res, err.code === 'BAD_REQUEST' ? 400 : 500, err.code, err.message);
       }
       sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  // Verify a Figma Personal Access Token before kicking off the
+  // tokens-import flow. Two-step UX: the UI calls this on open with no
+  // body to test whatever is saved in the figma-context MCP server; if
+  // that fails, it prompts for a new PAT and calls this again with the
+  // pasted value. Successful verification with a fresh PAT writes it
+  // back to the figma-context env so the New Project Figma step picks
+  // it up automatically.
+  app.post('/api/design-systems/import/figma/verify-token', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const providedToken = typeof body.pat === 'string' ? body.pat.trim() : '';
+      let token = providedToken;
+      if (!token) token = (await getFigmaPat(RUNTIME_DATA_DIR)) ?? '';
+      if (!token) {
+        return sendApiError(
+          res,
+          400,
+          'FIGMA_TOKEN_REQUIRED',
+          'No Figma token saved. Paste a personal access token to authorize.',
+        );
+      }
+      // Figma PATs are ASCII-only (`figd_` + URL-safe characters). If
+      // the user pasted prose by accident (the error explainer copy is
+      // a common source of "→" sneaking in), the fetch call throws
+      // "ByteString" because HTTP headers cannot carry non-ASCII. We
+      // surface that as a clean BAD_REQUEST so the UI can guide them.
+      if (!/^[\x20-\x7E]+$/.test(token)) {
+        return sendApiError(
+          res,
+          400,
+          'FIGMA_TOKEN_INVALID',
+          'The Figma token has invalid characters. Personal access tokens look like `figd_…` and contain only letters, digits, `_`, and `-`. Re-copy from Figma → Settings → Personal access tokens — make sure you copied only the token, not the surrounding text.',
+        );
+      }
+      if (!/^figd_[A-Za-z0-9_-]{20,}$/.test(token)) {
+        // Loose shape check — Figma PATs all start with `figd_`. A
+        // value that lacks the prefix is almost certainly the wrong
+        // string (a URL, file id, or instruction snippet).
+        return sendApiError(
+          res,
+          400,
+          'FIGMA_TOKEN_INVALID',
+          `That does not look like a Figma personal access token. Tokens start with \`figd_\` followed by 20+ URL-safe characters. Re-generate at Figma → Settings → Personal access tokens and paste only the token string.`,
+        );
+      }
+      let figmaResp: Response;
+      try {
+        // PATs use X-Figma-Token, not Bearer. Bearer is for OAuth2 — a
+        // scoped PAT sent via Bearer returns 403 "Invalid token" which
+        // is hard to distinguish from a real scope issue.
+        figmaResp = await fetch('https://api.figma.com/v1/me', {
+          headers: { 'X-Figma-Token': token },
+        });
+      } catch (err: any) {
+        return sendApiError(res, 502, 'FIGMA_API', `Could not reach Figma: ${String(err?.message ?? err)}`);
+      }
+      if (!figmaResp.ok) {
+        let detail = '';
+        try {
+          const text = await figmaResp.text();
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed && typeof parsed.message === 'string') detail = parsed.message;
+            else if (parsed && typeof parsed.err === 'string') detail = parsed.err;
+          } catch {
+            detail = text.slice(0, 240);
+          }
+        } catch { /* ignore */ }
+        if (figmaResp.status === 401) {
+          return sendApiError(
+            res,
+            401,
+            'FIGMA_TOKEN_INVALID',
+            `Figma rejected the token (401). The Personal Access Token is missing or revoked. Generate a new one at Figma → Settings → Personal access tokens.${detail ? ` Figma said: ${detail}` : ''}`,
+          );
+        }
+        if (figmaResp.status === 403) {
+          return sendApiError(
+            res,
+            403,
+            'FIGMA_FORBIDDEN',
+            `Figma rejected the token (403). Token may have been generated without the "current_user:read" scope. Generate a new token at Figma → Settings → Personal access tokens and check both "Read all files" and "Read your user info".${detail ? ` Figma said: ${detail}` : ''}`,
+          );
+        }
+        return sendApiError(
+          res,
+          502,
+          'FIGMA_API',
+          `Figma verify failed: ${figmaResp.status} ${figmaResp.statusText}${detail ? ` — ${detail}` : ''}`,
+        );
+      }
+      const meBody = (await figmaResp.json().catch(() => ({}))) as { id?: string; handle?: string; email?: string; img_url?: string };
+      // Persist a freshly-verified token so subsequent imports + the
+      // New Project Figma step reuse it. Best-effort.
+      if (providedToken) {
+        try {
+          const cfg = await readMcpConfig(RUNTIME_DATA_DIR);
+          const idx = cfg.servers.findIndex((s) => s.id === 'figma-context');
+          if (idx >= 0) {
+            const existing = cfg.servers[idx];
+            if (existing) existing.env = { ...(existing.env ?? {}), FIGMA_API_KEY: providedToken };
+          } else {
+            cfg.servers.push({
+              id: 'figma-context',
+              command: 'npx',
+              args: ['-y', 'figma-context-mcp'],
+              transport: 'stdio',
+              authMode: 'none',
+              env: { FIGMA_API_KEY: providedToken },
+            } as any);
+          }
+          await writeMcpConfig(RUNTIME_DATA_DIR, cfg);
+        } catch { /* persistence is best-effort */ }
+      }
+      res.json({
+        ok: true,
+        user: {
+          handle: meBody.handle ?? null,
+          email: meBody.email ?? null,
+          imgUrl: meBody.img_url ?? null,
+        },
+        savedToken: !!providedToken,
+      });
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err && err.message ? err.message : err));
+    }
+  });
+
+  // Figma-driven design-system import. Token comes from either the
+  // request body or the figma-context MCP server's saved FIGMA_API_KEY;
+  // a missing token surfaces a typed 400 so the UI can prompt the user
+  // for one instead of failing with a generic "FIGMA_API 401". Token
+  // sent in the request body is persisted to the figma-context server
+  // env so subsequent imports / migrations reuse it without re-asking.
+  app.post('/api/design-systems/import/figma', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const figmaUrl = typeof body.figmaUrl === 'string'
+        ? body.figmaUrl.trim()
+        : typeof body.url === 'string'
+          ? body.url.trim()
+          : '';
+      if (!figmaUrl) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'figmaUrl is required');
+      }
+      const providedToken = typeof body.pat === 'string'
+        ? body.pat.trim()
+        : typeof body.token === 'string'
+          ? body.token.trim()
+          : '';
+      let token = providedToken;
+      if (!token) {
+        token = (await getFigmaPat(RUNTIME_DATA_DIR)) ?? '';
+      }
+      if (!token) {
+        return sendApiError(
+          res,
+          400,
+          'FIGMA_TOKEN_REQUIRED',
+          'Figma personal access token not configured. Paste a token to authorize, or save one in Settings → MCP → figma-context.',
+        );
+      }
+      if (!/^[\x20-\x7E]+$/.test(token) || !/^figd_[A-Za-z0-9_-]{20,}$/.test(token)) {
+        return sendApiError(
+          res,
+          400,
+          'FIGMA_TOKEN_INVALID',
+          'The saved Figma token is not a valid personal access token. Re-paste it (Figma → Settings → Personal access tokens).',
+        );
+      }
+      const before = await listAllDesignSystems();
+      let result;
+      try {
+        result = await importFigmaDesignSystem(figmaUrl, token, USER_DESIGN_SYSTEMS_DIR, {
+          name: typeof body.name === 'string' ? body.name : undefined,
+          reservedIds: before.map((system) => system.id),
+        });
+      } catch (err: any) {
+        if (err instanceof FigmaImportError) {
+          const statusByCode: Record<string, number> = {
+            BAD_REQUEST: 400,
+            FIGMA_TOKEN_INVALID: 401,
+            FIGMA_FORBIDDEN: 403,
+            FIGMA_NOT_FOUND: 404,
+            FIGMA_API: 502,
+            INTERNAL_ERROR: 500,
+          };
+          return sendApiError(res, statusByCode[err.code] ?? 500, err.code, err.message);
+        }
+        throw err;
+      }
+      // Persist a freshly-provided token to the figma-context MCP server
+      // env so subsequent imports + the New Project Figma step reuse it
+      // without re-asking. We only do this when the user supplied the
+      // token in this request AND it actually worked (i.e. we got here),
+      // so a bad paste does not overwrite a working saved value.
+      if (providedToken) {
+        try {
+          const cfg = await readMcpConfig(RUNTIME_DATA_DIR);
+          const idx = cfg.servers.findIndex((s) => s.id === 'figma-context');
+          if (idx >= 0) {
+            const existing = cfg.servers[idx];
+            if (existing) existing.env = { ...(existing.env ?? {}), FIGMA_API_KEY: providedToken };
+          } else {
+            cfg.servers.push({
+              id: 'figma-context',
+              command: 'npx',
+              args: ['-y', 'figma-context-mcp'],
+              transport: 'stdio',
+              authMode: 'none',
+              env: { FIGMA_API_KEY: providedToken },
+            } as any);
+          }
+          await writeMcpConfig(RUNTIME_DATA_DIR, cfg);
+        } catch {
+          // Persistence is best-effort — the import already succeeded.
+        }
+      }
+      const systems = await listAllDesignSystems();
+      // User-owned DSs come back from `listAllDesignSystems` with the
+      // `user:` id prefix (see `listDesignSystems` opts in server.ts);
+      // the import function returns the bare directory slug. Match
+      // both forms so the response carries the prefixed id the rest
+      // of the UI (registry, picker) keys on.
+      const designSystem =
+        systems.find((system) => system.id === `user:${result.id}`)
+        ?? systems.find((system) => system.id === result.id);
+      if (!designSystem) {
+        return sendApiError(
+          res,
+          500,
+          'INTERNAL_ERROR',
+          `imported Figma design system was not found in catalog: ${result.dir}`,
+        );
+      }
+      res.status(201).json({ designSystem, warnings: result.warnings, stats: result.stats });
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err && err.message ? err.message : err));
     }
   });
 

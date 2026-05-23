@@ -598,6 +598,7 @@ export function EntryShell({
                     onOpenSystem={onOpenDesignSystem}
                     onSystemsRefresh={onDesignSystemsRefresh}
                     onPreview={(id) => setPreviewSystemId(id)}
+                    projectContext={route.kind === 'home' ? route.projectContext : undefined}
                   />
                 </div>
               )

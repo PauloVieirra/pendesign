@@ -589,6 +589,73 @@ export async function importLocalDesignSystem(
   }
 }
 
+export interface VerifyFigmaTokenResponse {
+  ok: true;
+  user: { handle: string | null; email: string | null; imgUrl: string | null };
+  savedToken: boolean;
+}
+
+export async function verifyFigmaToken(
+  pat?: string,
+): Promise<VerifyFigmaTokenResponse | { error: SkillImportError }> {
+  try {
+    const resp = await fetch('/api/design-systems/import/figma/verify-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pat: pat?.trim() || undefined }),
+    });
+    if (!resp.ok) return { error: await readImportError(resp) };
+    return (await resp.json()) as VerifyFigmaTokenResponse;
+  } catch (err) {
+    return {
+      error: {
+        message: err instanceof Error ? err.message : 'Verify request failed.',
+      },
+    };
+  }
+}
+
+export interface ImportFigmaDesignSystemRequest {
+  figmaUrl: string;
+  /**
+   * Optional Figma Personal Access Token. When absent, the daemon falls
+   * back to the token stored on the `figma-context` MCP server (the
+   * same one the project-creation Figma migration step uses). If
+   * neither is set, the daemon answers 400 with code `FIGMA_TOKEN_REQUIRED`
+   * so the UI can prompt for one inline.
+   */
+  pat?: string;
+  name?: string;
+}
+export type ImportFigmaDesignSystemResponse = ImportLocalDesignSystemResponse & {
+  warnings?: string[];
+  stats?: {
+    variables: { attempted: boolean; status: number; count: number };
+    publishedStyles: { count: number };
+    inline: { colors: number; fonts: number; shadows: number; spacings: number; radii: number };
+  };
+};
+
+export async function importFigmaDesignSystem(
+  input: ImportFigmaDesignSystemRequest,
+): Promise<ImportFigmaDesignSystemResponse | { error: SkillImportError }> {
+  try {
+    const resp = await fetch('/api/design-systems/import/figma', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!resp.ok) return { error: await readImportError(resp) };
+    return (await resp.json()) as ImportFigmaDesignSystemResponse;
+  } catch (err) {
+    return {
+      error: {
+        message: err instanceof Error ? err.message : 'Import request failed.',
+      },
+    };
+  }
+}
+
 export async function importGitHubDesignSystem(
   input: ImportGitHubDesignSystemRequest,
 ): Promise<ImportGitHubDesignSystemResponse | { error: SkillImportError }> {

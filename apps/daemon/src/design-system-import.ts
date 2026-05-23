@@ -320,7 +320,7 @@ async function copyAssets(assets: AssetCandidate[], outDir: string): Promise<str
   return copied;
 }
 
-async function nextAvailableSlug(
+export async function nextAvailableSlug(
   root: string,
   preferred: string,
   reservedIds: Iterable<string> = [],
@@ -565,11 +565,11 @@ function compactMarkdown(raw: string): string {
     .join('\n');
 }
 
-function cleanDisplayName(value: string): string {
+export function cleanDisplayName(value: string): string {
   return value.replace(/^@[^/]+\//, '').replace(/[-_]+/g, ' ').trim() || 'Imported Design System';
 }
 
-function slugify(value: string): string {
+export function slugify(value: string): string {
   const slug = value
     .toLowerCase()
     .replace(/^@[^/]+\//, '')

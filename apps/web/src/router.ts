@@ -18,7 +18,17 @@ export type EntryHomeView =
   | 'integrations';
 
 export type Route =
-  | { kind: 'home'; view: EntryHomeView }
+  | {
+      kind: 'home';
+      view: EntryHomeView;
+      /**
+       * Optional project id when the user opens a Home tab from inside a
+       * project (e.g. the FileViewer's Design Systems toolbar button).
+       * Drives project-scoped views like the per-project Storybook /
+       * tokens visualization at /design-systems?project=<id>.
+       */
+      projectContext?: string;
+    }
   | { kind: 'design-system-create' }
   | { kind: 'design-system-detail'; designSystemId: string }
   | {
@@ -76,7 +86,9 @@ export function parseRoute(pathname: string): Route {
     if (parts[1]) {
       return { kind: 'design-system-detail', designSystemId: decodeURIComponent(parts[1]) };
     }
-    return { kind: 'home', view: 'design-systems' };
+    const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const project = search?.get('project') ?? undefined;
+    return { kind: 'home', view: 'design-systems', projectContext: project };
   }
   if (parts[0] === 'automations' || parts[0] === 'tasks') {
     return { kind: 'home', view: 'tasks' };
@@ -106,7 +118,11 @@ export function buildPath(route: Route): string {
     if (route.view === 'projects') return '/projects';
     if (route.view === 'tasks') return '/automations';
     if (route.view === 'plugins') return '/plugins';
-    if (route.view === 'design-systems') return '/design-systems';
+    if (route.view === 'design-systems') {
+      return route.projectContext
+        ? `/design-systems?project=${encodeURIComponent(route.projectContext)}`
+        : '/design-systems';
+    }
     if (route.view === 'integrations') return '/integrations';
     return '/';
   }
