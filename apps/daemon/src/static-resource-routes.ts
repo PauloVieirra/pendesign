@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import { readFile as fsReadFile } from 'node:fs/promises';
 import { detectAgents } from './agents.js';
 import {
   SkillImportError,
@@ -18,6 +19,13 @@ import {
   LocalDesignSystemImportError,
   importLocalDesignSystemProject,
 } from './design-system-import.js';
+import {
+  migrateFromTokensCss,
+  readVariables,
+  saveVariables,
+  withDsLock,
+  type VariablesFile,
+} from './design-system-variables.js';
 import { importGitHubDesignSystemProject } from './design-system-github-import.js';
 import { FigmaImportError, importFigmaDesignSystem } from './design-system-figma.js';
 import { getFigmaPat, readMcpConfig, writeMcpConfig } from './mcp-config.js';
@@ -292,6 +300,23 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     }
   });
 
+  async function resolveDsDir(id: string): Promise<{ dir: string; key: string } | null> {
+    // The catalog lists user-owned DSs with a `user:` id prefix; the
+    // on-disk directory is the bare slug. Built-in DSs are not editable
+    // through this endpoint.
+    if (!id.startsWith('user:')) return null;
+    const dirName = id.slice('user:'.length);
+    if (!/^[a-z0-9-]+$/.test(dirName)) return null;
+    const dir = path.join(USER_DESIGN_SYSTEMS_DIR, dirName);
+    try {
+      const stats = fs.statSync(dir);
+      if (!stats.isDirectory()) return null;
+    } catch {
+      return null;
+    }
+    return { dir, key: id };
+  }
+
   app.get('/api/design-systems', async (_req, res) => {
     try {
       const systems = await listAllDesignSystems();
@@ -349,6 +374,27 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   // /preview: built at request time, no caching.
   app.get('/api/design-systems/:id/showcase', (_req, _res, next) => {
     next();
+  });
+
+  app.get('/api/design-systems/:id/variables', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) {
+        return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found or not editable: ${req.params.id}`);
+      }
+      const existing = await readVariables(resolved.dir);
+      if (existing) return res.json({ variables: existing });
+      let tokensCss = '';
+      try {
+        tokensCss = await fsReadFile(path.join(resolved.dir, 'tokens.css'), 'utf8');
+      } catch { /* tokens.css may not exist for empty DSs */ }
+      const migrated = migrateFromTokensCss(tokensCss);
+      await withDsLock(resolved.key, () => saveVariables(resolved.dir, migrated));
+      res.json({ variables: migrated, migrated: true });
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err?.message ?? err));
+    }
   });
 
   // Pre-built example HTML for a skill — what a typical artifact from this
