@@ -397,6 +397,24 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     }
   });
 
+  app.put('/api/design-systems/:id/variables', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) {
+        return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found or not editable: ${req.params.id}`);
+      }
+      const body = req.body as VariablesFile | undefined;
+      if (!body || body.version !== 1 || !Array.isArray(body.collections)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 1, collections: [...] }');
+      }
+      await withDsLock(resolved.key, () => saveVariables(resolved.dir, body));
+      res.json({ variables: body });
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err?.message ?? err));
+    }
+  });
+
   // Pre-built example HTML for a skill — what a typical artifact from this
   // skill looks like. Lets users browse skills without running an agent.
   //
