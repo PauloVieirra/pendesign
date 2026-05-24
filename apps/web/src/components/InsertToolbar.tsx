@@ -8,20 +8,18 @@ export type InsertToolId = 'frame' | 'rectangle' | 'ellipse' | 'text' | 'image';
 interface ToolEntry {
   id: InsertToolId;
   icon: IconName;
-  labelKey:
-    | 'fileViewer.insertToolbar.frame'
-    | 'fileViewer.insertToolbar.rectangle'
-    | 'fileViewer.insertToolbar.ellipse'
-    | 'fileViewer.insertToolbar.text'
-    | 'fileViewer.insertToolbar.image';
+  label: string;
 }
 
+// Labels are hard-coded in English. The matching i18n keys
+// (fileViewer.insertToolbar.*) have not been added to the Dict yet; once they
+// exist, replace `label` with a `labelKey: keyof Dict` and translate via `t`.
 const TOOLS: ToolEntry[] = [
-  { id: 'frame', icon: 'frame-corners', labelKey: 'fileViewer.insertToolbar.frame' },
-  { id: 'rectangle', icon: 'square', labelKey: 'fileViewer.insertToolbar.rectangle' },
-  { id: 'ellipse', icon: 'circle', labelKey: 'fileViewer.insertToolbar.ellipse' },
-  { id: 'text', icon: 'type', labelKey: 'fileViewer.insertToolbar.text' },
-  { id: 'image', icon: 'image', labelKey: 'fileViewer.insertToolbar.image' },
+  { id: 'frame', icon: 'grid', label: 'Frame' },
+  { id: 'rectangle', icon: 'grid', label: 'Rectangle' },
+  { id: 'ellipse', icon: 'orbit', label: 'Ellipse' },
+  { id: 'text', icon: 'edit', label: 'Text' },
+  { id: 'image', icon: 'image', label: 'Image' },
 ];
 
 /**
@@ -47,7 +45,8 @@ interface InsertToolbarProps {
   active: InsertToolId | null;
   onSelectTool: (tool: InsertToolId | null) => void;
   disabled?: boolean;
-  t: TranslateFn;
+  /** Reserved for future i18n once the matching Dict keys exist. */
+  t?: TranslateFn;
 }
 
 /**
@@ -59,13 +58,13 @@ interface InsertToolbarProps {
  * Clicking the same tool again, pressing Escape, or completing an insertion
  * disarms the tool.
  */
-export function InsertToolbar({ active, onSelectTool, disabled, t }: InsertToolbarProps) {
+export function InsertToolbar({ active, onSelectTool, disabled }: InsertToolbarProps) {
   return (
     <div className="insert-toolbar" aria-hidden={disabled ? true : undefined}>
       <div
         className="insert-toolbar-bar"
         role="toolbar"
-        aria-label={t('fileViewer.insertToolbar.aria')}
+        aria-label="Insert element"
       >
         {TOOLS.map((tool) => {
           const isActive = active === tool.id;
@@ -76,8 +75,8 @@ export function InsertToolbar({ active, onSelectTool, disabled, t }: InsertToolb
               className={`insert-toolbar-tool${isActive ? ' active' : ''}`}
               disabled={disabled}
               onClick={() => onSelectTool(isActive ? null : tool.id)}
-              title={t(tool.labelKey)}
-              aria-label={t(tool.labelKey)}
+              title={tool.label}
+              aria-label={tool.label}
               aria-pressed={isActive}
             >
               <Icon name={tool.icon} size={16} />

@@ -821,7 +821,7 @@ function FigmaImportRow({ onImported, projectContext }: FigmaImportRowProps) {
               After importing, set the new design system as the active one for this project from Project settings.
             </p>
           ) : null}
-          {error && phase !== 'done' ? <p className="ds-figma-import__error" role="alert">{error}</p> : null}
+          {error ? <p className="ds-figma-import__error" role="alert">{error}</p> : null}
           {statusMsg ? <p className="ds-figma-import__status">{statusMsg}</p> : null}
           <div className="ds-figma-import__actions">
             <button
