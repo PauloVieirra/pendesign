@@ -944,7 +944,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
   const { getProject } = ctx.projectStore;
-  const { createProjectFolder, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
+  const { createProjectFolder, getProjectSetupStatus, startProjectSetup, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
 
@@ -966,6 +966,35 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }
+  });
+
+  // Kick off React project setup: extract the Vite template and run the
+  // package-manager install. Idempotent — calling twice while a setup is
+  // in flight returns the existing status without restarting. Returns the
+  // initial status so the frontend can wire its loading screen immediately.
+  app.post('/api/projects/:id/setup-react', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      const projectDir = await ensureProject(PROJECTS_DIR, req.params.id, project?.metadata);
+      const status = startProjectSetup(req.params.id, projectDir);
+      res.json(status);
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  // Poll for the React setup progress. Returns 404 with status 'unknown'
+  // when no setup has been triggered for the project — the frontend treats
+  // that as "nothing to wait for" and proceeds immediately.
+  app.get('/api/projects/:id/setup-status', async (req, res) => {
+    const status = getProjectSetupStatus(req.params.id);
+    if (!status) {
+      sendApiError(res, 404, 'SETUP_NOT_STARTED', 'no setup in progress');
+      return;
+    }
+    /** @type {import('@open-design/contracts').ProjectSetupStatusResponse} */
+    const body = status;
+    res.json(body);
   });
 
   // Create a new directory anywhere under the project root. Used by the

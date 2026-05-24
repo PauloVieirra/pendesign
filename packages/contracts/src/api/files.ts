@@ -91,3 +91,17 @@ export interface ProjectTreeResponse {
   root: string;
   nodes: ProjectTreeNode[];
 }
+
+// React project setup status. After creating a kind:'react-vite' project,
+// the daemon extracts the template and runs `<pm> install` in the
+// background. The frontend polls /api/projects/:id/setup-status to render
+// a friendly loading screen with rotating copy.
+export type ProjectSetupPhase = 'extracting' | 'installing' | 'ready' | 'error';
+
+export interface ProjectSetupStatusResponse {
+  phase: ProjectSetupPhase;
+  startedAt: number;
+  packageManager?: 'pnpm' | 'npm';
+  recentLog: string[];
+  error?: string;
+}

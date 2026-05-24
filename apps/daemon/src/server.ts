@@ -177,6 +177,7 @@ import { createJsonEventStreamHandler } from './json-event-stream.js';
 import { classifyAgentAuthFailure, cursorAuthGuidance } from './runtimes/auth.js';
 import { createQoderStreamHandler } from './qoder-stream.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
+import { getProjectSetupStatus, startProjectSetup } from './project-setup.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
@@ -266,6 +267,8 @@ import {
   buildBatchArchive,
   createProjectFolder,
   decodeMultipartFilename,
+  /* react-setup helpers — separate module so the spawn/child-process
+     dependency stays out of the projects.ts hot path. */
   deleteProjectFile,
   detectEntryFile,
   ensureProject,
@@ -3981,6 +3984,8 @@ export async function startServer({
   const projectFileDeps = {
     ensureProject,
     createProjectFolder,
+    getProjectSetupStatus,
+    startProjectSetup,
     listFiles,
     listProjectTree,
     searchProjectFiles,

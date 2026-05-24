@@ -7,6 +7,7 @@ import {
   fidelityToTracking,
 } from '@open-design/contracts/analytics';
 import { EntryView } from './components/EntryView';
+import { ProjectSetupLoadingOverlay } from './components/ProjectSetupLoadingOverlay';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -36,6 +37,7 @@ import {
   fetchDesignTemplates,
   fetchPromptTemplates,
   fetchSkills,
+  startProjectReactSetup,
   uploadProjectFiles,
 } from './providers/registry';
 import { RUNS_CHANGED_EVENT, listProjectRuns } from './providers/daemon';
@@ -205,6 +207,11 @@ export function App() {
     'idle' | 'ok' | 'error'
   >('idle');
   const [mediaProvidersNotice, setMediaProvidersNotice] = useState<string | null>(null);
+  // When the user picks the React (Vite) stack on the New Project panel, we
+  // start the install in the background and pin the project here so the
+  // ProjectSetupLoadingOverlay renders on top of EntryView. Navigation into
+  // the project happens once the overlay reports phase: 'ready'.
+  const [reactSetupProject, setReactSetupProject] = useState<{ id: string; name: string } | null>(null);
   // Per-resource loading flags. Each goes false the moment its own fetch
   // resolves so each entry-view tab can render as its data lands instead of
   // every tab waiting on the slowest endpoint (typically `/api/agents`,
@@ -870,6 +877,15 @@ export function App() {
         project,
         ...curr.filter((p) => p.id !== project.id),
       ]);
+      // React-Vite projects need the daemon to extract the template and run
+      // a package-manager install before the canvas can render anything
+      // meaningful. We fire the setup, stash the project for the loading
+      // overlay, and defer navigation until the overlay reports 'ready'.
+      if (input.metadata?.stack === 'react-vite') {
+        await startProjectReactSetup(project.id);
+        setReactSetupProject({ id: project.id, name: project.name });
+        return;
+      }
       navigate({
         kind: 'project',
         projectId: project.id,
@@ -1339,6 +1355,24 @@ export function App() {
         />
         <div className="workspace-shell__body">{appMain}</div>
       </div>
+      {reactSetupProject ? (
+        <ProjectSetupLoadingOverlay
+          projectId={reactSetupProject.id}
+          onReady={() => {
+            const target = reactSetupProject;
+            setReactSetupProject(null);
+            navigate({ kind: 'project', projectId: target.id, fileName: null });
+          }}
+          onError={(message) => {
+            console.warn('[react-setup] failed:', message);
+            const target = reactSetupProject;
+            setReactSetupProject(null);
+            // Still navigate so the user sees the project (broken-but-
+            // recoverable) instead of being stuck on the overlay.
+            navigate({ kind: 'project', projectId: target.id, fileName: null });
+          }}
+        />
+      ) : null}
       {clientType === 'desktop' ? null : (
         <PetOverlay
           pet={config.pet?.enabled ? config.pet : undefined}

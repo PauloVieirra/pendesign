@@ -107,6 +107,11 @@ export interface ProjectMetadata {
   platformTargets?: ProjectPlatform[];
   inspirationDesignSystemIds?: string[];
   importedFrom?: 'claude-design' | 'folder' | string;
+  // Application stack chosen at create time. 'react-vite' tells the daemon
+  // to extract the embedded Vite-React template and run a background
+  // package-manager install via /api/projects/:id/setup-react. Static HTML
+  // projects leave this unset.
+  stack?: 'react-vite';
   entryFile?: string;
   sourceFileName?: string;
   // Folder-import (#597): when set, the project's files live under this

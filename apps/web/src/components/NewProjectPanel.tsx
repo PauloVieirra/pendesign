@@ -302,6 +302,10 @@ export function NewProjectPanel({
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [tabScroll, setTabScroll] = useState({ left: false, right: false });
   const [name, setName] = useState('');
+  // Project stack — drives whether the created project gets a static HTML
+  // shell or a Vite-React template + npm install. Only meaningful for the
+  // 'prototype' and 'other' tabs (media / figma carry their own kinds).
+  const [projectStack, setProjectStack] = useState<'html' | 'react-vite'>('html');
   // Design-system selection is now an *array* internally so the same
   // component can drive both single-select and multi-select modes without
   // duplicating state. Single-select coerces to length 0/1.
@@ -796,6 +800,11 @@ export function NewProjectPanel({
           metadata: {
             ...metadata,
             nameSource: trimmedName ? 'user' : 'generated',
+            // Carry the stack pick so the host can decide whether to fire
+            // /api/projects/:id/setup-react after project creation.
+            ...((tab === 'prototype' || tab === 'other') && projectStack === 'react-vite'
+              ? { stack: 'react-vite' }
+              : {}),
           },
           requestId,
           docs: docs.length > 0 ? docs : undefined,
@@ -900,6 +909,31 @@ export function NewProjectPanel({
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+        ) : null}
+
+        {step === 1 && (tab === 'prototype' || tab === 'other') ? (
+          <div className="newproj-stack" role="radiogroup" aria-label="Project stack">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={projectStack === 'html'}
+              className={`newproj-stack__option${projectStack === 'html' ? ' newproj-stack__option--active' : ''}`}
+              onClick={() => setProjectStack('html')}
+            >
+              <span className="newproj-stack__title">Static HTML</span>
+              <span className="newproj-stack__hint">Single-file artifacts the AI can rewrite in place.</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={projectStack === 'react-vite'}
+              className={`newproj-stack__option${projectStack === 'react-vite' ? ' newproj-stack__option--active' : ''}`}
+              onClick={() => setProjectStack('react-vite')}
+            >
+              <span className="newproj-stack__title">React (Vite)</span>
+              <span className="newproj-stack__hint">Vite + React + TypeScript. We&apos;ll install dependencies after creating.</span>
+            </button>
+          </div>
         ) : null}
 
         {step === 1 && showDesignSystemPicker ? (

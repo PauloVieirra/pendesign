@@ -48,6 +48,7 @@ import type {
   PromptTemplateDetail,
   PromptTemplateSummary,
   ProjectFile,
+  ProjectSetupStatusResponse,
   ProjectTreeResponse,
   RenameProjectFileResponse,
   SkillDetail,
@@ -1248,6 +1249,28 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
     return json.files ?? [];
   } catch {
     return [];
+  }
+}
+
+export async function startProjectReactSetup(projectId: string): Promise<ProjectSetupStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-react`, {
+      method: 'POST',
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectSetupStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchProjectSetupStatus(projectId: string): Promise<ProjectSetupStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-status`);
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectSetupStatusResponse;
+  } catch {
+    return null;
   }
 }
 

@@ -26852,3 +26852,111 @@ body.desktop-pet-shell .pet-task-item {
 }
 .explorer-context-menu__danger { color: rgb(180, 50, 50) !important; }
 .explorer-context-menu__danger:hover { background: rgba(180, 50, 50, 0.08) !important; }
+
+/* New project — HTML / React stack radio shown above the design system
+ * picker on the prototype / other tabs. */
+.newproj-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.newproj-stack__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.newproj-stack__option:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.newproj-stack__option--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-panel));
+}
+.newproj-stack__title { font-size: 13px; font-weight: 600; color: var(--text); }
+.newproj-stack__hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
+
+/* Full-screen overlay shown while a React project is being prepared. */
+.project-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: project-setup-fade-in 200ms ease-out;
+}
+@keyframes project-setup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.project-setup-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 44px;
+  max-width: 460px;
+  text-align: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.32);
+}
+.project-setup-overlay__spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: project-setup-spin 0.9s linear infinite;
+}
+@keyframes project-setup-spin { to { transform: rotate(360deg); } }
+.project-setup-overlay__error-mark {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(220, 60, 60, 0.12);
+  color: rgb(190, 50, 50);
+  border: 2px solid rgb(190, 50, 50);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 20px;
+}
+.project-setup-overlay__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+.project-setup-overlay__message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+  min-height: 22px;
+  animation: project-setup-message-fade 320ms ease-out;
+}
+@keyframes project-setup-message-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.project-setup-overlay__phase {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  min-height: 18px;
+}
