@@ -363,6 +363,46 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     });
   }
 
+  // Extract the body of the first `:root { ... }` block from a tokens.css
+  // string. Returns the inner declarations only (no braces, trimmed).
+  function extractRootBlock(tokensCss: string): string {
+    const match = /:root\s*\{([\s\S]*?)\}/.exec(tokensCss);
+    if (!match || !match[1]) return '';
+    return match[1].trim();
+  }
+
+  // Ensure each project HTML file owns a singleton `<style data-od-ds-tokens>`
+  // element in `<head>` containing the DS's current `:root { ... }`. This is
+  // what lets Preview mode (URL-load, no bridge) resolve `var(--token)`
+  // references — the runtime style injected by the iframe bridge only lives
+  // while Edit/Dual mode is active. If the tag already exists we replace its
+  // contents; otherwise we inject it as the first child inside `<head>` so
+  // any later sheet can still override the cascade.
+  function ensureDsTokensStyleTag(html: string, tokensCss: string): string {
+    const rootBody = extractRootBlock(tokensCss);
+    if (!rootBody) return html;
+    const styleBlock = `<style data-od-ds-tokens>:root {\n${rootBody}\n}</style>`;
+
+    const existing = /<style\s+data-od-ds-tokens[^>]*>[\s\S]*?<\/style>/i;
+    if (existing.test(html)) {
+      return html.replace(existing, styleBlock);
+    }
+
+    const headOpen = /<head\b[^>]*>/i;
+    const headMatch = headOpen.exec(html);
+    if (headMatch) {
+      const insertAt = headMatch.index + headMatch[0].length;
+      return html.slice(0, insertAt) + `\n  ${styleBlock}` + html.slice(insertAt);
+    }
+
+    const bodyOpen = /<body\b[^>]*>/i;
+    const bodyMatch = bodyOpen.exec(html);
+    if (bodyMatch) {
+      return html.slice(0, bodyMatch.index) + `<head>${styleBlock}</head>\n` + html.slice(bodyMatch.index);
+    }
+    return html;
+  }
+
   // Walk a project root recursively and return absolute paths to every
   // `*.html` / `*.htm` file. We skip dotfiles and common build/output
   // directories so a project with `node_modules/` or `dist/` doesn't make us
@@ -405,7 +445,6 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       return;
     }
     const tokens = extractTokensFromCss(tokensCss);
-    if (tokens.size === 0) return;
 
     let projects: Array<{ id: string; designSystemId?: string | null }> = [];
     try {
@@ -424,7 +463,13 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       for (const file of files) {
         try {
           const original = await fsp.readFile(file, 'utf8');
-          const patched = patchTokensInHtml(original, tokens);
+          // First: rewrite any `:root { ... }` blocks the agent inlined into
+          // the source so existing declarations track the new values. Second:
+          // inject/refresh the DS-owned `<style data-od-ds-tokens>` block in
+          // `<head>` so Preview mode (no bridge) can still resolve `var()`
+          // references against the current tokens.
+          let patched = patchTokensInHtml(original, tokens);
+          patched = ensureDsTokensStyleTag(patched, tokensCss);
           if (patched !== original) {
             await fsp.writeFile(file, patched, 'utf8');
           }
@@ -1394,6 +1439,16 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
         // Roll back the on-disk DS so we don't leave an orphan.
         try { await fsp.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
         return sendApiError(res, 500, 'ATTACH_FAILED', `failed to attach DS to project: ${String(err?.message ?? err)}`);
+      }
+
+      // Patch the project's HTML files NOW so the `<style data-od-ds-tokens>`
+      // element lands in the source immediately — otherwise Preview mode
+      // wouldn't see any DS tokens until the user edited a variable.
+      try {
+        await patchProjectsUsingDesignSystem(fullDsId, outDir);
+      } catch {
+        // Best-effort: the SSE fan-out and the next variable edit will
+        // re-run the patcher.
       }
 
       const systems = await listAllDesignSystems();
