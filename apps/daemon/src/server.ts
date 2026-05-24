@@ -264,12 +264,14 @@ import { buildMcpInstallPayload } from './mcp-install-info.js';
 import {
   buildProjectArchive,
   buildBatchArchive,
+  createProjectFolder,
   decodeMultipartFilename,
   deleteProjectFile,
   detectEntryFile,
   ensureProject,
   isSafeId,
   listFiles,
+  listProjectTree,
   mimeFor,
   parseByteRange,
   projectDir,
@@ -3978,7 +3980,9 @@ export async function startServer({
   };
   const projectFileDeps = {
     ensureProject,
+    createProjectFolder,
     listFiles,
+    listProjectTree,
     searchProjectFiles,
     readProjectFile,
     resolveProjectDir,

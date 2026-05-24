@@ -64,3 +64,30 @@ export interface RenameProjectFileResponse {
   oldName: string;
   newName: string;
 }
+
+// Hierarchical view of a project's files. Used by the Explorer sidebar.
+// Paths are forward-slash, relative to the project root. A directory's
+// `children` is omitted (not present in JSON at all) when the node is
+// known to be a directory but its contents have not been loaded yet —
+// callers should treat that state as "expandable but unloaded".
+export interface ProjectTreeNode {
+  path: string;
+  name: string;
+  kind: 'file' | 'dir';
+  size?: number;
+  mtime?: number;
+  fileKind?: ProjectFileKind;
+  mime?: string;
+  children?: ProjectTreeNode[];
+  /** Number of children inside a directory, including hidden ones — useful
+   * for showing a hint when the directory was elided (e.g. node_modules
+   * collapsed by default). */
+  childCount?: number;
+}
+
+export interface ProjectTreeResponse {
+  /** The path the tree was rooted at, relative to project root.
+   * Empty string means project root. */
+  root: string;
+  nodes: ProjectTreeNode[];
+}

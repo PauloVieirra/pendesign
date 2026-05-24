@@ -780,21 +780,11 @@ export function FileWorkspace({
               <span className="ws-tab-label">Design System</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className={`ws-tab design-files-tab ${activeTab === DESIGN_FILES_TAB ? 'active' : ''}`}
-            role="tab"
-            aria-selected={activeTab === DESIGN_FILES_TAB}
-            tabIndex={0}
-            data-testid="design-files-tab"
-            onClick={() => setActiveTab(DESIGN_FILES_TAB)}
-            title={t('workspace.designFiles')}
-          >
-            <span className="tab-icon" aria-hidden>
-              <Icon name="grid" size={13} />
-            </span>
-            <span className="ws-tab-label">{t('workspace.designFiles')}</span>
-          </button>
+          {/* Design Files tab (cards view) replaced by the Files Explorer
+              in the left side panel (Chat | Files toggle). The button is
+              hidden but the underlying panel stays mounted so internal
+              setActiveTab(DESIGN_FILES_TAB) call sites (e.g. delete-last-
+              file fallback) still resolve to a valid view. */}
           {tabNames.map((name) => {
             const sketchEntry = sketches[name];
             const dirtyMark =
@@ -895,25 +885,10 @@ export function FileWorkspace({
             onUseDesignSystem={onUseDesignSystem}
           />
         ) : activeTab === DESIGN_FILES_TAB ? (
-          <DesignFilesPanel
-            key={projectId}
-            projectId={projectId}
-            files={visibleFiles}
-            liveArtifacts={liveArtifactEntries}
-            onRefreshFiles={onRefreshFiles}
-            onOpenFile={openFile}
-            onOpenLiveArtifact={(tabId) => openFile(tabId)}
-            onRenameFile={handleRename}
-            onDeleteFile={(name) => void handleDelete(name)}
-            onDeleteFiles={handleDeleteMany}
-            onUpload={() => fileInputRef.current?.click()}
-            onUploadFiles={(picked) => void uploadFiles(picked)}
-            onPaste={() => setShowPasteDialog(true)}
-            onNewSketch={startNewSketch}
-            uploadError={uploadError}
-            onClearUploadError={() => setUploadError(null)}
-            onPluginFolderAgentAction={onPluginFolderAgentAction}
-          />
+          <div className="viewer-empty viewer-empty--explorer-hint">
+            <strong>{t('workspace.openFromDesignFiles')}</strong>
+            <span>Open the Files tab in the left panel and click a file to start editing.</span>
+          </div>
         ) : isActiveSketch && activeSketch && activeFile ? (
           activeSketch.loaded ? (
             <SketchEditor

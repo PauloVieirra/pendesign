@@ -26594,3 +26594,261 @@ body.desktop-pet-shell .pet-task-item {
 }
 .ds-mgr-empty-banner__hint { margin: 12px 0 0; color: var(--text-muted, #6a6a6a); font-size: 12px; }
 .ds-mgr-empty-banner__error { margin: 12px 0 0; color: rgb(170, 30, 30); font-size: 12px; }
+
+/* ──────────────────────────────────────────────────────────────────
+ * FileExplorerPanel — VS Code-style tree shown in the left side panel
+ * as a toggleable tab next to Chat. Compact rows, monospaced-feel
+ * indent, file/dir icons inline.
+ * ────────────────────────────────────────────────────────────────── */
+.explorer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+}
+.explorer-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.explorer-panel__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.explorer-panel__actions {
+  display: flex;
+  gap: 4px;
+}
+.explorer-panel__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.explorer-panel__icon-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.explorer-panel__filters {
+  display: flex;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.explorer-panel__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.explorer-panel__filter input { margin: 0; }
+.explorer-panel__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+}
+.explorer-panel__placeholder {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.explorer-panel__placeholder--error { color: rgb(170, 30, 30); }
+.explorer-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.explorer-row {
+  list-style: none;
+  margin: 0;
+}
+.explorer-row__hit {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explorer-row__hit:hover { background: var(--bg-subtle); }
+.explorer-row__hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.explorer-row__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex: 0 0 14px;
+  color: var(--text-muted);
+}
+.explorer-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: 0 0 18px;
+  color: var(--text-muted);
+}
+.explorer-row__hit--dir > .explorer-row__icon { color: var(--accent, #2563eb); }
+.explorer-row__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explorer-row__hint {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Tabs at the top of the left side panel (Chat | Files). */
+.split-chat-slot { display: flex; flex-direction: column; min-height: 0; }
+.chat-pane-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+/* The global `button:focus-visible` rule (apps/web/src/index.css ~line 204)
+   draws an offset accent-coloured outline that wraps the radius — for the
+   side-panel tabs this reads as an orange "halo" under the active tab.
+   We zero it out here and rely on the bottom border alone for affordance. */
+.chat-pane-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 120ms ease, border-color 120ms ease;
+  margin-bottom: -1px;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.chat-pane-tab:hover { color: var(--text); background: transparent !important; }
+.chat-pane-tab:focus,
+.chat-pane-tab:focus-visible,
+.chat-pane-tab:active {
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.chat-pane-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent, #2563eb) !important;
+}
+/* Ensure the body (chat or explorer) fills the remaining height. */
+.split-chat-slot > .chat-pane-tabs + * { flex: 1 1 auto; min-height: 0; }
+
+.viewer-empty--explorer-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+.viewer-empty--explorer-hint strong { font-size: 14px; color: var(--text); }
+.viewer-empty--explorer-hint span { font-size: 12px; color: var(--text-muted); max-width: 320px; text-align: center; }
+
+/* Inline edit row for new-file / new-folder / rename. */
+.explorer-row--inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+}
+.explorer-row__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 6px;
+  background: var(--bg-canvas, #fff);
+  border: 1px solid var(--accent, #2563eb);
+  border-radius: 3px;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+}
+.explorer-row__input:focus { border-color: var(--accent, #2563eb); }
+
+/* Floating context menu fired by right-click. */
+.explorer-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.12);
+  font-size: 13px;
+}
+.explorer-context-menu li { margin: 0; padding: 0; }
+.explorer-context-menu li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12.5px;
+  border-radius: 0 !important;
+}
+.explorer-context-menu li button:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.explorer-context-menu__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+.explorer-context-menu__danger { color: rgb(180, 50, 50) !important; }
+.explorer-context-menu__danger:hover { background: rgba(180, 50, 50, 0.08) !important; }

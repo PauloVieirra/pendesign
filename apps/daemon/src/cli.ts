@@ -145,9 +145,11 @@ const LIBRARY_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 const PROJECT_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'skill', 'design-system', 'plugin', 'metadata-json',
   'pending-prompt', 'project', 'conversation', 'message', 'path', 'as',
-  'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps',
+  'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps', 'root', 'depth',
 ]);
-const PROJECT_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow']);
+const PROJECT_BOOLEAN_FLAGS = new Set([
+  'help', 'h', 'json', 'follow', 'show-hidden', 'show-build-dirs',
+]);
 // `od automation …` mirrors the Automations tab. Same surface, same
 // /api/routines store. The CLI form is the embeddability contract:
 // external agents (hermes-agent, openclaw, etc.) can drive Open Design
@@ -4092,12 +4094,17 @@ async function runFiles(args) {
   if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
     console.log(`Usage:
   od files list   <projectId>                  List files in a project.
+  od files tree   <projectId> [--root <path>] [--depth <n>]
+                  [--show-hidden] [--show-build-dirs]
+                                               Print the project tree.
   od files read   <projectId> <relpath>        Stream file bytes to stdout.
   od files write  <projectId> <relpath> [< stdin]
                                                Write content from stdin.
   od files upload <projectId> <localpath> [--as <relpath>]
                                                Upload a local file.
-  od files delete <projectId> <name>           Delete a project file.
+  od files delete <projectId> <name>           Delete a project file or folder.
+  od files mkdir  <projectId> <relpath>        Create a folder (nested ok).
+  od files mv     <projectId> <from> <to>      Rename or move a file/folder.
 
 Common options:
   --daemon-url <url>   Open Design daemon HTTP base.
@@ -4121,6 +4128,45 @@ Common options:
       if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
       const files = Array.isArray(data?.files) ? data.files : [];
       for (const f of files) console.log(`${f.size}\t${f.name ?? f.path}`);
+      return;
+    }
+    case 'tree': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od files tree <projectId> [--root <path>] [--depth <n>] [--show-hidden] [--show-build-dirs]');
+        process.exit(2);
+      }
+      const qs = new URLSearchParams();
+      if (typeof flags.root === 'string' && flags.root.length > 0) qs.set('root', flags.root);
+      if (typeof flags.depth === 'string' && flags.depth.length > 0) qs.set('depth', flags.depth);
+      if (flags['show-hidden']) qs.set('showHidden', 'true');
+      if (flags['show-build-dirs']) qs.set('showBuildDirs', 'true');
+      const query = qs.toString();
+      const url = `${base}/api/projects/${encodeURIComponent(id)}/tree${query ? `?${query}` : ''}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+      const printTree = (list, prefix) => {
+        for (let i = 0; i < list.length; i++) {
+          const node = list[i];
+          const isLast = i === list.length - 1;
+          const branch = isLast ? '└── ' : '├── ';
+          const trail = node.kind === 'dir' ? '/' : '';
+          const hint = node.kind === 'dir' && (!node.children || node.children.length === 0) && node.childCount
+            ? ` (${node.childCount})`
+            : '';
+          console.log(`${prefix}${branch}${node.name}${trail}${hint}`);
+          if (node.kind === 'dir' && Array.isArray(node.children) && node.children.length > 0) {
+            const childPrefix = prefix + (isLast ? '    ' : '│   ');
+            printTree(node.children, childPrefix);
+          }
+        }
+      };
+      const rootLabel = data?.root || '.';
+      console.log(`${rootLabel}/`);
+      printTree(nodes, '');
       return;
     }
     case 'read': {
@@ -4205,9 +4251,48 @@ Common options:
         console.error('Usage: od files delete <projectId> <name>');
         process.exit(2);
       }
-      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      // Use the /raw/* route so paths with subdirectories work (the
+      // legacy /files/:name route only matches single-segment names).
+      const segments = name.split('/').map(encodeURIComponent).join('/');
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/raw/${segments}`, { method: 'DELETE' });
       if (!resp.ok) return structuredHttpFailure(resp);
       console.log(`[files] deleted ${name}`);
+      return;
+    }
+    case 'mkdir': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, rel] = positional;
+      if (!id || !rel) {
+        console.error('Usage: od files mkdir <projectId> <relpath>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/folders`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: rel }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] mkdir ${data?.folder?.path ?? rel}`);
+      return;
+    }
+    case 'mv': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, from, to] = positional;
+      if (!id || !from || !to) {
+        console.error('Usage: od files mv <projectId> <from> <to>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ from, to }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] moved ${from} -> ${data?.newName ?? to}`);
       return;
     }
     default:

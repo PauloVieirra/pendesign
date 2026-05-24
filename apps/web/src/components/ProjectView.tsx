@@ -114,6 +114,7 @@ import {
 import { AppChromeHeader } from './AppChromeHeader';
 import { AvatarMenu } from './AvatarMenu';
 import { ChatPane } from './ChatPane';
+import { FileExplorerPanel } from './FileExplorerPanel';
 import type { ChatSendMeta } from './ChatComposer';
 import {
   CritiqueTheaterMount,
@@ -487,6 +488,10 @@ export function ProjectView({
   const [liveArtifacts, setLiveArtifacts] = useState<LiveArtifactSummary[]>([]);
   const [liveArtifactEvents, setLiveArtifactEvents] = useState<LiveArtifactEventItem[]>([]);
   const [workspaceFocused, setWorkspaceFocused] = useState(false);
+  // Toggle inside the left panel: 'chat' shows the assistant, 'files' shows
+  // the VS Code-style file explorer (tree) that the user can use to open
+  // any project file in the right-hand FileWorkspace.
+  const [chatPaneView, setChatPaneView] = useState<'chat' | 'files'>('chat');
   // `closed` → no surface; `review` → read-only saved-state panel with a
   // preview + reopen-to-edit action (#1822); `edit` → the textarea editor.
   const [instructionsMode, setInstructionsMode] = useState<'closed' | 'review' | 'edit'>('closed');
@@ -3345,7 +3350,33 @@ export function ProjectView({
             }}
       >
         <div className="split-chat-slot" hidden={workspaceFocused}>
-          {activeConversationId || conversationLoadError ? (
+          <div className="chat-pane-tabs" role="tablist" aria-label="Side panel view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chatPaneView === 'chat'}
+              className={`chat-pane-tab${chatPaneView === 'chat' ? ' chat-pane-tab--active' : ''}`}
+              onClick={() => setChatPaneView('chat')}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chatPaneView === 'files'}
+              className={`chat-pane-tab${chatPaneView === 'files' ? ' chat-pane-tab--active' : ''}`}
+              onClick={() => setChatPaneView('files')}
+            >
+              Files
+            </button>
+          </div>
+          {chatPaneView === 'files' ? (
+            <FileExplorerPanel
+              projectId={project.id}
+              onOpenFile={requestOpenFile}
+              refreshKey={filesRefresh}
+            />
+          ) : activeConversationId || conversationLoadError ? (
             <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.

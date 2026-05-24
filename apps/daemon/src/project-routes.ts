@@ -944,7 +944,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
   const { getProject } = ctx.projectStore;
-  const { listFiles, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
+  const { createProjectFolder, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
 
@@ -962,6 +962,60 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       });
       /** @type {import('@open-design/contracts').ProjectFilesResponse} */
       const body = { files };
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  // Create a new directory anywhere under the project root. Used by the
+  // Explorer's "New folder" action. Body: { path: 'src/components/ui' }.
+  // Nested paths are created recursively. Returns the created node so the
+  // client can splice it into the tree without a full refetch.
+  app.post('/api/projects/:id/folders', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      const raw = req.body?.path ?? req.body?.name;
+      if (typeof raw !== 'string' || raw.length === 0) {
+        sendApiError(res, 400, 'BAD_REQUEST', 'path is required');
+        return;
+      }
+      const created = await createProjectFolder(PROJECTS_DIR, req.params.id, raw, project?.metadata);
+      res.json({ folder: created });
+    } catch (err: any) {
+      if (err && err.code === 'EINVAL') {
+        sendApiError(res, 400, 'BAD_REQUEST', String(err.message ?? err));
+        return;
+      }
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  // Hierarchical view of the project tree for the Explorer sidebar.
+  // Query params:
+  //   - root: relative path to use as the starting directory (default '').
+  //   - showHidden: include dotfiles when 'true' (default false).
+  //   - showBuildDirs: include node_modules / dist / .next contents when
+  //     'true' (default false — they appear as collapsed nodes with a
+  //     childCount hint instead).
+  //   - depth: maximum recursion depth from the root (default unlimited).
+  app.get('/api/projects/:id/tree', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      const root = typeof req.query?.root === 'string' ? req.query.root : '';
+      const showHidden = String(req.query?.showHidden ?? '') === 'true';
+      const showBuildDirs = String(req.query?.showBuildDirs ?? '') === 'true';
+      const depthRaw = Number(req.query?.depth);
+      const maxDepth = Number.isFinite(depthRaw) && depthRaw > 0 ? depthRaw : undefined;
+      const result = await listProjectTree(PROJECTS_DIR, req.params.id, {
+        metadata: project?.metadata,
+        root,
+        showHidden,
+        showBuildDirs,
+        maxDepth,
+      });
+      /** @type {import('@open-design/contracts').ProjectTreeResponse} */
+      const body = result;
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));

@@ -48,6 +48,7 @@ import type {
   PromptTemplateDetail,
   PromptTemplateSummary,
   ProjectFile,
+  ProjectTreeResponse,
   RenameProjectFileResponse,
   SkillDetail,
   SkillSummary,
@@ -1247,6 +1248,39 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
     return json.files ?? [];
   } catch {
     return [];
+  }
+}
+
+export async function createProjectFolder(projectId: string, folderPath: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: folderPath }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchProjectTree(
+  projectId: string,
+  opts: { root?: string; showHidden?: boolean; showBuildDirs?: boolean; depth?: number } = {},
+): Promise<ProjectTreeResponse | null> {
+  try {
+    const qs = new URLSearchParams();
+    if (opts.root) qs.set('root', opts.root);
+    if (opts.showHidden) qs.set('showHidden', 'true');
+    if (opts.showBuildDirs) qs.set('showBuildDirs', 'true');
+    if (Number.isFinite(opts.depth) && opts.depth! > 0) qs.set('depth', String(opts.depth));
+    const query = qs.toString();
+    const url = `/api/projects/${encodeURIComponent(projectId)}/tree${query ? `?${query}` : ''}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectTreeResponse;
+  } catch {
+    return null;
   }
 }
 
