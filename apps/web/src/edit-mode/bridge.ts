@@ -541,11 +541,16 @@ export function buildManualEditBridge(enabled: boolean): string {
     return Math.round(value);
   }
   // ──────────────────────────────────────────────────────────────────
-  // Cross-parent drag-and-drop. mousedown on a selected element (away
-  // from any bridge-managed handle) starts a custom drag; the bridge
-  // hit-tests the cursor against source-mappable siblings via
-  // elementFromPoint, draws a thin drop indicator line, and posts a
-  // move-before-ref / append-to-parent action on mouseup. The dragged
+  // Cross-parent drag-and-drop. mousedown on a selected, source-mappable
+  // element starts a custom drag. The bridge computes a "drop plan" each
+  // mousemove by hit-testing under the cursor, walking up to find a
+  // candidate container, and picking either drop-inside (centre of an
+  // empty/eligible container) or sibling-insert (a gap between two
+  // children, or before-first / after-last). The indicator is rendered
+  // AT THE GAP CENTRE — not on the border of a hit child — so the user
+  // sees exactly where the element will land. body is a valid container,
+  // so dragging an item out of all wrappers and dropping it between two
+  // top-level siblings reparents it to the body root. The dragged
   // element does not actually move in the iframe DOM during the drag;
   // the host applies the patch and re-renders, so the visual move only
   // becomes permanent after the source file is saved.
@@ -553,25 +558,100 @@ export function buildManualEditBridge(enabled: boolean): string {
   var dragState = null;
   var dropIndicator = null;
   var dragJustHappened = false;
+  // Containers that visually accept children for drop-inside. Restricting
+  // to layout/box-level boxes keeps the centre zone from kicking in on
+  // text-only nodes like <p> or <h2> where dropping a card inside makes
+  // no sense even though the element technically can have children. body
+  // is always allowed as a top-level drop target.
+  var DROP_INSIDE_TAGS = { section:1, main:1, nav:1, article:1, header:1, footer:1, aside:1, div:1, figure:1, ul:1, ol:1, dl:1, body:1 };
+  function acceptsDropInside(el){
+    if (!el || !el.tagName) return false;
+    if (el === document.body) return true;
+    var tag = el.tagName.toLowerCase();
+    if (!DROP_INSIDE_TAGS[tag]) return false;
+    var display = window.getComputedStyle(el).display || '';
+    if (display === 'inline' || display === 'contents') return false;
+    return true;
+  }
+  function containerFlexAxis(container){
+    if (!container) return 'y';
+    var cs = window.getComputedStyle(container);
+    if ((cs.display || '').indexOf('flex') < 0) return 'y';
+    var dir = cs.flexDirection || 'row';
+    return (dir === 'row' || dir === 'row-reverse') ? 'x' : 'y';
+  }
+  function draggableChildrenOf(container, draggedEl){
+    var out = [];
+    if (!container || !container.children) return out;
+    var kids = container.children;
+    for (var i = 0; i < kids.length; i++) {
+      var c = kids[i];
+      if (c === draggedEl) continue;
+      if (draggedEl && draggedEl.contains && draggedEl.contains(c)) continue;
+      if (isHostNode(c)) continue;
+      if (!isSourceMappable(c)) continue;
+      // Skip elements with zero box (display:none / collapsed) — they would
+      // poison the gap math with degenerate rects at (0,0).
+      var r = c.getBoundingClientRect();
+      if (r.width < 1 && r.height < 1) continue;
+      out.push(c);
+    }
+    return out;
+  }
   function ensureDropIndicator(){
     if (dropIndicator) return dropIndicator;
     var d = document.createElement('div');
     d.setAttribute('data-od-edit-bridge', 'drop-indicator');
     d.style.position = 'absolute';
     d.style.zIndex = '2147483647';
-    d.style.background = '#2563eb';
     d.style.pointerEvents = 'none';
-    d.style.boxShadow = '0 0 6px rgba(37, 99, 235, 0.7)';
-    d.style.borderRadius = '1px';
+    d.style.borderRadius = '2px';
     document.body.appendChild(d);
     dropIndicator = d;
     return d;
+  }
+  function paintInsidePlan(plan){
+    var d = ensureDropIndicator();
+    var x = window.scrollX, y = window.scrollY;
+    var rect = plan.container.getBoundingClientRect();
+    // Outline only — the live-moved element already occupies the slot
+    // inside, so we don't need to fill the container.
+    d.style.background = 'transparent';
+    d.style.border = '2px solid #2563eb';
+    d.style.boxShadow = '0 0 0 1px rgba(37, 99, 235, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.6)';
+    d.style.left = (x + rect.left - 2) + 'px';
+    d.style.top = (y + rect.top - 2) + 'px';
+    d.style.width = (rect.width + 4) + 'px';
+    d.style.height = (rect.height + 4) + 'px';
+  }
+  function paintSiblingPlan(plan){
+    var d = ensureDropIndicator();
+    var x = window.scrollX, y = window.scrollY;
+    d.style.background = '#2563eb';
+    d.style.border = 'none';
+    d.style.boxShadow = '0 0 8px rgba(37, 99, 235, 0.75)';
+    var thickness = 3;
+    // gap.pos = main-axis coordinate of the gap line.
+    // gap.crossStart/crossEnd = cross-axis span of the line.
+    if (plan.axis === 'x') {
+      d.style.top = (y + plan.crossStart) + 'px';
+      d.style.height = Math.max(8, plan.crossEnd - plan.crossStart) + 'px';
+      d.style.width = thickness + 'px';
+      d.style.left = (x + plan.pos - thickness / 2) + 'px';
+    } else {
+      d.style.left = (x + plan.crossStart) + 'px';
+      d.style.width = Math.max(8, plan.crossEnd - plan.crossStart) + 'px';
+      d.style.height = thickness + 'px';
+      d.style.top = (y + plan.pos - thickness / 2) + 'px';
+    }
   }
   function hideDropIndicator(){
     if (dropIndicator && dropIndicator.parentNode) dropIndicator.parentNode.removeChild(dropIndicator);
     dropIndicator = null;
   }
-  function findDropTargetAt(clientX, clientY, draggedEl){
+  function elementUnderCursor(clientX, clientY){
+    // Hide bridge overlays during hit-testing so the drop indicator /
+    // resize handles never absorb the cursor.
     var overlays = document.querySelectorAll('[data-od-edit-bridge]');
     var saved = [];
     for (var i = 0; i < overlays.length; i++) {
@@ -580,80 +660,436 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     var hit = document.elementFromPoint(clientX, clientY);
     for (var j = 0; j < overlays.length; j++) overlays[j].style.pointerEvents = saved[j] || 'auto';
+    return hit;
+  }
+  function findDropAnchor(clientX, clientY, draggedEl){
+    // Returns the deepest source-mappable element under the cursor
+    // (excluding the dragged element and its subtree). If nothing
+    // qualifies, falls back to body so dropping in empty space at the
+    // top level still works.
+    var hit = elementUnderCursor(clientX, clientY);
     while (hit && hit !== document.documentElement) {
-      if (hit === document.body) return null;
-      if (hit !== draggedEl && !(draggedEl.contains && draggedEl.contains(hit)) && isSourceMappable(hit)) {
-        return hit;
-      }
+      if (hit === document.body) return document.body;
+      if (hit !== draggedEl && !(draggedEl.contains && draggedEl.contains(hit)) && isSourceMappable(hit)) return hit;
       hit = hit.parentElement;
     }
-    return null;
+    return document.body;
+  }
+  function gapMetrics(container, children, idx, axis){
+    // Builds the rect/coordinates for the gap that sits at insertion
+    // index idx (0 = before-first, children.length = after-last).
+    var cRect = container.getBoundingClientRect();
+    var crossStart = axis === 'x' ? cRect.top : cRect.left;
+    var crossEnd = axis === 'x' ? cRect.bottom : cRect.right;
+    var pos;
+    if (children.length === 0) {
+      // empty container: paint a line in the middle on the main axis.
+      pos = axis === 'x' ? (cRect.left + cRect.width / 2) : (cRect.top + cRect.height / 2);
+    } else if (idx === 0) {
+      var r0 = children[0].getBoundingClientRect();
+      // Halfway between container edge and first child edge.
+      var contEdge = axis === 'x' ? cRect.left : cRect.top;
+      var childEdge = axis === 'x' ? r0.left : r0.top;
+      pos = (contEdge + childEdge) / 2;
+      crossStart = axis === 'x' ? r0.top : r0.left;
+      crossEnd = axis === 'x' ? r0.bottom : r0.right;
+    } else if (idx === children.length) {
+      var rN = children[children.length - 1].getBoundingClientRect();
+      var contEdge2 = axis === 'x' ? cRect.right : cRect.bottom;
+      var childEdge2 = axis === 'x' ? rN.right : rN.bottom;
+      pos = (contEdge2 + childEdge2) / 2;
+      crossStart = axis === 'x' ? rN.top : rN.left;
+      crossEnd = axis === 'x' ? rN.bottom : rN.right;
+    } else {
+      var prev = children[idx - 1].getBoundingClientRect();
+      var next = children[idx].getBoundingClientRect();
+      var prevEdge = axis === 'x' ? prev.right : prev.bottom;
+      var nextEdge = axis === 'x' ? next.left : next.top;
+      pos = (prevEdge + nextEdge) / 2;
+      crossStart = Math.min(axis === 'x' ? prev.top : prev.left, axis === 'x' ? next.top : next.left);
+      crossEnd = Math.max(axis === 'x' ? prev.bottom : prev.right, axis === 'x' ? next.bottom : next.right);
+    }
+    return { pos: pos, crossStart: crossStart, crossEnd: crossEnd };
+  }
+  function pickClosestGap(clientX, clientY, container, children, axis){
+    var cursorMain = axis === 'x' ? clientX : clientY;
+    var bestIdx = 0;
+    var bestDist = Infinity;
+    var bestMetrics = null;
+    var limit = children.length;
+    for (var i = 0; i <= limit; i++) {
+      var m = gapMetrics(container, children, i, axis);
+      var dist = Math.abs(cursorMain - m.pos);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+        bestMetrics = m;
+      }
+    }
+    return { idx: bestIdx, metrics: bestMetrics };
+  }
+  function planForContainer(container, clientX, clientY, draggedEl){
+    var children = draggableChildrenOf(container, draggedEl);
+    var axis = containerFlexAxis(container);
+    // For non-flex containers we default to vertical gap detection (block
+    // flow), which lines up with how the user reads the document.
+    if (children.length === 0) {
+      var cRect = container.getBoundingClientRect();
+      return {
+        kind: 'inside',
+        container: container,
+        containerRect: cRect
+      };
+    }
+    var pick = pickClosestGap(clientX, clientY, container, children, axis);
+    var insertBefore = pick.idx < children.length ? children[pick.idx] : null;
+    return {
+      kind: 'sibling',
+      container: container,
+      insertBefore: insertBefore,
+      axis: axis,
+      pos: pick.metrics.pos,
+      crossStart: pick.metrics.crossStart,
+      crossEnd: pick.metrics.crossEnd
+    };
+  }
+  function computeDropPlan(clientX, clientY, draggedEl){
+    var anchor = findDropAnchor(clientX, clientY, draggedEl);
+    if (!anchor) return null;
+    // Decide whether the cursor wants to operate INSIDE anchor or as a
+    // sibling AROUND anchor. The rule: if anchor accepts children, treat
+    // it as the container. Otherwise back up to anchor.parentElement and
+    // use that as the container — the cursor is on a leaf, so the user is
+    // asking to slot a sibling near that leaf.
+    var container = acceptsDropInside(anchor) ? anchor : (anchor.parentElement || document.body);
+    if (!container) return null;
+    // Cursor coordinate inside the container's box — if we are outside,
+    // clamp so the closest-gap math still resolves to a real edge instead
+    // of always picking before-first.
+    var plan = planForContainer(container, clientX, clientY, draggedEl);
+    if (!plan) return null;
+    // Disallow moving an element to a position that is functionally
+    // identical to where it already lives (e.g. dragging a card 4px and
+    // dropping it back on its own gap). We compute this conservatively by
+    // checking against the dragged element's current position.
+    if (plan.kind === 'sibling' && plan.insertBefore === draggedEl) plan = null;
+    return plan;
+  }
+  function startDrag(el, downEv){
+    var rect = el.getBoundingClientRect();
+    var cs = window.getComputedStyle(el);
+    dragState = {
+      el: el,
+      startX: downEv.clientX,
+      startY: downEv.clientY,
+      cursorOffsetX: downEv.clientX - rect.left,
+      cursorOffsetY: downEv.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      borderRadius: cs.borderRadius || '0',
+      // The flex shorthand value (e.g. "1 1 0%") drives how the placeholder
+      // grows inside a flex container. Without it, an empty <div> falls back
+      // to its intrinsic 0×0 box and the surrounding siblings collapse onto
+      // it — the drop slot would visibly vanish mid-drag.
+      flex: cs.flex || '',
+      flexBasis: cs.flexBasis || '',
+      flexGrow: cs.flexGrow || '',
+      flexShrink: cs.flexShrink || '',
+      alignSelf: cs.alignSelf || '',
+      margin: cs.margin || '',
+      originalParent: el.parentNode,
+      originalNextSibling: el.nextSibling,
+      moved: false,
+      plan: null,
+      ghost: null,
+      placeholder: null,
+      lastMoveSig: null
+    };
+    document.addEventListener('mousemove', onDragMove, true);
+    document.addEventListener('mouseup', onDragUp, true);
+    document.addEventListener('keydown', onDragKey, true);
+  }
+  function installDragVisuals(){
+    // Ghost: a clone of the dragged element pinned to the cursor. We use
+    // position:fixed + clientX/Y so the ghost never lags behind on scrolled
+    // pages, and pointer-events:none so it cannot absorb the hit-test the
+    // bridge runs on every mousemove.
+    var clone = dragState.el.cloneNode(true);
+    if (clone.setAttribute) {
+      clone.setAttribute('data-od-edit-bridge', 'drag-ghost');
+      clone.removeAttribute('data-od-edit-selected');
+      clone.removeAttribute('data-od-runtime-id');
+    }
+    clone.style.position = 'fixed';
+    clone.style.left = (dragState.startX - dragState.cursorOffsetX) + 'px';
+    clone.style.top = (dragState.startY - dragState.cursorOffsetY) + 'px';
+    clone.style.width = dragState.width + 'px';
+    clone.style.height = dragState.height + 'px';
+    clone.style.margin = '0';
+    clone.style.pointerEvents = 'none';
+    clone.style.opacity = '1';
+    clone.style.zIndex = '2147483645';
+    clone.style.transform = 'rotate(1.2deg)';
+    clone.style.transformOrigin = 'top left';
+    clone.style.transition = 'transform 120ms ease-out';
+    clone.style.boxShadow = '0 20px 50px rgba(15, 23, 42, 0.32), 0 4px 12px rgba(15, 23, 42, 0.22)';
+    clone.style.borderRadius = dragState.borderRadius;
+    document.body.appendChild(clone);
+    dragState.ghost = clone;
+    // Placeholder: a hollow drop slot that takes the dragged element's
+    // place in the layout. We replace the real element with the placeholder
+    // so the user only sees the ghost (under the cursor) plus an empty
+    // dashed-blue slot where the drop will land. The placeholder inherits
+    // the source element's flex/margin metrics so the surrounding siblings
+    // do not visibly reflow when the real element is detached.
+    var placeholder = document.createElement('div');
+    placeholder.setAttribute('data-od-edit-bridge', 'drag-placeholder');
+    placeholder.style.boxSizing = 'border-box';
+    placeholder.style.width = dragState.width + 'px';
+    placeholder.style.height = dragState.height + 'px';
+    placeholder.style.background = 'rgba(37, 99, 235, 0.08)';
+    placeholder.style.border = '2px dashed rgba(37, 99, 235, 0.7)';
+    placeholder.style.borderRadius = dragState.borderRadius;
+    placeholder.style.margin = dragState.margin;
+    placeholder.style.transition = 'width 180ms cubic-bezier(0.23, 1, 0.32, 1), height 180ms cubic-bezier(0.23, 1, 0.32, 1)';
+    if (dragState.flex) placeholder.style.flex = dragState.flex;
+    if (dragState.flexBasis) placeholder.style.flexBasis = dragState.flexBasis;
+    if (dragState.flexGrow) placeholder.style.flexGrow = dragState.flexGrow;
+    if (dragState.flexShrink) placeholder.style.flexShrink = dragState.flexShrink;
+    if (dragState.alignSelf) placeholder.style.alignSelf = dragState.alignSelf;
+    // Swap the real element out of the layout — kept aside in JS for Esc
+    // cancel restoration, but detached from the document.
+    var parent = dragState.originalParent;
+    var next = dragState.originalNextSibling;
+    if (parent) {
+      parent.insertBefore(placeholder, dragState.el);
+      parent.removeChild(dragState.el);
+    }
+    dragState.placeholder = placeholder;
+    // Remember whose nextSibling the placeholder lives "before" so cancel
+    // can put the original element back in the exact slot.
+    dragState.cancelAnchor = next;
+    document.documentElement.setAttribute('data-od-dragging', 'true');
+  }
+  function uninstallDragVisuals(state){
+    if (!state) return;
+    if (state.ghost && state.ghost.parentNode) state.ghost.parentNode.removeChild(state.ghost);
+    state.ghost = null;
+    if (state.placeholder && state.placeholder.parentNode) {
+      state.placeholder.parentNode.removeChild(state.placeholder);
+    }
+    state.placeholder = null;
+    document.documentElement.removeAttribute('data-od-dragging');
+  }
+  function applyFlipAnimation(container, oldRects){
+    if (!container || !oldRects) return;
+    var kids = container.children;
+    for (var i = 0; i < kids.length; i++) {
+      var c = kids[i];
+      // Skip overlays. We DO want to animate the placeholder so the user
+      // sees the empty drop slot slide into place along with the siblings.
+      if (isHostNode(c) && c !== dragState.placeholder) continue;
+      var oldRect = oldRects.get(c);
+      if (!oldRect) continue;
+      var newRect = c.getBoundingClientRect();
+      var dx = oldRect.left - newRect.left;
+      var dy = oldRect.top - newRect.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+      c.style.transition = 'none';
+      c.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+      void c.offsetWidth;
+      c.style.transition = 'transform 220ms cubic-bezier(0.23, 1, 0.32, 1)';
+      c.style.transform = '';
+    }
+  }
+  function snapshotContainerRects(container){
+    var map = new Map();
+    if (!container || !container.children) return map;
+    var kids = container.children;
+    for (var i = 0; i < kids.length; i++) {
+      var c = kids[i];
+      if (isHostNode(c) && c !== dragState.placeholder) continue;
+      map.set(c, c.getBoundingClientRect());
+    }
+    return map;
+  }
+  function applyLivePlan(plan){
+    if (!plan || !dragState.placeholder) return;
+    var placeholder = dragState.placeholder;
+    var currentContainer = placeholder.parentNode;
+    var currentNext = placeholder.nextElementSibling;
+    var sig;
+    if (plan.kind === 'inside' || !plan.insertBefore) {
+      sig = 'append:' + (plan.container === document.body ? '__body__' : stableId(plan.container));
+      if (currentContainer === plan.container && currentNext === null) return;
+    } else {
+      sig = 'before:' + stableId(plan.insertBefore);
+      if (currentContainer === plan.container && currentNext === plan.insertBefore) return;
+    }
+    if (dragState.lastMoveSig === sig) return;
+    dragState.lastMoveSig = sig;
+    var destSnapshot = snapshotContainerRects(plan.container);
+    var originSnapshot = currentContainer !== plan.container
+      ? snapshotContainerRects(currentContainer)
+      : null;
+    if (plan.kind === 'inside' || !plan.insertBefore) {
+      plan.container.appendChild(placeholder);
+    } else {
+      plan.container.insertBefore(placeholder, plan.insertBefore);
+    }
+    applyFlipAnimation(plan.container, destSnapshot);
+    if (originSnapshot) applyFlipAnimation(currentContainer, originSnapshot);
   }
   function onDragMove(ev){
     if (!dragState) return;
     var dx = ev.clientX - dragState.startX;
     var dy = ev.clientY - dragState.startY;
     if (!dragState.moved && (Math.abs(dx) + Math.abs(dy)) < 6) return;
-    dragState.moved = true;
+    if (!dragState.moved) {
+      dragState.moved = true;
+      try { window.getSelection && window.getSelection().removeAllRanges(); } catch(_){}
+      installDragVisuals();
+    }
     document.body.style.cursor = 'grabbing';
-    var target = findDropTargetAt(ev.clientX, ev.clientY, dragState.el);
-    if (!target) {
+    ev.preventDefault();
+    if (dragState.ghost) {
+      dragState.ghost.style.left = (ev.clientX - dragState.cursorOffsetX) + 'px';
+      dragState.ghost.style.top = (ev.clientY - dragState.cursorOffsetY) + 'px';
+    }
+    var plan = computeDropPlan(ev.clientX, ev.clientY, dragState.el);
+    dragState.plan = plan;
+    if (!plan) {
       hideDropIndicator();
-      dragState.lastTarget = null;
-      dragState.lastPos = null;
       return;
     }
-    var rect = target.getBoundingClientRect();
-    var pos = ev.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-    dragState.lastTarget = target;
-    dragState.lastPos = pos;
-    var d = ensureDropIndicator();
-    d.style.left = (window.scrollX + rect.left) + 'px';
-    d.style.width = rect.width + 'px';
-    d.style.height = '2px';
-    d.style.top = (window.scrollY + (pos === 'before' ? rect.top - 1 : rect.bottom - 1)) + 'px';
+    applyLivePlan(plan);
+    // The element is now physically at the planned position, so the line
+    // indicator would be redundant for sibling drops. We only paint a soft
+    // container highlight for drop-inside (otherwise the user has no signal
+    // that the parent will be the new container).
+    if (plan.kind === 'inside') paintInsidePlan(plan);
+    else hideDropIndicator();
   }
-  function onDragUp(){
+  function flashDropIndicator(){
+    if (!dropIndicator) return;
+    var d = dropIndicator;
+    dropIndicator = null;
+    d.style.transition = 'opacity 220ms ease-out, transform 220ms ease-out';
+    d.style.opacity = '0';
+    d.style.transform = 'scale(1.06)';
+    setTimeout(function(){
+      if (d && d.parentNode) d.parentNode.removeChild(d);
+    }, 230);
+  }
+  function endDrag(commit){
     document.removeEventListener('mousemove', onDragMove, true);
     document.removeEventListener('mouseup', onDragUp, true);
+    document.removeEventListener('keydown', onDragKey, true);
     document.body.style.cursor = '';
     var state = dragState;
     dragState = null;
-    hideDropIndicator();
-    if (!state || !state.moved || !state.lastTarget) return;
+    if (!state) { hideDropIndicator(); return; }
+    if (!commit) {
+      // Esc cancel — put the real element back where it started (the
+      // placeholder is removed by uninstallDragVisuals so we have to slot
+      // the element in front of the original next sibling).
+      if (state.originalParent) {
+        try { state.originalParent.insertBefore(state.el, state.cancelAnchor || state.originalNextSibling); } catch(_){}
+      }
+      uninstallDragVisuals(state);
+      hideDropIndicator();
+      return;
+    }
+    if (!state.moved || !state.plan) {
+      // Click-without-drag, or a drag that never resolved a plan: put the
+      // element back at its origin so the user does not lose it.
+      if (state.originalParent) {
+        try { state.originalParent.insertBefore(state.el, state.cancelAnchor || state.originalNextSibling); } catch(_){}
+      }
+      uninstallDragVisuals(state);
+      hideDropIndicator();
+      return;
+    }
+    // Materialise the drop locally: replace the placeholder with the real
+    // element so the page paints with the new layout right away. The host
+    // patches the source file and the iframe will re-render afterwards;
+    // until that arrives, this avoids a one-frame layout flash where the
+    // element disappears.
+    var placeholderRect = state.placeholder ? state.placeholder.getBoundingClientRect() : null;
+    if (state.placeholder && state.placeholder.parentNode) {
+      state.placeholder.parentNode.insertBefore(state.el, state.placeholder);
+      state.placeholder.parentNode.removeChild(state.placeholder);
+      state.placeholder = null;
+    }
+    if (state.ghost && placeholderRect) {
+      state.ghost.style.transition = 'left 180ms cubic-bezier(0.23, 1, 0.32, 1), top 180ms cubic-bezier(0.23, 1, 0.32, 1), transform 180ms ease-out, opacity 180ms ease-out';
+      state.ghost.style.left = placeholderRect.left + 'px';
+      state.ghost.style.top = placeholderRect.top + 'px';
+      state.ghost.style.transform = 'rotate(0deg)';
+      state.ghost.style.opacity = '0';
+    }
+    setTimeout(function(){ uninstallDragVisuals(state); }, 200);
+    flashDropIndicator();
     dragJustHappened = true;
-    setTimeout(function(){ dragJustHappened = false; }, 100);
+    setTimeout(function(){ dragJustHappened = false; }, 200);
     var sourceId = stableId(state.el);
-    var target = state.lastTarget;
-    if (state.lastPos === 'before') {
+    var plan = state.plan;
+    var containerId = plan.container === document.body ? '__body__' : stableId(plan.container);
+    if (plan.kind === 'inside' || !plan.insertBefore) {
       window.parent.postMessage({
         type: 'od-edit-structural-action',
         id: sourceId,
-        action: 'move-before-ref',
-        referenceId: stableId(target),
+        action: 'append-to-parent',
+        parentId: containerId,
       }, '*');
-    } else {
-      var nextSibling = target.nextElementSibling;
-      if (nextSibling) {
-        window.parent.postMessage({
-          type: 'od-edit-structural-action',
-          id: sourceId,
-          action: 'move-before-ref',
-          referenceId: stableId(nextSibling),
-        }, '*');
-      } else {
-        var parent = target.parentElement;
-        if (parent && parent !== document.body && parent !== document.documentElement) {
-          window.parent.postMessage({
-            type: 'od-edit-structural-action',
-            id: sourceId,
-            action: 'append-to-parent',
-            parentId: stableId(parent),
-          }, '*');
-        }
-      }
+      return;
+    }
+    window.parent.postMessage({
+      type: 'od-edit-structural-action',
+      id: sourceId,
+      action: 'move-before-ref',
+      referenceId: stableId(plan.insertBefore),
+    }, '*');
+  }
+  function onDragUp(){ endDrag(true); }
+  function onDragKey(ev){
+    if (!dragState) return;
+    if (ev.key === 'Escape' || ev.keyCode === 27) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      endDrag(false);
     }
   }
+  function isBridgeManagedNode(el){
+    while (el && el !== document.body) {
+      if (el.hasAttribute && el.hasAttribute('data-od-edit-bridge')) return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+  function findSelectedDragRoot(target){
+    // Walks up from the mousedown target looking for the currently selected
+    // element. Drag only starts when the user clicks WITHIN the selection —
+    // this keeps the click→select gesture unchanged (clicking an unselected
+    // element selects it; the drag affordance is opt-in via a second hold).
+    var node = target;
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-od-edit-selected') === 'true') {
+        return isSourceMappable(node) ? node : null;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+  document.addEventListener('mousedown', function(ev){
+    if (!enabled) return;
+    if (ev.button !== 0) return;
+    if (inlineEditEl) return; // do not interfere with caret positioning
+    if (ev.target && isBridgeManagedNode(ev.target)) return; // resize/padding/etc handles own their gestures
+    var root = findSelectedDragRoot(ev.target);
+    if (!root) return;
+    startDrag(root, ev);
+  }, true);
   function startResizeDrag(el, side, downEv){
     var startX = downEv.clientX;
     var startY = downEv.clientY;
@@ -1163,6 +1599,14 @@ export function buildManualEditBridge(enabled: boolean): string {
   });
   document.addEventListener('click', function(ev){
     if (!enabled) return;
+    // A drag gesture that just released still fires a click event on the
+    // press origin; suppressing it keeps the selection on the dragged
+    // element instead of bouncing focus to whatever sat under the cursor.
+    if (dragJustHappened) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
     // While the user is inline-editing, let clicks land normally on the
     // editable element (caret positioning, text selection); only intercept
     // clicks that escape outside it.
@@ -1219,7 +1663,9 @@ html[data-od-edit-mode] [data-od-edit-selected] {
   outline: 2px solid #2563eb !important;
   outline-offset: 4px;
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+  cursor: grab !important;
 }
+html[data-od-edit-mode] [data-od-edit-selected] * { cursor: grab !important; }
 /* Inline editing affordances — set by dblclick handlers in the bridge. The
    contenteditable element gets a stronger outline so the user sees the edit
    surface; media targets (img/svg) hint that dblclick swaps the asset via a

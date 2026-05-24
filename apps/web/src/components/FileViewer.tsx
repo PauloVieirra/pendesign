@@ -5138,6 +5138,25 @@ function HtmlViewer({
       if (patch.kind === 'set-style') {
         reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
       }
+      // Structural patches (move / append / delete / clone / insert / replace
+      // outer HTML / full source rewrite) can NOT be mirrored into the iframe
+      // via a single postMessage the way set-style / set-text do — they
+      // rewrite the DOM tree. We unfreeze the preview source so the iframe
+      // rebuilds from the patched HTML and the user sees the new layout
+      // without having to leave and re-enter Edit mode.
+      if (
+        patch.kind === 'move-before-ref' ||
+        patch.kind === 'append-to-parent' ||
+        patch.kind === 'move-element-up' ||
+        patch.kind === 'move-element-down' ||
+        patch.kind === 'delete-element' ||
+        patch.kind === 'clone-element-after' ||
+        patch.kind === 'insert-sibling-after' ||
+        patch.kind === 'set-outer-html' ||
+        patch.kind === 'set-full-source'
+      ) {
+        setManualEditFrozenSource(result.source);
+      }
       await onFileSaved?.();
       return true;
     } finally {
