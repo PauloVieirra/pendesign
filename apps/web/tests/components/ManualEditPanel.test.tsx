@@ -193,11 +193,11 @@ describe('ManualEditPanel', () => {
   it('rejects invalid style values before host preview/persistence', () => {
     expect(normalizeManualEditStyles({ color: 'tomato' }, { layoutEnabled: true })).toEqual({
       ok: false,
-      error: 'color must be a hex color or var(--token).',
+      error: 'color must be a hex color, rgba(), or var(--token).',
     });
     expect(normalizeManualEditStyles({ lineHeight: '-1px' }, { layoutEnabled: true })).toEqual({
       ok: false,
-      error: 'Line height must be a positive number or px value.',
+      error: 'Line height must be a positive number, px value, or var(--token).',
     });
   });
 
@@ -285,7 +285,8 @@ describe('ManualEditPanel', () => {
     act(() => {
       bgSwatch.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
-    const colorTile = host.querySelector('button[aria-label="#3b82f6"]') as HTMLButtonElement | null;
+    // Popover is now portal'd into document.body, not inside the render host.
+    const colorTile = dom.window.document.querySelector('button.cpx-swatch[title="#3b82f6"]') as HTMLButtonElement | null;
     if (!colorTile) throw new Error('Background color tile not found');
     act(() => {
       colorTile.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));

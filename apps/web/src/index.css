@@ -20818,6 +20818,348 @@ body.desktop-pet-shell .pet-task-item {
 }
 .cc-quad-unit { color: var(--text-muted); font-style: normal; font-size: 10px; }
 
+/* Token-bound state for any cc-row: tints the input text the accent color
+   so the user can tell at a glance that a value is bound to a DS variable
+   instead of being a literal number/string. Also hides decorations (chevron,
+   stepper) that are meaningless while a token controls the value. */
+.cc-value-token {
+  color: var(--accent, #2563eb);
+}
+.cc-value-token > input {
+  color: var(--accent, #2563eb);
+  font-variant-numeric: normal;
+}
+.cc-value-token .cc-chevron,
+.cc-value-token .cc-unit {
+  display: none;
+}
+/* Small × that unbinds a token, restoring the literal-value editor. Sized
+   like the stepper buttons so the row height stays at 26px. */
+.cc-token-clear {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cc-token-clear:hover {
+  background: var(--surface-hover, rgba(0,0,0,0.06));
+  color: var(--text);
+}
+/* Picker trigger sits inside cc-value next to the input; make sure it can't
+   eat its own space when the row is part of a cc-pair (two side-by-side
+   rows in a single 1fr 1fr grid cell, very narrow). */
+.cc-value > .ds-var-picker { flex: 0 0 auto; }
+.cc-value > .ds-var-picker .ds-var-picker__trigger { width: 16px; height: 16px; }
+
+/* Padding/Margin/Border quad cells: same conventions as cc-value but the
+   cell is its own container, so the picker and token-state rules live
+   here independently. */
+.cc-quad-cell > .ds-var-picker { flex: 0 0 auto; }
+.cc-quad-cell > .ds-var-picker .ds-var-picker__trigger { width: 14px; height: 14px; }
+.cc-quad-cell-token { color: var(--accent, #2563eb); }
+.cc-quad-cell-token input { color: var(--accent, #2563eb); }
+
+/* Modern color picker popover -------------------------------------------- */
+/* Free-floating portal'd popover. Positioned via inline style at runtime so
+   it always stays inside the viewport, regardless of where the trigger is
+   inside an overflow:hidden / overflow:auto ancestor chain. */
+.cpx-floating {
+  background: var(--bg-panel, #fff);
+  border: 1px solid var(--border, #e4e4e7);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  padding: 10px;
+}
+.cpx { display: flex; flex-direction: column; gap: 8px; }
+/* Drag handle row at the top: header acts as the grab target so the user
+   can move the popover anywhere inside the viewport. Tabs and close button
+   live on the same row to keep vertical density. */
+.cpx-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: grab;
+  padding: 0;
+  margin: -2px 0 2px;
+  user-select: none;
+  touch-action: none;
+}
+.cpx-header:active { cursor: grabbing; }
+.cpx-header-handle {
+  color: var(--text-muted, #6b7280);
+  font-size: 14px;
+  letter-spacing: -2px;
+  line-height: 1;
+  padding: 4px 6px 4px 2px;
+}
+.cpx-header-title {
+  flex: 1 1 auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #6b7280);
+  cursor: grab;
+}
+.cpx-header .cpx-tabs { flex: 1 1 auto; cursor: default; }
+.cpx-close {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cpx-close:hover {
+  background: var(--surface-hover, rgba(0,0,0,0.06));
+  color: var(--text, #18181b);
+}
+.cpx-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2, #f5f5f6);
+  border-radius: 8px;
+}
+.cpx-tab {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cpx-tab-active {
+  background: var(--bg-panel, #fff);
+  color: var(--text, #18181b);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Saturation × value square */
+.cpx-sv {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+.cpx-sv-sat,
+.cpx-sv-val {
+  position: absolute; inset: 0;
+}
+.cpx-sv-sat { background: linear-gradient(to right, #fff, transparent); }
+.cpx-sv-val { background: linear-gradient(to top, #000, transparent); }
+.cpx-sv-thumb {
+  position: absolute;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Hue + alpha sliders share dimensions */
+.cpx-hue,
+.cpx-alpha {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: none;
+}
+.cpx-hue {
+  background: linear-gradient(to right,
+    #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%,
+    #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+}
+.cpx-alpha {
+  /* Checker pattern underneath the alpha gradient fill */
+  background-color: #f4f4f5;
+  background-image:
+    linear-gradient(45deg, #d4d4d8 25%, transparent 25%),
+    linear-gradient(-45deg, #d4d4d8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d4d4d8 75%),
+    linear-gradient(-45deg, transparent 75%, #d4d4d8 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+  overflow: hidden;
+}
+.cpx-alpha-fill {
+  position: absolute; inset: 0;
+  border-radius: 6px;
+}
+.cpx-hue-thumb,
+.cpx-alpha-thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Hex + alpha inputs */
+.cpx-inputs {
+  display: grid;
+  grid-template-columns: 1fr 60px;
+  gap: 6px;
+}
+.cpx-input {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--surface-2, #f6f6f7);
+  border: 1px solid var(--border, #e4e4e7);
+  border-radius: 6px;
+  gap: 4px;
+  font-size: 12px;
+}
+.cpx-input:focus-within { border-color: var(--accent, #2563eb); }
+.cpx-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #18181b);
+}
+.cpx-input-prefix,
+.cpx-input-suffix {
+  color: var(--text-muted, #6b7280);
+  font-style: normal;
+  font-size: 11px;
+}
+
+/* Gradient strip + stops */
+.cpx-gradient { display: flex; flex-direction: column; gap: 8px; }
+.cpx-gradient-strip {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e4e4e7);
+  cursor: copy;
+  touch-action: none;
+  /* Same checker pattern as alpha so stops with alpha don't blend into the
+     panel background. */
+  background-color: #f4f4f5;
+  background-image:
+    linear-gradient(45deg, #d4d4d8 25%, transparent 25%),
+    linear-gradient(-45deg, #d4d4d8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d4d4d8 75%),
+    linear-gradient(-45deg, transparent 75%, #d4d4d8 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  overflow: visible;
+}
+.cpx-gradient-stop {
+  position: absolute;
+  top: -3px;
+  width: 14px;
+  height: 28px;
+  border-radius: 4px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  transform: translateX(-50%);
+  cursor: grab;
+}
+.cpx-gradient-stop:active { cursor: grabbing; }
+.cpx-gradient-stop-active { box-shadow: 0 0 0 2px var(--accent, #2563eb), 0 1px 4px rgba(0, 0, 0, 0.35); }
+.cpx-gradient-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cpx-angle {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--surface-2, #f6f6f7);
+  border: 1px solid var(--border, #e4e4e7);
+  border-radius: 6px;
+  gap: 4px;
+  font-size: 12px;
+}
+.cpx-angle:focus-within { border-color: var(--accent, #2563eb); }
+.cpx-angle > span { color: var(--text-muted, #6b7280); font-size: 11px; }
+.cpx-angle input {
+  width: 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  text-align: right;
+  color: var(--text, #18181b);
+}
+.cpx-angle em { color: var(--text-muted, #6b7280); font-style: normal; font-size: 11px; }
+.cpx-gradient-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px dashed var(--border, #e4e4e7);
+  border-radius: 6px;
+  color: var(--text-muted, #6b7280);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cpx-gradient-add:hover {
+  border-color: var(--accent, #2563eb);
+  color: var(--accent, #2563eb);
+}
+
+/* DS Colors + presets sections */
+.cpx-section { display: flex; flex-direction: column; gap: 6px; }
+.cpx-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #6b7280);
+}
+.cpx-swatches {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.cpx-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0;
+  background-clip: padding-box;
+  cursor: pointer;
+}
+.cpx-swatch:hover { transform: scale(1.06); }
+.cpx-swatch:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+
 .cc-disclosure { font-size: 11px; color: var(--text-muted); }
 .cc-disclosure > summary { cursor: pointer; padding: 4px 0; }
 
