@@ -156,6 +156,59 @@ export function readManualEditOuterHtml(source: string, id: string): string {
   return (doc ? findEditableElement(doc, id)?.outerHTML : '') ?? '';
 }
 
+const PRESTAMP_TAGS = new Set([
+  'main', 'nav', 'section', 'article', 'header', 'footer', 'aside', 'dialog',
+  'div', 'figure', 'figcaption', 'blockquote',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'pre',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+  'a', 'button', 'label', 'input', 'select', 'textarea', 'option',
+  'span', 'strong', 'em', 'b', 'i', 'u', 's', 'small', 'mark', 'code', 'kbd', 'samp', 'time', 'abbr', 'sub', 'sup',
+  'img', 'picture', 'video', 'audio', 'iframe',
+  'svg', 'g', 'path', 'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon', 'text', 'tspan', 'use', 'symbol',
+]);
+
+// Walks the parsed source and stamps a stable `data-od-id="od-<tag>-<seq>"`
+// on every editable element that lacks any source-side identifier. The walk
+// is deterministic (document order) and idempotent (existing `od-<tag>-N`
+// ids seed the counter, so a re-run only fills in new elements). This breaks
+// the path-vs-runtime divergence that caused "Target not found" errors when
+// the bridge resolved an element by path and the source-side patcher couldn't
+// reproduce the same walk.
+export function prestampHtmlForManualEdit(source: string): { html: string; changed: boolean } {
+  const doc = parseSource(source);
+  if (!doc) return { html: source, changed: false };
+
+  const counters = new Map<string, number>();
+  for (const el of Array.from(doc.querySelectorAll('[data-od-id]'))) {
+    const id = el.getAttribute('data-od-id') ?? '';
+    const match = /^od-([a-z]+)-(\d+)$/.exec(id);
+    if (!match) continue;
+    const tag = match[1]!;
+    const seq = Number(match[2]);
+    if (Number.isInteger(seq) && seq > (counters.get(tag) ?? 0)) {
+      counters.set(tag, seq);
+    }
+  }
+
+  let changed = false;
+  const body = doc.body;
+  if (!body) return { html: source, changed: false };
+  for (const el of Array.from(body.querySelectorAll('*'))) {
+    const tag = el.tagName.toLowerCase();
+    if (!PRESTAMP_TAGS.has(tag)) continue;
+    if (el.hasAttribute('data-od-id')) continue;
+    if (el.hasAttribute('data-od-source-path')) continue;
+    const seq = (counters.get(tag) ?? 0) + 1;
+    counters.set(tag, seq);
+    el.setAttribute('data-od-id', `od-${tag}-${seq}`);
+    changed = true;
+  }
+
+  if (!changed) return { html: source, changed: false };
+  return { html: serializeSource(doc, source), changed: true };
+}
+
 function parseSource(source: string): Document | null {
   if (typeof DOMParser !== 'undefined') {
     return new DOMParser().parseFromString(source, 'text/html');
