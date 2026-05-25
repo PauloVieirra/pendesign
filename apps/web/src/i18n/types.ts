@@ -2133,4 +2133,40 @@ export interface Dict {
   'critiqueTheater.settingsEnabledDescription': string;
   'critiqueTheater.settingsEnabledProjectHint': string;
   'critiqueTheater.settingsEnabledNoProjectHint': string;
+
+  // Lean Inception canvas
+  'lean_inception.tab.title': string;
+  'lean_inception.column.vision': string;
+  'lean_inception.column.objective': string;
+  'lean_inception.column.problem': string;
+  'lean_inception.column.personas': string;
+  'lean_inception.column.features': string;
+  'lean_inception.column.business_rules': string;
+  'lean_inception.column.acceptance_criteria': string;
+  'lean_inception.status.complete': string;
+  'lean_inception.status.partial': string;
+  'lean_inception.status.insufficient': string;
+  'lean_inception.status.not_identified': string;
+  'lean_inception.toolbar.add_document': string;
+  'lean_inception.toolbar.documents': string;
+  'lean_inception.toolbar.refresh': string;
+  'lean_inception.toolbar.reset': string;
+  'lean_inception.toolbar.zoom_in': string;
+  'lean_inception.toolbar.zoom_out': string;
+  'lean_inception.toolbar.zoom_fit': string;
+  'lean_inception.empty.title': string;
+  'lean_inception.empty.description': string;
+  'lean_inception.drop.title': string;
+  'lean_inception.detail.source': string;
+  'lean_inception.detail.line': string;
+  'lean_inception.confirm.reset.title': string;
+  'lean_inception.confirm.reset.description': string;
+  'lean_inception.confirm.reset.confirm': string;
+  'lean_inception.confirm.reset.cancel': string;
+  'lean_inception.error.unsupported_format': string;
+  'lean_inception.error.document_too_large': string;
+  'lean_inception.error.daemon_unreachable': string;
+  'lean_inception.error.extraction_failed': string;
+  'lean_inception.error.document_not_found': string;
+  'lean_inception.error.generic': string;
 }
