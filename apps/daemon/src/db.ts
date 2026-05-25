@@ -9,6 +9,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { migrateCritique } from './critique/persistence.js';
+import { migrateLeanInception } from './lean-inception/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 
@@ -293,6 +294,7 @@ function migrate(db: SqliteDb): void {
   `);
 
   migrateCritique(db);
+  migrateLeanInception(db);
   migrateMediaTasks(db);
   migratePlugins(db);
 }
