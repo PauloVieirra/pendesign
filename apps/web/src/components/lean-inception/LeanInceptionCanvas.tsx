@@ -6,6 +6,8 @@ import { LeanInceptionBoard, type BoardHandle } from './LeanInceptionBoard';
 import { LeanInceptionDetailDrawer } from './LeanInceptionDetailDrawer';
 import { LeanInceptionDropBar } from './LeanInceptionDropBar';
 import { LeanInceptionActions } from './LeanInceptionActions';
+import { assessReadiness } from './readiness';
+import { LeanInceptionReadiness } from './LeanInceptionReadiness';
 
 interface Props {
   projectId: string;
@@ -15,6 +17,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
   const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, reset } =
     useLeanInception(projectId);
   const columns = useColumnVisibility(projectId);
+  const readiness = assessReadiness(state ?? null);
 
   const [detailCard, setDetailCard] = useState<LeanInceptionCard | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -43,15 +46,18 @@ export function LeanInceptionCanvas({ projectId }: Props) {
 
   return (
     <div className="li-canvas">
-      <LeanInceptionActions
-        documents={state.documents}
-        visible={columns.visible}
-        isMutating={isMutating}
-        onRefresh={() => void refresh()}
-        onReset={() => setConfirmingReset(true)}
-        onRemoveDoc={(id) => void removeDocument(id)}
-        onToggleColumn={columns.toggle}
-      />
+      <div className="li-top-right">
+        <LeanInceptionReadiness assessment={readiness} />
+        <LeanInceptionActions
+          documents={state.documents}
+          visible={columns.visible}
+          isMutating={isMutating}
+          onRefresh={() => void refresh()}
+          onReset={() => setConfirmingReset(true)}
+          onRemoveDoc={(id) => void removeDocument(id)}
+          onToggleColumn={columns.toggle}
+        />
+      </div>
 
       <LeanInceptionBoard
         ref={boardRef}

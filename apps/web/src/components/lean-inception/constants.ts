@@ -22,11 +22,12 @@ export const CONFIDENCE_DOT_CLASS: Record<LeanInceptionConfidence, string> = {
 };
 
 export const COLUMN_ORDER: readonly LeanInceptionColumnKey[] = [
-  'market_research',
-  'market_opportunities',
   'vision',
   'problem',
   'objective',
+  'csd_matrix',
+  'market_research',
+  'market_opportunities',
   'personas',
   'user_journey',
   'features',
@@ -36,11 +37,12 @@ export const COLUMN_ORDER: readonly LeanInceptionColumnKey[] = [
 ];
 
 export const DEFAULT_VISIBLE_COLUMNS: readonly LeanInceptionColumnKey[] = [
-  'market_research',
-  'market_opportunities',
   'vision',
   'problem',
   'objective',
+  'csd_matrix',
+  'market_research',
+  'market_opportunities',
   'personas',
   'user_journey',
   'features',
@@ -49,11 +51,12 @@ export const DEFAULT_VISIBLE_COLUMNS: readonly LeanInceptionColumnKey[] = [
 ];
 
 export const COLUMN_LABELS_PT: Record<LeanInceptionColumnKey, string> = {
-  market_research: 'Pesquisa de mercado',
-  market_opportunities: 'Oportunidades de mercado',
   vision: 'Visão',
   problem: 'Problema',
   objective: 'Objetivo',
+  csd_matrix: 'Matriz CSD',
+  market_research: 'Pesquisa de mercado',
+  market_opportunities: 'Oportunidade de mercado',
   personas: 'Persona',
   user_journey: 'Jornada do usuário',
   features: 'Features',

@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
 export const LEAN_INCEPTION_COLUMN_KEYS = [
-  'market_research',
-  'market_opportunities',
   'vision',
   'problem',
   'objective',
+  'csd_matrix',
+  'market_research',
+  'market_opportunities',
   'personas',
   'user_journey',
   'features',

@@ -233,14 +233,102 @@
   display: none;
 }
 
-/* ---- Top-right actions ---- */
-.li-actions {
+/* ---- Top-right group (readiness badge + action icons) ---- */
+.li-top-right {
   position: absolute;
   top: 12px;
   right: 16px;
-  z-index: 20;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.li-actions {
+  /* no longer positioned absolutely — sits inside .li-top-right */
+  position: relative;
   display: flex;
   gap: 6px;
+}
+
+/* ---- Readiness indicator ---- */
+.li-readiness {
+  position: relative;
+}
+
+.li-canvas .li-readiness__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  color: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-readiness__pill:hover {
+  background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 20%, transparent);
+}
+
+.li-readiness__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.li-readiness__dot--ready        { background: var(--green); }
+.li-readiness__dot--partial      { background: var(--amber); }
+.li-readiness__dot--insufficient { background: var(--red); }
+
+.li-readiness__label {
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.li-readiness__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 280px;
+  background: color-mix(in srgb, var(--text-strong) 90%, var(--bg-panel) 10%);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  color: var(--bg-panel);
+  padding: 12px 14px;
+}
+
+.li-readiness__popover-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  margin-bottom: 8px;
+}
+
+.li-readiness__popover-body {
+  margin: 0 0 8px 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+}
+
+.li-readiness__list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+}
+
+.li-readiness__list-item {
+  padding: 2px 0;
 }
 
 .li-canvas .li-actions__btn {
