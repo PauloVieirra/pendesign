@@ -9,7 +9,7 @@ export function parseLlmJsonOutput(raw: string): ParseResult {
 
   const fenceMatch = raw.match(FENCE_RE);
   if (fenceMatch) {
-    return tryParse(fenceMatch[1]);
+    return tryParse(fenceMatch[1] ?? '');
   }
 
   const firstBrace = raw.indexOf('{');
