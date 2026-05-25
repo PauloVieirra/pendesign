@@ -730,8 +730,13 @@ export function NewProjectPanel({
   }
 
   function handleCreate() {
-    if (!canCreate || submitting) return;
+    console.log('[create-debug] handleCreate fired', { canCreate, submitting, tab, step, projectStack });
+    if (!canCreate || submitting) {
+      console.warn('[create-debug] blocked: canCreate=', canCreate, 'submitting=', submitting);
+      return;
+    }
     if (tab === 'figma') {
+      console.log('[create-debug] routing to handleCreateFigma');
       void handleCreateFigma();
       return;
     }
@@ -792,24 +797,25 @@ export function NewProjectPanel({
     );
     setSubmitting(true);
     try {
-      void Promise.resolve(
-        onCreate({
-          name: trimmedName || autoName(tab, mediaSurface, t),
-          skillId: skillIdForTab,
-          designSystemId: primaryDs,
-          metadata: {
-            ...metadata,
-            nameSource: trimmedName ? 'user' : 'generated',
-            // Carry the stack pick so the host can decide whether to fire
-            // /api/projects/:id/setup-react after project creation.
-            ...((tab === 'prototype' || tab === 'other') && projectStack === 'react-vite'
-              ? { stack: 'react-vite' }
-              : {}),
-          },
-          requestId,
-          docs: docs.length > 0 ? docs : undefined,
-        }),
-      ).finally(() => setSubmitting(false));
+      const payload = {
+        name: trimmedName || autoName(tab, mediaSurface, t),
+        skillId: skillIdForTab,
+        designSystemId: primaryDs,
+        metadata: {
+          ...metadata,
+          nameSource: trimmedName ? 'user' : 'generated' as 'user' | 'generated',
+          ...((tab === 'prototype' || tab === 'other') && projectStack === 'react-vite'
+            ? { stack: 'react-vite' as const }
+            : {}),
+        },
+        requestId,
+        docs: docs.length > 0 ? docs : undefined,
+      };
+      console.log('[create-debug] calling onCreate with', payload);
+      void Promise.resolve(onCreate(payload))
+        .then((result) => { console.log('[create-debug] onCreate resolved', result); })
+        .catch((err) => { console.error('[create-debug] onCreate rejected', err); })
+        .finally(() => setSubmitting(false));
     } catch {
       setSubmitting(false);
     }

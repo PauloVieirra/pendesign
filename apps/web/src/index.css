@@ -26960,3 +26960,117 @@ body.desktop-pet-shell .pet-task-item {
   margin: 0;
   min-height: 18px;
 }
+
+/* React dev preview shown in the FileWorkspace when no file tab is
+ * active and the project's stack is 'react-vite'. */
+.react-dev-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+}
+.react-dev-preview__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.react-dev-preview__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.react-dev-preview__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.react-dev-preview__status--running .react-dev-preview__dot { background: rgb(40, 180, 100); }
+.react-dev-preview__status--starting .react-dev-preview__dot { background: rgb(220, 160, 40); animation: react-dev-pulse 0.9s ease-in-out infinite; }
+.react-dev-preview__status--error .react-dev-preview__dot { background: rgb(220, 60, 60); }
+.react-dev-preview__status--stopped .react-dev-preview__dot { background: var(--border-strong); }
+@keyframes react-dev-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.react-dev-preview__port { color: var(--text); font-variant-numeric: tabular-nums; }
+.react-dev-preview__actions { display: inline-flex; gap: 6px; }
+.react-dev-preview__btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+.react-dev-preview__btn:hover { background: var(--bg-subtle); }
+.react-dev-preview__btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.react-dev-preview__btn--primary:hover { background: var(--accent-hover, var(--accent)); }
+.react-dev-preview__btn--primary:disabled { opacity: 0.6; cursor: progress; }
+.react-dev-preview__body {
+  flex: 1 1 auto;
+  position: relative;
+  background: #fff;
+  min-height: 0;
+}
+.react-dev-preview__iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.react-dev-preview__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.react-dev-preview__placeholder strong { color: var(--text); font-size: 14px; }
+.react-dev-preview__placeholder--error strong { color: rgb(190, 50, 50); }
+.react-dev-preview__placeholder code {
+  background: var(--bg-subtle);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.react-dev-preview__spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: react-dev-spin 0.9s linear infinite;
+}
+@keyframes react-dev-spin { to { transform: rotate(360deg); } }
+.react-dev-preview__log {
+  max-width: 560px;
+  max-height: 200px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  border-radius: 4px;
+  text-align: left;
+  white-space: pre;
+}

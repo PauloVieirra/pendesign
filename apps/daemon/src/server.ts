@@ -177,7 +177,14 @@ import { createJsonEventStreamHandler } from './json-event-stream.js';
 import { classifyAgentAuthFailure, cursorAuthGuidance } from './runtimes/auth.js';
 import { createQoderStreamHandler } from './qoder-stream.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
-import { getProjectSetupStatus, startProjectSetup } from './project-setup.js';
+import {
+  getDevServerStatus,
+  getProjectSetupStatus,
+  startDevServer,
+  startProjectSetup,
+  stopAllDevServers,
+  stopDevServer,
+} from './project-setup.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
@@ -2819,13 +2826,12 @@ export async function startServer({
         message: 'design system not found',
       };
     }
-    if (!isProjectUsableDesignSystem(summary)) {
-      return {
-        ok: false,
-        code: 'DESIGN_SYSTEM_NOT_PUBLISHED',
-        message: 'draft design systems cannot be used by projects',
-      };
-    }
+    // Draft design systems are allowed at project create time. The user
+    // typically iterates the DS alongside the project; refusing to bind a
+    // draft DS forced them to publish prematurely (or pick a published one
+    // they did not want). Downstream surfaces that need a publish-only
+    // guarantee can still call isProjectUsableDesignSystem(summary)
+    // directly — only project creation no longer enforces it.
     return { ok: true, id };
   }
 
@@ -3986,6 +3992,9 @@ export async function startServer({
     createProjectFolder,
     getProjectSetupStatus,
     startProjectSetup,
+    getDevServerStatus,
+    startDevServer,
+    stopDevServer,
     listFiles,
     listProjectTree,
     searchProjectFiles,

@@ -62,6 +62,7 @@ import { OD_THEME_CHANGE_EVENT, type OdThemeChangeDetail } from './components/Th
 import { isMacPlatform } from './utils/platform';
 import {
   createProject,
+  lastCreateProjectError,
   createPluginShareProject,
   deleteProject as deleteProjectApi,
   importClaudeDesignZip,
@@ -811,6 +812,14 @@ export function App() {
           },
           { requestId: input.requestId },
         );
+        // Surface the failure to the user. Before this, a backend rejection
+        // (e.g. a draft design system, an invalid metadata field) was eaten
+        // silently and the Create button looked like a no-op. Reading the
+        // captured error from state/projects.ts gives the user something
+        // actionable to fix instead of a stuck submit.
+        const reason = lastCreateProjectError ?? 'Could not create project';
+        try { window.alert(`Não foi possível criar o projeto:\n\n${reason}`); }
+        catch { console.error('[create-project] failed:', reason); }
         return;
       }
       const pendingFiles = Array.isArray(input.pendingFiles)
@@ -881,8 +890,11 @@ export function App() {
       // a package-manager install before the canvas can render anything
       // meaningful. We fire the setup, stash the project for the loading
       // overlay, and defer navigation until the overlay reports 'ready'.
+      console.log('[react-setup-debug] metadata stack:', input.metadata?.stack, 'projectId:', project.id);
       if (input.metadata?.stack === 'react-vite') {
-        await startProjectReactSetup(project.id);
+        console.log('[react-setup-debug] starting setup for', project.id);
+        const setupResult = await startProjectReactSetup(project.id);
+        console.log('[react-setup-debug] setup response:', setupResult);
         setReactSetupProject({ id: project.id, name: project.name });
         return;
       }

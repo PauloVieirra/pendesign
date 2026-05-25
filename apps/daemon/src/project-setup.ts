@@ -141,7 +141,19 @@ async function detectPackageManager(projectDir: string): Promise<'pnpm' | 'npm'>
 
 async function runInstall(projectId: string, projectDir: string, pm: 'pnpm' | 'npm'): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(pm, ['install'], {
+    // Critical: if the daemon is running inside a pnpm workspace (the
+    // Open Design monorepo, for example), pnpm walks up from `cwd` and
+    // discovers pnpm-workspace.yaml, then treats the new project as a
+    // workspace member. It then ignores the project's package.json and
+    // re-runs the monorepo's postinstall scripts instead of installing
+    // React. `--ignore-workspace` opts out of that walk so the project is
+    // installed in isolation. npm doesn't auto-detect workspaces this
+    // way, but we pass --no-workspaces defensively in case a future
+    // packaged build runs inside an npm workspace.
+    const args = pm === 'pnpm'
+      ? ['install', '--ignore-workspace']
+      : ['install', '--no-workspaces'];
+    const child = spawn(pm, args, {
       cwd: projectDir,
       env: { ...process.env, CI: '1' }, // suppresses interactive prompts
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -184,5 +196,156 @@ function appendLog(projectId: string, chunk: string): void {
     if (state.recentLog.length > RECENT_LOG_MAX * 2) {
       state.recentLog.splice(0, state.recentLog.length - RECENT_LOG_MAX);
     }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Vite dev server lifecycle. The daemon spawns `<pm> run dev`, parses
+// the "Local: http://..." line from Vite's stdout to learn the port, and
+// keeps a handle so the canvas-side proxy can forward HTTP requests to
+// the right port. Servers are scoped per project; calling startDevServer
+// while one is already running for the same project returns the existing
+// status (idempotent).
+// ─────────────────────────────────────────────────────────────────────
+
+export type DevServerPhase = 'idle' | 'starting' | 'running' | 'stopped' | 'error';
+
+export interface DevServerStatus {
+  phase: DevServerPhase;
+  port?: number;
+  url?: string;
+  pid?: number;
+  startedAt?: number;
+  recentLog: string[];
+  error?: string;
+}
+
+interface DevServerInternal extends DevServerStatus {
+  child?: import('node:child_process').ChildProcess;
+}
+
+const devServers = new Map<string, DevServerInternal>();
+const DEV_LOG_MAX = 60;
+
+export function getDevServerStatus(projectId: string): DevServerStatus | null {
+  const state = devServers.get(projectId);
+  if (!state) return null;
+  return {
+    phase: state.phase,
+    port: state.port,
+    url: state.url,
+    pid: state.pid,
+    startedAt: state.startedAt,
+    recentLog: state.recentLog.slice(-DEV_LOG_MAX),
+    error: state.error,
+  };
+}
+
+export function startDevServer(projectId: string, projectDir: string): DevServerStatus {
+  const existing = devServers.get(projectId);
+  if (existing && (existing.phase === 'starting' || existing.phase === 'running')) {
+    return getDevServerStatus(projectId)!;
+  }
+  const state: DevServerInternal = {
+    phase: 'starting',
+    startedAt: Date.now(),
+    recentLog: [],
+  };
+  devServers.set(projectId, state);
+  void launchDevServer(projectId, projectDir).catch((err) => {
+    const s = devServers.get(projectId);
+    if (s) {
+      s.phase = 'error';
+      s.error = String(err?.message ?? err);
+    }
+  });
+  return getDevServerStatus(projectId)!;
+}
+
+export function stopDevServer(projectId: string): boolean {
+  const state = devServers.get(projectId);
+  if (!state || !state.child) return false;
+  try {
+    // SIGTERM gives Vite a chance to clean up. We don't wait — the exit
+    // handler below flips the phase to 'stopped' when the child reports.
+    state.child.kill('SIGTERM');
+  } catch { /* already gone */ }
+  return true;
+}
+
+async function launchDevServer(projectId: string, projectDir: string): Promise<void> {
+  const pm = await detectPackageManager(projectDir);
+  const state = devServers.get(projectId);
+  if (!state) return;
+  appendDevLog(projectId, `[dev] launching ${pm} run dev`);
+  // Same workspace-isolation precaution as runInstall — see comment there.
+  const args = pm === 'pnpm'
+    ? ['--ignore-workspace', 'run', 'dev']
+    : ['run', 'dev'];
+  const child = spawn(pm, args, {
+    cwd: projectDir,
+    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  state.child = child;
+  state.pid = child.pid ?? undefined;
+
+  const handleChunk = (chunk: Buffer) => {
+    const text = chunk.toString('utf8');
+    appendDevLog(projectId, text);
+    // Vite reports its bound port via a "Local: http://host:port/" line.
+    // We accept either ipv4 hostnames or "localhost" and tolerate ANSI
+    // codes that occasionally leak through despite NO_COLOR=1.
+    if (state.phase === 'starting') {
+      const stripped = text.replace(/\[[0-9;]*m/g, '');
+      const match = stripped.match(/Local:\s+(https?:\/\/[^\s]+)/i);
+      if (match) {
+        let url = match[1];
+        // Vite emits "http://localhost:5173/" — strip a trailing slash so
+        // proxy targets join cleanly without doubling up.
+        if (url.endsWith('/')) url = url.slice(0, -1);
+        const portMatch = url.match(/:(\d+)/);
+        const port = portMatch ? Number(portMatch[1]) : undefined;
+        state.url = url;
+        state.port = port;
+        state.phase = 'running';
+        appendDevLog(projectId, `[dev] running on ${url}`);
+      }
+    }
+  };
+
+  child.stdout?.on('data', handleChunk);
+  child.stderr?.on('data', handleChunk);
+  child.on('error', (err) => {
+    state.phase = 'error';
+    state.error = `Could not spawn ${pm} run dev: ${err.message}`;
+  });
+  child.on('exit', (code, signal) => {
+    if (state.phase !== 'error') {
+      state.phase = code === 0 || signal === 'SIGTERM' ? 'stopped' : 'error';
+      if (state.phase === 'error') state.error = `dev server exited with code ${code}`;
+    }
+    state.child = undefined;
+    state.pid = undefined;
+  });
+}
+
+function appendDevLog(projectId: string, chunk: string): void {
+  const state = devServers.get(projectId);
+  if (!state) return;
+  const lines = chunk.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  for (const line of lines) {
+    state.recentLog.push(line);
+    if (state.recentLog.length > DEV_LOG_MAX * 2) {
+      state.recentLog.splice(0, state.recentLog.length - DEV_LOG_MAX);
+    }
+  }
+}
+
+// Cleanup hook. Called when the daemon is shutting down so dev servers
+// don't outlive the process they were spawned from.
+export function stopAllDevServers(): void {
+  for (const [projectId] of devServers) {
+    stopDevServer(projectId);
   }
 }

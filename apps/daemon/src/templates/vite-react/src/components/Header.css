@@ -1,0 +1,31 @@
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0 8px;
+}
+.app-header__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  color: white;
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 600;
+}
+.app-header__text { display: flex; flex-direction: column; gap: 2px; }
+.app-header__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+.app-header__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}

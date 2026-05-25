@@ -1,33 +1,4 @@
-.app {
-  max-width: 720px;
-  margin: 64px auto;
-  padding: 24px;
-  text-align: center;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-.app h1 {
-  font-size: 32px;
-  margin: 0 0 12px;
-}
-.app p {
-  color: #555;
-  margin: 0 0 24px;
-}
-.app code {
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-.app button {
-  padding: 10px 20px;
-  background: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.app button:hover {
-  background: #1d4ed8;
-}
+/* App-level styles are intentionally minimal — the Welcome screen
+ * brings in its own styles from src/components/Welcome.css. Add global
+ * resets here, or scope new styles to components under src/components/.
+ */

@@ -944,7 +944,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
   const { getProject } = ctx.projectStore;
-  const { createProjectFolder, getProjectSetupStatus, startProjectSetup, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
+  const { createProjectFolder, getProjectSetupStatus, startProjectSetup, getDevServerStatus, startDevServer, stopDevServer, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
 
@@ -967,6 +967,145 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }
   });
+
+  // ── React dev-server lifecycle ───────────────────────────────────────
+  // Status is polled by the canvas before/while it renders the proxy
+  // iframe. Start is fire-and-forget (idempotent — calling on an already
+  // running server returns the existing status). Stop sends SIGTERM and
+  // expects the exit handler to flip the phase.
+
+  app.get('/api/projects/:id/dev-server', async (req, res) => {
+    const status = getDevServerStatus(req.params.id);
+    if (!status) {
+      res.json({ phase: 'idle', recentLog: [] });
+      return;
+    }
+    res.json(status);
+  });
+
+  app.post('/api/projects/:id/dev-server/start', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      const projectDir = await ensureProject(PROJECTS_DIR, req.params.id, project?.metadata);
+      const status = startDevServer(req.params.id, projectDir);
+      res.json(status);
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  app.post('/api/projects/:id/dev-server/stop', async (req, res) => {
+    const stopped = stopDevServer(req.params.id);
+    res.json({ ok: stopped });
+  });
+
+  // Reverse proxy: /api/projects/:id/dev/* → http://127.0.0.1:DEV_PORT/*
+  // Streams responses through, including non-HTML assets. HTML responses
+  // get the edit bridge injected so the canvas can drive selection /
+  // drag-and-drop inside the React app. WebSockets (Vite HMR) need a
+  // different path — handled separately on the server upgrade event.
+  app.all('/api/projects/:id/dev/*', async (req, res) => {
+    const status = getDevServerStatus(req.params.id);
+    if (!status || status.phase !== 'running' || !status.port) {
+      sendApiError(res, 502, 'DEV_SERVER_NOT_RUNNING', 'dev server is not running');
+      return;
+    }
+    // Express 4 stuffs the wildcard match into req.params[0] as a string.
+    const subPath = String((req.params as any)[0] ?? '');
+    const search = req.url.split('?')[1] ?? '';
+    const targetPath = `/${subPath}${search ? `?${search}` : ''}`;
+    const upstreamUrl = `http://127.0.0.1:${status.port}${targetPath}`;
+    try {
+      const headers: Record<string, string> = {};
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value === undefined) continue;
+        const lower = key.toLowerCase();
+        if (lower === 'host' || lower === 'connection' || lower === 'content-length') continue;
+        headers[key] = Array.isArray(value) ? value.join(', ') : String(value);
+      }
+      const init: RequestInit = {
+        method: req.method,
+        headers,
+        redirect: 'manual',
+      };
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        // Buffer the body — Express has already parsed JSON forms for us
+        // in some routes; this passthrough keeps the bytes intact.
+        const chunks: Buffer[] = [];
+        for await (const chunk of req as any) chunks.push(chunk as Buffer);
+        if (chunks.length > 0) (init as any).body = Buffer.concat(chunks);
+      }
+      const upstream = await fetch(upstreamUrl, init);
+      res.status(upstream.status);
+      upstream.headers.forEach((val, key) => {
+        const lower = key.toLowerCase();
+        if (lower === 'transfer-encoding' || lower === 'content-encoding' || lower === 'content-length') return;
+        res.setHeader(key, val);
+      });
+      const contentType = upstream.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        // Inject the edit bridge just before </body> so the React app
+        // becomes selectable / draggable from the canvas. The Vite-served
+        // index.html is small (a stub + script tag) so this rewrite is
+        // cheap; runtime React markup gets data-od-runtime-id stamps
+        // applied by the bridge's DOM walk. We also rewrite absolute
+        // paths so the iframe can resolve them through the proxy.
+        const text = await upstream.text();
+        const prefix = `/api/projects/${encodeURIComponent(req.params.id)}/dev`;
+        const injected = injectDevBridgeIntoHtml(text, prefix);
+        const body = Buffer.from(injected, 'utf8');
+        res.setHeader('content-length', String(body.length));
+        res.end(body);
+        return;
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.end(buf);
+    } catch (err: any) {
+      sendApiError(res, 502, 'DEV_PROXY_FAILED', String(err?.message ?? err));
+    }
+  });
+
+  // Rewrites the HTML the Vite dev server returns so the iframe (which
+  // loads through /api/projects/:id/dev/) can resolve absolute paths.
+  //
+  // Vite emits <script src="/@vite/client">, <script src="/src/main.tsx">,
+  // <link href="/some.css"> etc. The browser interprets a leading `/` as
+  // "host root" and fetches /@vite/client straight against the daemon —
+  // which has no such route, so every asset 404s and the page stays blank.
+  //
+  // We prepend the proxy prefix to every same-origin absolute path so the
+  // assets route back through the proxy. We also rewrite imports inside
+  // inline <script type="module"> blocks for the same reason (Vite's
+  // react-refresh shim imports from "/@react-refresh").
+  function rewriteAbsolutePaths(html: string, prefix: string): string {
+    // Attribute paths: src="/x", href="/x". Skip "//host" and external
+    // URLs; the regex demands a single leading `/` followed by a non-`/`.
+    let out = html.replace(
+      /(src|href)="(\/[^/][^"]*)"/g,
+      (_full, attr: string, p: string) => `${attr}="${prefix}${p}"`,
+    );
+    // Bare ES module specifiers inside inline scripts (e.g. the Vite
+    // react-refresh wrapper). Same single-leading-slash rule.
+    out = out.replace(
+      /(from\s+|import\s*\(?\s*)"(\/[^/][^"]*)"/g,
+      (_full, lead: string, p: string) => `${lead}"${prefix}${p}"`,
+    );
+    return out;
+  }
+
+  // Stub bridge injector. The real edit-mode bridge lives in
+  // apps/web/src/edit-mode/bridge.ts and depends on web-only types; lifting
+  // it to a shared package is a separate refactor (tracked as M4). For
+  // now we inject a minimal marker so the canvas knows the proxy chain is
+  // alive — the real selection / drag behaviour will land alongside the
+  // bridge-extraction work.
+  function injectDevBridgeIntoHtml(html: string, prefix: string): string {
+    const rewritten = rewriteAbsolutePaths(html, prefix);
+    const marker = '<script data-od-react-proxy="1">window.__odReactProxy=true;</script>';
+    if (rewritten.includes('data-od-react-proxy')) return rewritten;
+    if (rewritten.includes('</body>')) return rewritten.replace('</body>', `${marker}</body>`);
+    return rewritten + marker;
+  }
 
   // Kick off React project setup: extract the Vite template and run the
   // package-manager install. Idempotent — calling twice while a setup is

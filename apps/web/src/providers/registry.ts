@@ -47,6 +47,7 @@ import type {
   ProjectDeploymentsResponse,
   PromptTemplateDetail,
   PromptTemplateSummary,
+  DevServerStatusResponse,
   ProjectFile,
   ProjectSetupStatusResponse,
   ProjectTreeResponse,
@@ -1271,6 +1272,39 @@ export async function fetchProjectSetupStatus(projectId: string): Promise<Projec
     return (await resp.json()) as ProjectSetupStatusResponse;
   } catch {
     return null;
+  }
+}
+
+export async function fetchDevServerStatus(projectId: string): Promise<DevServerStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server`);
+    if (!resp.ok) return null;
+    return (await resp.json()) as DevServerStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function startProjectDevServer(projectId: string): Promise<DevServerStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server/start`, {
+      method: 'POST',
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as DevServerStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function stopProjectDevServer(projectId: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server/stop`, {
+      method: 'POST',
+    });
+    return resp.ok;
+  } catch {
+    return false;
   }
 }
 

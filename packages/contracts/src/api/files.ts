@@ -105,3 +105,15 @@ export interface ProjectSetupStatusResponse {
   recentLog: string[];
   error?: string;
 }
+
+export type DevServerPhase = 'idle' | 'starting' | 'running' | 'stopped' | 'error';
+
+export interface DevServerStatusResponse {
+  phase: DevServerPhase;
+  port?: number;
+  url?: string;
+  pid?: number;
+  startedAt?: number;
+  recentLog: string[];
+  error?: string;
+}

@@ -1,15 +1,8 @@
-import { useState } from 'react';
-import './App.css';
+import { Welcome } from './components';
 
+// The Welcome screen is composed entirely from reusable components in
+// src/components/. Replace it (or edit the components in place) to build
+// out your own UI — the dev server will hot-reload on save.
 export function App() {
-  const [count, setCount] = useState(0);
-  return (
-    <main className="app">
-      <h1>Hello from React</h1>
-      <p>Edit <code>src/App.tsx</code> and save to see your changes.</p>
-      <button onClick={() => setCount((c) => c + 1)}>
-        Clicked {count} times
-      </button>
-    </main>
-  );
+  return <Welcome />;
 }

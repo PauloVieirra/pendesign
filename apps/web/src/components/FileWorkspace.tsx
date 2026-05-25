@@ -38,6 +38,7 @@ import {
 import { DesignFilesPanel } from './DesignFilesPanel';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { FileViewer, LiveArtifactViewer } from './FileViewer';
+import { ReactDevPreview } from './ReactDevPreview';
 import { Icon } from './Icon';
 import { LiveArtifactBadges } from './LiveArtifactBadges';
 import { PasteTextDialog } from './PasteTextDialog';
@@ -53,6 +54,10 @@ import {
 interface Props {
   projectId: string;
   projectKind: TrackingProjectKind;
+  /** Forwarded project metadata so the workspace can branch on
+   * stack-specific behaviour (e.g. show the React dev preview when
+   * stack === 'react-vite' and the workspace has no file tab active). */
+  projectMetadata?: { stack?: 'react-vite' } | null;
   files: ProjectFile[];
   liveArtifacts: LiveArtifactSummary[];
   filesRefreshKey?: number;
@@ -182,6 +187,7 @@ const DESIGN_SYSTEM_IMAGE_OR_FONT_EXTENSIONS = /\.(svg|png|jpe?g|gif|webp|avif|i
 export function FileWorkspace({
   projectId,
   projectKind,
+  projectMetadata,
   files,
   liveArtifacts,
   filesRefreshKey = 0,
@@ -885,10 +891,14 @@ export function FileWorkspace({
             onUseDesignSystem={onUseDesignSystem}
           />
         ) : activeTab === DESIGN_FILES_TAB ? (
-          <div className="viewer-empty viewer-empty--explorer-hint">
-            <strong>{t('workspace.openFromDesignFiles')}</strong>
-            <span>Open the Files tab in the left panel and click a file to start editing.</span>
-          </div>
+          projectMetadata?.stack === 'react-vite' ? (
+            <ReactDevPreview projectId={projectId} />
+          ) : (
+            <div className="viewer-empty viewer-empty--explorer-hint">
+              <strong>{t('workspace.openFromDesignFiles')}</strong>
+              <span>Open the Files tab in the left panel and click a file to start editing.</span>
+            </div>
+          )
         ) : isActiveSketch && activeSketch && activeFile ? (
           activeSketch.loaded ? (
             <SketchEditor
@@ -914,6 +924,14 @@ export function FileWorkspace({
             liveArtifactEvents={liveArtifactEvents}
             onRefreshArtifacts={onRefreshFiles}
           />
+        ) : projectMetadata?.stack === 'react-vite' && activeFile?.name === 'index.html' ? (
+          // In a React-Vite project, index.html is the Vite entry — opening
+          // it through the static preview gives a blank page (the `/src/
+          // main.tsx` reference only resolves through the dev server).
+          // Render the dev preview instead so the user sees the React app
+          // running. To edit the markup, open the file via the Explorer's
+          // raw view (a future M4 task).
+          <ReactDevPreview projectId={projectId} />
         ) : activeFile ? (
           <FileViewer
             projectId={projectId}
