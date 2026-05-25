@@ -101,7 +101,11 @@
 }
 
 /* ---- Card ---- */
-.li-card {
+/* All `.li-*` button rules below are prefixed with `.li-canvas` so they win
+   over the global `button:hover:not(:disabled)` rule in index.css
+   (specificity 0,0,2,1) which would otherwise paint hovers with
+   `var(--bg-subtle)` — almost-black in dark mode. */
+.li-canvas .li-card {
   width: 100%;
   background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--bg-panel) 14%, transparent);
@@ -114,12 +118,14 @@
   flex-direction: column;
   gap: 8px;
   transition: background-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+              border-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
               transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
   animation: li-card-enter 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.li-card:hover {
+.li-canvas .li-card:hover {
   background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 24%, transparent);
 }
 
 .li-card__title {
@@ -185,7 +191,7 @@
 .li-status--not_identified { color: color-mix(in srgb, var(--bg-panel) 40%, transparent); }
 
 /* ---- Drop bar ---- */
-.li-dropbar {
+.li-canvas .li-dropbar {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -200,11 +206,11 @@
   transition: background-color 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.li-dropbar:hover {
+.li-canvas .li-dropbar:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg-panel) 6%, transparent);
 }
 
-.li-dropbar:disabled {
+.li-canvas .li-dropbar:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -237,7 +243,7 @@
   gap: 6px;
 }
 
-.li-actions__btn {
+.li-canvas .li-actions__btn {
   background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
   color: var(--bg-panel);
   border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
@@ -248,8 +254,9 @@
   transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.li-actions__btn:hover:not(:disabled) {
+.li-canvas .li-actions__btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 20%, transparent);
 }
 
 .li-actions__btn:disabled {
