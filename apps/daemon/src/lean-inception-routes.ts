@@ -1,4 +1,6 @@
-import type { Express } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
   ExtractDocumentsRequestSchema,
@@ -7,6 +9,7 @@ import {
 import {
   upsertInceptionForProject,
   readInceptionState,
+  listDocuments,
   deleteDocument,
   deleteInception,
 } from './lean-inception/persistence.js';
@@ -24,26 +27,44 @@ export interface LeanInceptionRoutesDeps {
   defaultRuntime?: string;
 }
 
-function sendError(res: any, status: number, error: LeanInceptionError) {
+function sendError(res: Response, status: number, error: LeanInceptionError) {
   res.status(status).json({ error });
+}
+
+function safeRm(absolutePath: string) {
+  try { fs.rmSync(absolutePath, { force: true }); } catch { /* best-effort */ }
+}
+
+function wrap(handler: (req: Request, res: Response) => unknown | Promise<unknown>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => {
+        if (res.headersSent) { next(err); return; }
+        sendError(res, 500, {
+          code: 'EXTRACTION_FAILED',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+  };
 }
 
 export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRoutesDeps) {
   const invoker = deps.runtimeInvoker ?? invokeAgentForExtraction;
   const defaultRuntime = deps.defaultRuntime ?? 'claude';
 
-  app.get('/api/projects/:projectId/lean-inception', (req, res) => {
-    const inception = upsertInceptionForProject(deps.db, req.params.projectId);
+  app.get('/api/projects/:projectId/lean-inception', wrap((req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
     res.json({ state: readInceptionState(deps.db, inception.id) });
-  });
+  }));
 
-  app.get('/api/projects/:projectId/lean-inception/documents', (req, res) => {
-    const inception = upsertInceptionForProject(deps.db, req.params.projectId);
+  app.get('/api/projects/:projectId/lean-inception/documents', wrap((req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
     const state = readInceptionState(deps.db, inception.id);
     res.json({ documents: state.documents });
-  });
+  }));
 
-  app.post('/api/projects/:projectId/lean-inception/documents', async (req, res) => {
+  app.post('/api/projects/:projectId/lean-inception/documents', wrap(async (req, res) => {
     const parse = ExtractDocumentsRequestSchema.safeParse(req.body);
     if (!parse.success) {
       return sendError(res, 400, {
@@ -51,7 +72,7 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
         message: parse.error.message,
       });
     }
-    const inception = upsertInceptionForProject(deps.db, req.params.projectId);
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
     const runtime = parse.data.runtime ?? defaultRuntime;
     const extractions: ExtractionInfoSnapshot[] = [];
     for (const docInput of parse.data.documents) {
@@ -82,23 +103,30 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
       state: readInceptionState(deps.db, inception.id),
       extractions,
     });
-  });
+  }));
 
-  app.delete('/api/projects/:projectId/lean-inception/documents/:docId', (req, res) => {
-    const inception = upsertInceptionForProject(deps.db, req.params.projectId);
-    const removed = deleteDocument(deps.db, req.params.docId);
-    if (!removed) {
+  app.delete('/api/projects/:projectId/lean-inception/documents/:docId', wrap((req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
+    const docId = req.params.docId!;
+    const target = listDocuments(deps.db, inception.id).find(d => d.id === docId);
+    if (!target) {
       return sendError(res, 404, {
         code: 'DOCUMENT_NOT_FOUND',
-        message: `document not found: ${req.params.docId}`,
+        message: `document not found: ${docId}`,
       });
     }
+    deleteDocument(deps.db, target.id);
+    safeRm(path.resolve(deps.storageRoot, target.storage_path));
     res.json({ state: readInceptionState(deps.db, inception.id) });
-  });
+  }));
 
-  app.delete('/api/projects/:projectId/lean-inception', (req, res) => {
-    const inception = upsertInceptionForProject(deps.db, req.params.projectId);
+  app.delete('/api/projects/:projectId/lean-inception', wrap((req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
+    const docs = listDocuments(deps.db, inception.id);
     deleteInception(deps.db, inception.id);
+    for (const doc of docs) {
+      safeRm(path.resolve(deps.storageRoot, doc.storage_path));
+    }
     res.json({ ok: true });
-  });
+  }));
 }
