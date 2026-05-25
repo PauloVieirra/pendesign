@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
 type SqliteDb = Database.Database;
@@ -64,4 +65,139 @@ export function migrateLeanInception(db: SqliteDb): void {
       error_message     TEXT
     );
   `);
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+export interface InceptionRow {
+  id: string;
+  project_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentRow {
+  id: string;
+  inception_id: string;
+  filename: string;
+  mime_type: string;
+  byte_size: number;
+  content_hash: string;
+  storage_path: string;
+  ingested_at: string;
+  last_extracted_at: string | null;
+  extraction_status: 'pending' | 'extracting' | 'extracted' | 'failed';
+  extraction_error: string | null;
+}
+
+export interface InsertDocumentInput {
+  inception_id: string;
+  filename: string;
+  mime_type: string;
+  byte_size: number;
+  content_hash: string;
+  storage_path: string;
+}
+
+function nowIso() { return new Date().toISOString(); }
+function newInceptionId() { return `li_${randomUUID().replace(/-/g, '')}`; }
+function newDocumentId() { return `doc_${randomUUID().replace(/-/g, '')}`; }
+
+// ---------------------------------------------------------------------------
+// Inception CRUD
+// ---------------------------------------------------------------------------
+
+export function upsertInceptionForProject(db: SqliteDb, projectId: string): InceptionRow {
+  const existing = db.prepare(
+    'SELECT * FROM lean_inceptions WHERE project_id = ?'
+  ).get(projectId) as InceptionRow | undefined;
+  if (existing) return existing;
+
+  const row: InceptionRow = {
+    id: newInceptionId(),
+    project_id: projectId,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO lean_inceptions (id, project_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(row.id, row.project_id, row.created_at, row.updated_at);
+  return row;
+}
+
+export function deleteInception(db: SqliteDb, inceptionId: string): boolean {
+  const info = db.prepare('DELETE FROM lean_inceptions WHERE id = ?').run(inceptionId);
+  return info.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Document CRUD
+// ---------------------------------------------------------------------------
+
+export function insertDocument(db: SqliteDb, input: InsertDocumentInput): DocumentRow {
+  const row: DocumentRow = {
+    id: newDocumentId(),
+    inception_id: input.inception_id,
+    filename: input.filename,
+    mime_type: input.mime_type,
+    byte_size: input.byte_size,
+    content_hash: input.content_hash,
+    storage_path: input.storage_path,
+    ingested_at: nowIso(),
+    last_extracted_at: null,
+    extraction_status: 'pending',
+    extraction_error: null,
+  };
+  db.prepare(
+    `INSERT INTO lean_inception_documents
+     (id, inception_id, filename, mime_type, byte_size, content_hash, storage_path,
+      ingested_at, last_extracted_at, extraction_status, extraction_error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    row.id, row.inception_id, row.filename, row.mime_type, row.byte_size,
+    row.content_hash, row.storage_path, row.ingested_at, row.last_extracted_at,
+    row.extraction_status, row.extraction_error,
+  );
+  return row;
+}
+
+export function findDocumentByHash(db: SqliteDb, inceptionId: string, contentHash: string): DocumentRow | null {
+  const row = db.prepare(
+    'SELECT * FROM lean_inception_documents WHERE inception_id = ? AND content_hash = ?'
+  ).get(inceptionId, contentHash) as DocumentRow | undefined;
+  return row ?? null;
+}
+
+export function findDocumentByFilename(db: SqliteDb, inceptionId: string, filename: string): DocumentRow | null {
+  const row = db.prepare(
+    'SELECT * FROM lean_inception_documents WHERE inception_id = ? AND filename = ? ORDER BY ingested_at DESC LIMIT 1'
+  ).get(inceptionId, filename) as DocumentRow | undefined;
+  return row ?? null;
+}
+
+export function listDocuments(db: SqliteDb, inceptionId: string): DocumentRow[] {
+  return db.prepare(
+    'SELECT * FROM lean_inception_documents WHERE inception_id = ? ORDER BY ingested_at ASC'
+  ).all(inceptionId) as DocumentRow[];
+}
+
+export function deleteDocument(db: SqliteDb, documentId: string): boolean {
+  const info = db.prepare('DELETE FROM lean_inception_documents WHERE id = ?').run(documentId);
+  return info.changes > 0;
+}
+
+export function updateDocumentExtractionStatus(
+  db: SqliteDb,
+  documentId: string,
+  status: DocumentRow['extraction_status'],
+  errorMessage: string | null = null,
+): void {
+  db.prepare(
+    `UPDATE lean_inception_documents
+     SET extraction_status = ?, extraction_error = ?, last_extracted_at = ?
+     WHERE id = ?`
+  ).run(status, errorMessage, nowIso(), documentId);
 }
