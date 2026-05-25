@@ -17,13 +17,15 @@ ABSOLUTE RULES:
 
 COLUMNS (extract exactly these, with these criteria):
 
+market_research:      market investigation — competitors, segments, trends, existing solutions, sector data
+market_opportunities: identified gaps, unmet needs, addressable opportunities that justify building the product
 vision:               product vision statement / macro purpose
 problem:              problem/pain the product solves
 objective:            measurable or strategic business objectives
-features:             concrete functionalities the product must have
-business_rules:       rules, validations, domain restrictions
 personas:             user types (role + context + motivation)
 user_journey:         steps the user takes to reach a goal; flow/walkthrough through the product
+features:             concrete functionalities the product must have
+business_rules:       rules, validations, domain restrictions
 ideation:             ideas, hypotheses, experiments to explore (not yet validated requirements)
 acceptance_criteria:  objective acceptance / done criteria
 
@@ -31,7 +33,7 @@ OUTPUT SCHEMA (return EXACTLY this shape, JSON only):
 {
   "cards": [
     {
-      "column_key": "<one of: vision | problem | objective | features | business_rules | personas | user_journey | ideation | acceptance_criteria>",
+      "column_key": "<one of: market_research | market_opportunities | vision | problem | objective | personas | user_journey | features | business_rules | ideation | acceptance_criteria>",
       "title": "<5-80 chars, short identifier>",
       "content": "<expanded description, 1-3 sentences>",
       "confidence": "<high | medium | low>",

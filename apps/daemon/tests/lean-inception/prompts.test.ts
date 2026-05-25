@@ -12,9 +12,9 @@ describe('LEAN_INCEPTION_PROMPT_VERSION', () => {
 });
 
 describe('LEAN_INCEPTION_SYSTEM_PROMPT_V1', () => {
-  it('mentions all 9 column keys', () => {
+  it('mentions all 11 column keys', () => {
     const p = LEAN_INCEPTION_SYSTEM_PROMPT_V1;
-    for (const key of ['vision', 'problem', 'objective', 'features', 'business_rules', 'personas', 'user_journey', 'ideation', 'acceptance_criteria']) {
+    for (const key of ['market_research', 'market_opportunities', 'vision', 'problem', 'objective', 'personas', 'user_journey', 'features', 'business_rules', 'ideation', 'acceptance_criteria']) {
       expect(p).toContain(key);
     }
   });

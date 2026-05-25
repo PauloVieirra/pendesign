@@ -1,5 +1,7 @@
 {
   "minimums": {
+    "market_research":      { "min_cards": 0, "min_high_confidence": 0 },
+    "market_opportunities": { "min_cards": 0, "min_high_confidence": 0 },
     "vision":              { "min_cards": 1, "min_high_confidence": 0 },
     "objective":           { "min_cards": 1, "min_high_confidence": 0 },
     "problem":             { "min_cards": 1, "min_high_confidence": 0 },

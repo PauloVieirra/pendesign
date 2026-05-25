@@ -22,36 +22,42 @@ export const CONFIDENCE_DOT_CLASS: Record<LeanInceptionConfidence, string> = {
 };
 
 export const COLUMN_ORDER: readonly LeanInceptionColumnKey[] = [
+  'market_research',
+  'market_opportunities',
   'vision',
   'problem',
   'objective',
-  'features',
-  'business_rules',
   'personas',
   'user_journey',
+  'features',
+  'business_rules',
   'ideation',
   'acceptance_criteria',
 ];
 
 export const DEFAULT_VISIBLE_COLUMNS: readonly LeanInceptionColumnKey[] = [
+  'market_research',
+  'market_opportunities',
   'vision',
   'problem',
   'objective',
-  'features',
-  'business_rules',
   'personas',
   'user_journey',
+  'features',
+  'business_rules',
   'ideation',
 ];
 
 export const COLUMN_LABELS_PT: Record<LeanInceptionColumnKey, string> = {
+  market_research: 'Pesquisa de mercado',
+  market_opportunities: 'Oportunidades de mercado',
   vision: 'Visão',
   problem: 'Problema',
   objective: 'Objetivo',
-  features: 'Features',
-  business_rules: 'Regra de negócio',
   personas: 'Persona',
   user_journey: 'Jornada do usuário',
+  features: 'Features',
+  business_rules: 'Regra de negócio',
   ideation: 'Ideação',
   acceptance_criteria: 'Critérios de aceite',
 };
