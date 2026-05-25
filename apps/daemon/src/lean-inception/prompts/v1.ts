@@ -18,18 +18,20 @@ ABSOLUTE RULES:
 COLUMNS (extract exactly these, with these criteria):
 
 vision:               product vision statement / macro purpose
-objective:            measurable or strategic business objectives
 problem:              problem/pain the product solves
-personas:             user types (role + context + motivation)
+objective:            measurable or strategic business objectives
 features:             concrete functionalities the product must have
 business_rules:       rules, validations, domain restrictions
+personas:             user types (role + context + motivation)
+user_journey:         steps the user takes to reach a goal; flow/walkthrough through the product
+ideation:             ideas, hypotheses, experiments to explore (not yet validated requirements)
 acceptance_criteria:  objective acceptance / done criteria
 
 OUTPUT SCHEMA (return EXACTLY this shape, JSON only):
 {
   "cards": [
     {
-      "column_key": "<one of: vision | objective | problem | personas | features | business_rules | acceptance_criteria>",
+      "column_key": "<one of: vision | problem | objective | features | business_rules | personas | user_journey | ideation | acceptance_criteria>",
       "title": "<5-80 chars, short identifier>",
       "content": "<expanded description, 1-3 sentences>",
       "confidence": "<high | medium | low>",
