@@ -24,21 +24,21 @@ export function LeanInceptionColumn({
 }: Props) {
   const t = useT();
   return (
-    <div className="li-column w-[280px] flex-shrink-0 flex flex-col bg-neutral-50 rounded-lg p-3 gap-3">
+    <div className="li-column w-[280px] flex-shrink-0 flex flex-col rounded-lg p-3 gap-3">
       <header className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-neutral-800">
+        <h3 className="li-column__heading text-sm font-semibold">
           {t(`lean_inception.column.${columnKey}` as const)}
         </h3>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-medium ${STATUS_COLOR_CLASS[status]}`}>
             {t(`lean_inception.status.${status}` as const)}
           </span>
-          <span className="text-xs text-neutral-500 tabular-nums">{cards.length}</span>
+          <span className="li-column__count text-xs tabular-nums">{cards.length}</span>
         </div>
       </header>
       <div className="flex flex-col gap-2 min-h-[120px]">
         {cards.length === 0 ? (
-          <div data-testid="column-empty" className="text-xs text-neutral-400 italic px-1">
+          <div data-testid="column-empty" className="li-column__empty text-xs italic px-1">
             —
           </div>
         ) : (

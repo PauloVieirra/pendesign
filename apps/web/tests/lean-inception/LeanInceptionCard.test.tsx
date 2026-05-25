@@ -25,19 +25,19 @@ describe('LeanInceptionCard', () => {
     render(<LeanInceptionCard card={baseCard} onClick={() => {}} />);
     expect(screen.getByText('Build the best product')).toBeDefined();
     const dot = screen.getByTestId('confidence-dot');
-    expect(dot.className).toContain('bg-green-500');
+    expect(dot.className).toContain('li-confidence-dot--high');
   });
 
   it('uses amber dot for medium confidence', () => {
     render(<LeanInceptionCard card={{ ...baseCard, confidence: 'medium' }} onClick={() => {}} />);
     const dot = screen.getByTestId('confidence-dot');
-    expect(dot.className).toContain('bg-amber-500');
+    expect(dot.className).toContain('li-confidence-dot--medium');
   });
 
   it('uses neutral dot for low confidence', () => {
     render(<LeanInceptionCard card={{ ...baseCard, confidence: 'low' }} onClick={() => {}} />);
     const dot = screen.getByTestId('confidence-dot');
-    expect(dot.className).toContain('bg-neutral-400');
+    expect(dot.className).toContain('li-confidence-dot--low');
   });
 
   it('shows source line when present', () => {

@@ -11,7 +11,7 @@ export function LeanInceptionCard({ card, filename, onClick }: Props) {
   return (
     <button
       type="button"
-      className="li-card li-no-pan w-full text-left p-3 rounded-md bg-white shadow-sm hover:shadow-md border border-neutral-200 flex flex-col gap-1"
+      className="li-card li-no-pan w-full text-left p-3 rounded-md shadow-sm flex flex-col gap-1"
       onClick={() => onClick(card)}
       data-testid={`card-${card.id}`}
     >
@@ -21,14 +21,14 @@ export function LeanInceptionCard({ card, filename, onClick }: Props) {
           data-testid="confidence-dot"
           className={`mt-1.5 inline-block w-2 h-2 rounded-full flex-shrink-0 ${CONFIDENCE_DOT_CLASS[card.confidence]}`}
         />
-        <span className="text-sm font-medium text-neutral-900 line-clamp-2">
+        <span className="li-card__title text-sm font-medium line-clamp-2">
           {card.title}
         </span>
       </div>
-      <div className="text-xs text-neutral-500 truncate">
+      <div className="li-card__meta text-xs truncate">
         {filename}
         {card.source_line != null && (
-          <span className="ml-1 text-neutral-400">· L{card.source_line}</span>
+          <span className="li-card__line ml-1">· L{card.source_line}</span>
         )}
       </div>
     </button>

@@ -1,13 +1,17 @@
+/* ============================================================
+   Lean Inception — semantic token classes
+   All colors must use CSS vars; no hardcoded hex/rgb allowed.
+   ============================================================ */
+
+/* Board grid */
 .li-board-grid {
   width: max-content;
   min-width: 100%;
 }
 
-.li-card {
-  cursor: pointer;
-  transition: box-shadow 200ms cubic-bezier(0.23, 1, 0.32, 1);
+.li-board {
+  background: var(--bg-subtle);
 }
-.li-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 
 .li-board .react-transform-wrapper,
 .li-board .react-transform-component {
@@ -15,26 +19,268 @@
   height: 100% !important;
 }
 
-.li-drawer {
-  animation: li-drawer-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-@keyframes li-drawer-enter {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
+/* ---- Column ---- */
+.li-column {
+  background: var(--bg-muted);
 }
 
+.li-column__heading {
+  color: var(--text-strong);
+}
+
+.li-column__count {
+  color: var(--text-muted);
+}
+
+.li-column__empty {
+  color: var(--text-faint);
+}
+
+/* ---- Card ---- */
+.li-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: box-shadow 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.li-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.li-card__title {
+  color: var(--text-strong);
+}
+
+.li-card__meta {
+  color: var(--text-muted);
+}
+
+.li-card__line {
+  color: var(--text-faint);
+}
+
+/* ---- Status (column header badge) ---- */
+.li-status--complete      { color: var(--green); }
+.li-status--partial       { color: var(--amber); }
+.li-status--insufficient  { color: var(--amber); }
+.li-status--not_identified { color: var(--text-faint); }
+
+/* ---- Confidence dot ---- */
+.li-confidence-dot--high   { background: var(--green); }
+.li-confidence-dot--medium { background: var(--amber); }
+.li-confidence-dot--low    { background: var(--text-faint); }
+
+/* ---- Toolbar ---- */
+.li-toolbar {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.li-toolbar__add {
+  background: var(--text-strong);
+  color: var(--bg-panel);
+}
+.li-toolbar__add:hover:not(:disabled) {
+  background: var(--text);
+}
+
+.li-toolbar__btn {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: transparent;
+}
+.li-toolbar__btn:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+
+.li-toolbar__reset {
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  background: transparent;
+}
+.li-toolbar__reset:hover:not(:disabled) {
+  background: var(--red-bg);
+}
+
+/* ---- Popover ---- */
+.li-popover {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  animation: li-popover-enter 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes li-popover-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Documents list ---- */
+.li-documents-list__empty {
+  color: var(--text-muted);
+}
+
+.li-documents-list__item:hover {
+  background: var(--bg-subtle);
+}
+
+.li-documents-list__icon {
+  color: var(--text-muted);
+}
+
+.li-documents-list__filename {
+  color: var(--text-strong);
+}
+
+.li-documents-list__count {
+  color: var(--text-muted);
+}
+
+.li-documents-list__remove {
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.li-documents-list__remove:hover:not(:disabled) {
+  color: var(--red);
+}
+
+/* ---- Drop overlay ---- */
 .li-drop-overlay {
+  background: color-mix(in srgb, var(--blue-bg) 80%, transparent);
+  border: 4px dashed var(--blue-border);
   animation: li-overlay-enter 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+
+.li-drop-overlay__label {
+  color: var(--blue);
+}
+
 @keyframes li-overlay-enter {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-.li-popover {
-  animation: li-popover-enter 160ms cubic-bezier(0.23, 1, 0.32, 1);
+/* ---- Empty state ---- */
+.li-empty-state {
+  background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
 }
-@keyframes li-popover-enter {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+
+.li-empty-state__title {
+  color: var(--text-strong);
+}
+
+.li-empty-state__desc {
+  color: var(--text-muted);
+}
+
+.li-empty-state__btn {
+  background: var(--text-strong);
+  color: var(--bg-panel);
+}
+.li-empty-state__btn:hover {
+  background: var(--text);
+}
+
+/* ---- Detail drawer ---- */
+.li-drawer {
+  background: var(--bg-panel);
+  animation: li-drawer-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes li-drawer-enter {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.li-drawer-scrim {
+  background: color-mix(in srgb, var(--text-strong) 10%, transparent);
+}
+
+.li-drawer__header {
+  border-bottom: 1px solid var(--border);
+}
+
+.li-drawer__title {
+  color: var(--text-strong);
+}
+
+.li-drawer__close {
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.li-drawer__close:hover {
+  color: var(--text-strong);
+}
+
+.li-drawer__body {
+  color: var(--text);
+}
+
+.li-drawer__section-label {
+  color: var(--text-muted);
+}
+
+.li-drawer__blockquote {
+  border-left: 2px solid var(--border-strong);
+  color: var(--text);
+}
+
+.li-drawer__source-meta {
+  color: var(--text-muted);
+}
+
+/* ---- Canvas states ---- */
+.li-canvas {
+  background: var(--bg-panel);
+}
+
+.li-canvas__loading {
+  color: var(--text-muted);
+}
+
+.li-canvas__error {
+  color: var(--red);
+}
+
+.li-canvas__retry {
+  background: var(--text-strong);
+  color: var(--bg-panel);
+}
+
+/* ---- Confirm modal ---- */
+.li-modal-scrim {
+  background: color-mix(in srgb, var(--text-strong) 30%, transparent);
+}
+
+.li-modal {
+  background: var(--bg-panel);
+}
+
+.li-modal__title {
+  color: var(--text-strong);
+}
+
+.li-modal__desc {
+  color: var(--text-muted);
+}
+
+.li-modal__cancel {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: transparent;
+}
+
+.li-modal__confirm {
+  background: var(--red);
+  color: var(--bg-panel);
+}
+
+/* ---- Error toast ---- */
+.li-toast {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red);
 }

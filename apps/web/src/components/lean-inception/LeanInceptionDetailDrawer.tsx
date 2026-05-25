@@ -26,42 +26,42 @@ export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
   return (
     <>
       <div
-        className="li-drawer-scrim fixed inset-0 bg-black/10 z-40"
+        className="li-drawer-scrim fixed inset-0 z-40"
         onClick={onClose}
         aria-hidden
       />
       <aside
-        className="li-drawer fixed top-0 right-0 h-full w-[400px] bg-white z-50 shadow-xl flex flex-col"
+        className="li-drawer fixed top-0 right-0 h-full w-[400px] z-50 shadow-xl flex flex-col"
         role="dialog"
         aria-modal="true"
       >
-        <header className="flex items-start justify-between p-4 border-b border-neutral-200">
+        <header className="li-drawer__header flex items-start justify-between p-4">
           <div className="flex items-start gap-2">
             <span
               aria-hidden
               className={`mt-1.5 inline-block w-2 h-2 rounded-full ${CONFIDENCE_DOT_CLASS[card.confidence]}`}
             />
-            <h2 className="text-base font-semibold text-neutral-900">{card.title}</h2>
+            <h2 className="li-drawer__title text-base font-semibold">{card.title}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-neutral-500 hover:text-neutral-900"
+            className="li-drawer__close"
           >
             ✕
           </button>
         </header>
-        <div className="flex-1 overflow-auto p-4 space-y-4 text-sm text-neutral-700">
+        <div className="li-drawer__body flex-1 overflow-auto p-4 space-y-4 text-sm">
           <p>{card.content}</p>
           <section>
-            <h3 className="text-xs uppercase tracking-wide text-neutral-500 mb-2">
+            <h3 className="li-drawer__section-label text-xs uppercase tracking-wide mb-2">
               {t('lean_inception.detail.source')}
             </h3>
-            <blockquote className="border-l-2 border-neutral-300 pl-3 italic text-neutral-700">
+            <blockquote className="li-drawer__blockquote pl-3 italic">
               {card.source_anchor}
             </blockquote>
-            <div className="mt-2 text-xs text-neutral-500">
+            <div className="li-drawer__source-meta mt-2 text-xs">
               {filename && <span>{filename}</span>}
               {card.source_line != null && (
                 <span className="ml-2">

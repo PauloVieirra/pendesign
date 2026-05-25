@@ -16,7 +16,7 @@ const STATUS_ICON: Record<LeanInceptionDocument['extraction_status'], string> = 
 export function LeanInceptionDocumentsList({ documents, onRemove, disabled }: Props) {
   if (documents.length === 0) {
     return (
-      <div className="p-3 text-sm text-neutral-500 italic">No documents</div>
+      <div className="li-documents-list__empty p-3 text-sm italic">No documents</div>
     );
   }
   return (
@@ -24,19 +24,19 @@ export function LeanInceptionDocumentsList({ documents, onRemove, disabled }: Pr
       {documents.map((doc) => (
         <li
           key={doc.id}
-          className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-neutral-50"
+          className="li-documents-list__item flex items-center justify-between gap-2 px-3 py-2"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span aria-hidden className="text-neutral-500">{STATUS_ICON[doc.extraction_status]}</span>
-            <span className="text-sm text-neutral-800 truncate">{doc.filename}</span>
-            <span className="text-xs text-neutral-500 tabular-nums">{doc.card_count}</span>
+            <span aria-hidden className="li-documents-list__icon">{STATUS_ICON[doc.extraction_status]}</span>
+            <span className="li-documents-list__filename text-sm truncate">{doc.filename}</span>
+            <span className="li-documents-list__count text-xs tabular-nums">{doc.card_count}</span>
           </div>
           <button
             type="button"
             onClick={() => onRemove(doc.id)}
             disabled={disabled}
             aria-label={`Remove ${doc.filename}`}
-            className="text-neutral-400 hover:text-red-500 disabled:opacity-40"
+            className="li-documents-list__remove disabled:opacity-40"
           >
             ✕
           </button>

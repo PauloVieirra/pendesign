@@ -9,16 +9,16 @@ export const LEAN_INCEPTION_TAB = '__lean_inception__';
 export const SUPPORTED_EXTENSIONS = new Set<string>(['.md', '.txt']);
 
 export const STATUS_COLOR_CLASS: Record<LeanInceptionColumnStatus, string> = {
-  complete:        'text-green-500',
-  partial:         'text-amber-500',
-  insufficient:    'text-orange-500',
-  not_identified:  'text-neutral-400',
+  complete:        'li-status--complete',
+  partial:         'li-status--partial',
+  insufficient:    'li-status--insufficient',
+  not_identified:  'li-status--not_identified',
 };
 
 export const CONFIDENCE_DOT_CLASS: Record<LeanInceptionConfidence, string> = {
-  high:   'bg-green-500',
-  medium: 'bg-amber-500',
-  low:    'bg-neutral-400',
+  high:   'li-confidence-dot--high',
+  medium: 'li-confidence-dot--medium',
+  low:    'li-confidence-dot--low',
 };
 
 export const COLUMN_ORDER: readonly LeanInceptionColumnKey[] = [

@@ -63,7 +63,7 @@ export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanIn
 
   return (
     <div
-      className="li-board relative flex-1 overflow-hidden bg-neutral-100"
+      className="li-board relative flex-1 overflow-hidden"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}

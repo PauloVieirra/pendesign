@@ -40,11 +40,11 @@
     "posthog-js": "1.374.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-zoom-pan-pinch": "^4.0.3"
+    "react-zoom-pan-pinch": "4.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.0",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.5.2",
     "@types/jsdom": "28.0.3",

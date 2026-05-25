@@ -34,14 +34,14 @@ export function LeanInceptionCanvas({ projectId }: Props) {
   };
 
   if (isLoading) {
-    return <div data-testid="canvas-loading" className="flex items-center justify-center h-full text-neutral-500">Loading…</div>;
+    return <div data-testid="canvas-loading" className="li-canvas__loading flex items-center justify-center h-full">Loading…</div>;
   }
 
   if (!state) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-red-600">{error ?? 'Failed to load Lean Inception.'}</p>
-        <button type="button" onClick={() => void refresh()} className="px-3 py-1.5 rounded-md bg-neutral-900 text-white text-sm">Retry</button>
+        <p className="li-canvas__error">{error ?? 'Failed to load Lean Inception.'}</p>
+        <button type="button" onClick={() => void refresh()} className="li-canvas__retry px-3 py-1.5 rounded-md text-sm">Retry</button>
       </div>
     );
   }
@@ -51,7 +51,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
     : null;
 
   return (
-    <div className="li-canvas flex flex-col h-full bg-white">
+    <div className="li-canvas flex flex-col h-full">
       <LeanInceptionToolbar
         documents={state.documents}
         isMutating={isMutating}
@@ -86,15 +86,15 @@ export function LeanInceptionCanvas({ projectId }: Props) {
       />
 
       {confirmingReset && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm">
-            <h3 className="text-lg font-semibold mb-2">{t('lean_inception.confirm.reset.title')}</h3>
-            <p className="text-sm text-neutral-600 mb-4">{t('lean_inception.confirm.reset.description')}</p>
+        <div className="li-modal-scrim fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="li-modal rounded-lg shadow-xl p-6 max-w-sm">
+            <h3 className="li-modal__title text-lg font-semibold mb-2">{t('lean_inception.confirm.reset.title')}</h3>
+            <p className="li-modal__desc text-sm mb-4">{t('lean_inception.confirm.reset.description')}</p>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setConfirmingReset(false)} className="px-3 py-1.5 rounded-md border border-neutral-200 text-sm">
+              <button type="button" onClick={() => setConfirmingReset(false)} className="li-modal__cancel px-3 py-1.5 rounded-md text-sm">
                 {t('lean_inception.confirm.reset.cancel')}
               </button>
-              <button type="button" onClick={() => void onConfirmReset()} className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm">
+              <button type="button" onClick={() => void onConfirmReset()} className="li-modal__confirm px-3 py-1.5 rounded-md text-sm">
                 {t('lean_inception.confirm.reset.confirm')}
               </button>
             </div>
@@ -103,7 +103,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
       )}
 
       {error && !isLoading && (
-        <div className="absolute bottom-4 right-4 max-w-sm bg-red-50 border border-red-200 text-red-800 rounded-md px-3 py-2 text-sm shadow">
+        <div className="li-toast absolute bottom-4 right-4 max-w-sm rounded-md px-3 py-2 text-sm shadow">
           {error}
         </div>
       )}
