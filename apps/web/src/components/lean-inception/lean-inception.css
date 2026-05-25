@@ -24,30 +24,29 @@
   overflow: hidden;
 }
 
-/* react-zoom-pan-pinch wrappers — let the inner content size itself naturally
-   (do NOT force width:100% or its inner grid clamps and wraps). */
+/* react-zoom-pan-pinch wrappers — only the OUTER wrapper needs to fill the
+   viewport. We do NOT target .react-transform-component with a higher
+   specificity selector because it shares its DOM node with .li-board__grid
+   and would clobber our flex-row rules. */
 .li-board .react-transform-wrapper {
   width: 100% !important;
   height: 100% !important;
-  /* Vertical & horizontal scroll governed by the pan transform, not the DOM. */
   overflow: hidden;
-}
-.li-board .react-transform-component {
-  width: 100% !important;
-  height: 100% !important;
-  display: block !important;
-  /* Critical: do NOT let it impose flex/grid wrapping on our content. */
+  max-width: 100%;
 }
 
+/* This class is applied alongside react-zoom-pan-pinch's hashed `.content`
+   class (which defaults to `display: flex; flex-wrap: wrap`). Our overrides
+   force a single horizontal row that can overflow horizontally. */
 .li-board__grid {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
+  width: max-content !important;
+  min-width: 100%;
   gap: 24px;
   padding: 56px 48px 32px 48px;
   align-items: flex-start;
-  width: max-content;
-  min-width: 100%;
 }
 
 /* Gestalt continuity: right-edge fade hints that more columns exist when
