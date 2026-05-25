@@ -199,10 +199,10 @@ describe('extraction + cards + state', () => {
 
     const state = readInceptionState(db, inception.id);
     expect(state.documents).toHaveLength(1);
-    expect(state.documents[0].card_count).toBe(3);
-    expect(state.columns.personas.status).toBe('complete');
-    expect(state.columns.personas.cards).toHaveLength(3);
-    expect(state.columns.vision.status).toBe('not_identified');
-    expect(state.columns.vision.cards).toHaveLength(0);
+    expect(state.documents[0]!.card_count).toBe(3);
+    expect(state.columns.personas!.status).toBe('complete');
+    expect(state.columns.personas!.cards).toHaveLength(3);
+    expect(state.columns.vision!.status).toBe('not_identified');
+    expect(state.columns.vision!.cards).toHaveLength(0);
   });
 });
