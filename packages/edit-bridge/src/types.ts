@@ -201,6 +201,17 @@ export interface ManualEditFormatColorRequestMessage {
   currentColor: string;
 }
 
+// Bridge → host. The host posts 'od-edit-request-snapshot' { requestId }
+// when a structural patch couldn't find its target in the source HTML
+// (typical for single-file SPAs). The bridge replies with this message
+// carrying a cleaned-up clone of the body so the host can do a
+// snapshot-replace on disk.
+export interface ManualEditSnapshotResponseMessage {
+  type: 'od-edit-snapshot-response';
+  requestId: string;
+  bodyHtml: string;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -213,7 +224,8 @@ export type ManualEditBridgeMessage =
   | ManualEditSourceRequestMessage
   | ManualEditStructuralActionMessage
   | ManualEditFormatColorRequestMessage
-  | ManualEditResizeCommitMessage;
+  | ManualEditResizeCommitMessage
+  | ManualEditSnapshotResponseMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'lineHeight', 'letterSpacing',

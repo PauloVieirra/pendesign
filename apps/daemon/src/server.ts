@@ -180,6 +180,7 @@ import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import {
   getDevServerStatus,
   getProjectSetupStatus,
+  setupSpaSingleFileProject,
   startDevServer,
   startProjectSetup,
   stopAllDevServers,
@@ -3992,6 +3993,7 @@ export async function startServer({
     createProjectFolder,
     getProjectSetupStatus,
     startProjectSetup,
+    setupSpaSingleFileProject,
     getDevServerStatus,
     startDevServer,
     stopDevServer,

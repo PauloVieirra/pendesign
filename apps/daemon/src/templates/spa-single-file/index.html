@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPA single-file</title>
+  <!-- React + ReactDOM via UMD CDN. Babel transforms the inline JSX block
+       in the browser so the file stays self-contained — no build step. -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #111827;
+      background: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .app {
+      max-width: 720px;
+      margin: 64px auto;
+      padding: 24px;
+    }
+    .app__title { font-size: 26px; margin: 0 0 8px; }
+    .app__lead { margin: 0 0 24px; color: #4b5563; font-size: 14px; line-height: 1.55; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      padding: 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+    }
+    .card h3 { margin: 0 0 6px; font-size: 14px; }
+    .card p { margin: 0; color: #4b5563; font-size: 13px; line-height: 1.5; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 10px 18px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    .btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    function App() {
+      const [count, setCount] = useState(0);
+      return (
+        <main className="app">
+          <h1 className="app__title">SPA single-file</h1>
+          <p className="app__lead">
+            Tudo neste arquivo é renderizado por React + Babel direto no
+            browser, sem servidor de build. Edite o JSX abaixo da tag
+            <code> &lt;script type="text/babel"&gt; </code> para mudar a
+            tela — uma recarga aplica.
+          </p>
+          <div className="grid">
+            <div className="card">
+              <h3>Pronto pra editar</h3>
+              <p>Alvo natural pro Manual Edit + drag/drop visual.</p>
+            </div>
+            <div className="card">
+              <h3>Sem build</h3>
+              <p>Babel transforma o JSX no navegador.</p>
+            </div>
+            <div className="card">
+              <h3>Compartilhar fácil</h3>
+              <p>Um arquivo HTML que roda em qualquer browser moderno.</p>
+            </div>
+          </div>
+          <button className="btn" onClick={() => setCount((c) => c + 1)}>
+            Clicado {count} vezes
+          </button>
+        </main>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

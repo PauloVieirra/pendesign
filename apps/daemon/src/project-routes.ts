@@ -944,7 +944,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { upload } = ctx.uploads;
   const { fs } = ctx.node;
   const { getProject } = ctx.projectStore;
-  const { createProjectFolder, getProjectSetupStatus, startProjectSetup, getDevServerStatus, startDevServer, stopDevServer, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
+  const { createProjectFolder, getProjectSetupStatus, startProjectSetup, setupSpaSingleFileProject, getDevServerStatus, startDevServer, stopDevServer, listFiles, listProjectTree, searchProjectFiles, readProjectFile, resolveProjectDir, resolveProjectFilePath, parseByteRange, renameProjectFile, deleteProjectFile, writeProjectFile, sanitizeName, ensureProject } = ctx.projectFiles;
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
 
@@ -1106,6 +1106,21 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     if (rewritten.includes('</body>')) return rewritten.replace('</body>', `${marker}</body>`);
     return rewritten + marker;
   }
+
+  // SPA single-file setup. Copies the embedded standalone HTML template
+  // into the project root. No package manager involved — the template
+  // pulls React and Babel from a CDN at runtime, so the project is ready
+  // the moment this returns.
+  app.post('/api/projects/:id/setup-spa', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      const projectDir = await ensureProject(PROJECTS_DIR, req.params.id, project?.metadata);
+      await setupSpaSingleFileProject(req.params.id, projectDir);
+      res.json({ ok: true });
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
 
   // Kick off React project setup: extract the Vite template and run the
   // package-manager install. Idempotent — calling twice while a setup is

@@ -1253,6 +1253,17 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
   }
 }
 
+export async function setupSpaSingleFileProject(projectId: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-spa`, {
+      method: 'POST',
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function startProjectReactSetup(projectId: string): Promise<ProjectSetupStatusResponse | null> {
   try {
     const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-react`, {

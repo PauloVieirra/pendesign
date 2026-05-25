@@ -19,6 +19,7 @@ import { buildStandaloneBridgeJs, buildStandaloneBridgeCss } from '@open-design/
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMPLATE_DIR = path.resolve(__dirname, 'templates/vite-react');
+const SPA_TEMPLATE_DIR = path.resolve(__dirname, 'templates/spa-single-file');
 
 export type ProjectSetupPhase = 'extracting' | 'installing' | 'ready' | 'error';
 
@@ -95,6 +96,14 @@ async function runSetup(projectId: string, projectDir: string): Promise<void> {
 
 async function extractViteReactTemplate(targetDir: string): Promise<void> {
   await copyDirRecursive(TEMPLATE_DIR, targetDir);
+}
+
+// SPA single-file projects don't need a dependency install — the template
+// is one HTML file that pulls React + Babel from a CDN at runtime. The
+// setup endpoint returns 'ready' as soon as the copy is done.
+export async function setupSpaSingleFileProject(projectId: string, projectDir: string): Promise<void> {
+  await copyDirRecursive(SPA_TEMPLATE_DIR, projectDir);
+  void projectId;
 }
 
 // Writes the edit-mode bridge into the project's public/ folder so the

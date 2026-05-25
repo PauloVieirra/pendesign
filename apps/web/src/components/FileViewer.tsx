@@ -115,6 +115,7 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
+  replaceBodyWithSnapshot,
 } from '@open-design/edit-bridge';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
@@ -3859,6 +3860,24 @@ function HtmlViewer({
   const [manualEditColorPicker, setManualEditColorPicker] = useState<EditModeColorPopoverState>(emptyEditModeColorPopoverState);
   const manualEditUploadInputRef = useRef<HTMLInputElement | null>(null);
   const manualEditSavingRef = useRef(false);
+  // Pending snapshot requests, keyed by requestId. The host posts
+  // 'od-edit-request-snapshot' when a structural patch failed against the
+  // source HTML; the bridge replies with 'od-edit-snapshot-response' that
+  // resolves the matching promise. Used only by SPA fallback in
+  // applyManualEdit.
+  const pendingSnapshotsRef = useRef<Map<string, (html: string | null) => void>>(new Map());
+  const requestBridgeSnapshot = useCallback((): Promise<string | null> => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return Promise.resolve(null);
+    const requestId = `snap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return new Promise<string | null>((resolve) => {
+      pendingSnapshotsRef.current.set(requestId, resolve);
+      window.setTimeout(() => {
+        if (pendingSnapshotsRef.current.delete(requestId)) resolve(null);
+      }, 2000);
+      win.postMessage({ type: 'od-edit-request-snapshot', requestId }, '*');
+    });
+  }, []);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mirrors the pending-style infrastructure for text/link/image content
@@ -4894,9 +4913,18 @@ function HtmlViewer({
         });
         return;
       }
+      if (data.type === 'od-edit-snapshot-response') {
+        const resolve = pendingSnapshotsRef.current.get(data.requestId);
+        if (resolve) {
+          pendingSnapshotsRef.current.delete(data.requestId);
+          resolve(typeof data.bodyHtml === 'string' ? data.bodyHtml : null);
+        }
+        return;
+      }
       if (data.type === 'od-edit-structural-action') {
+        console.log('[od-edit-host] structural-action received', data);
         if (data.action === 'clone') {
-          void applyManualEdit({ id: data.id, kind: 'clone-element-after' }, 'Duplicate');
+          void applyManualEdit({ id: data.id, kind: 'clone-element-after' }, 'Duplicate').then((ok) => console.log('[od-edit-host] Duplicate ok=', ok));
         } else if (data.action === 'delete') {
           void applyManualEdit({ id: data.id, kind: 'delete-element' }, 'Delete');
         } else if (data.action === 'add-sibling-li') {
@@ -4912,12 +4940,12 @@ function HtmlViewer({
           void applyManualEdit(
             { id: data.id, kind: 'move-before-ref', referenceId: data.referenceId },
             'Reorder',
-          );
+          ).then((ok) => console.log('[od-edit-host] Reorder ok=', ok, 'manualEditError=', manualEditError));
         } else if (data.action === 'append-to-parent' && data.parentId) {
           void applyManualEdit(
             { id: data.id, kind: 'append-to-parent', parentId: data.parentId },
             'Reparent',
-          );
+          ).then((ok) => console.log('[od-edit-host] Reparent ok=', ok, 'manualEditError=', manualEditError));
         }
         return;
       }
@@ -5105,7 +5133,29 @@ function HtmlViewer({
     setManualEditError(null);
     try {
       const baseSource = sourceRef.current;
-      const result = applyManualEditPatch(baseSource, patch);
+      let result = applyManualEditPatch(baseSource, patch);
+      // SPA fallback. Structural patches (drag, reparent, reorder…) need
+      // the source to contain the runtime DOM nodes the bridge stamps
+      // ids on. Single-file SPAs only carry a root div + scripts, so
+      // findEditableElement returns null and the patch fails. Recover by
+      // asking the bridge for a snapshot of the live body, replacing the
+      // source's body with it, and stripping the scripts that would
+      // overwrite the snapshot next load.
+      const isStructural =
+        patch.kind === 'move-before-ref' ||
+        patch.kind === 'append-to-parent' ||
+        patch.kind === 'move-element-up' ||
+        patch.kind === 'move-element-down' ||
+        patch.kind === 'delete-element' ||
+        patch.kind === 'clone-element-after' ||
+        patch.kind === 'insert-sibling-after';
+      if (!result.ok && isStructural && /not found/i.test(result.error ?? '')) {
+        const snapshot = await requestBridgeSnapshot();
+        if (snapshot) {
+          const snapshotSource = replaceBodyWithSnapshot(baseSource, snapshot);
+          result = { ok: true, source: snapshotSource };
+        }
+      }
       if (!result.ok) {
         setManualEditError(result.error ?? 'Could not apply edit.');
         return false;

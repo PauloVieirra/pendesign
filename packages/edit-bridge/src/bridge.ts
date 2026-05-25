@@ -808,6 +808,13 @@ export function buildManualEditBridge(enabled: boolean): string {
     document.addEventListener('mousemove', onDragMove, true);
     document.addEventListener('mouseup', onDragUp, true);
     document.addEventListener('keydown', onDragKey, true);
+    // Safety nets: if the user releases the mouse outside the iframe, the
+    // mouseup event never fires inside the document we just registered
+    // against, and dragState stays alive — body.cursor stuck at "grabbing",
+    // hand emoji preventing any further selection. We catch those exits
+    // through window-level events and a mouseleave on documentElement.
+    window.addEventListener('blur', onDragWindowBlur, true);
+    document.documentElement.addEventListener('mouseleave', onDragDocLeave, true);
   }
   function installDragVisuals(){
     // Ghost: a clone of the dragged element pinned to the cursor. We use
@@ -984,6 +991,8 @@ export function buildManualEditBridge(enabled: boolean): string {
   function endDrag(commit){
     document.removeEventListener('mousemove', onDragMove, true);
     document.removeEventListener('mouseup', onDragUp, true);
+    window.removeEventListener('blur', onDragWindowBlur, true);
+    document.documentElement.removeEventListener('mouseleave', onDragDocLeave, true);
     document.removeEventListener('keydown', onDragKey, true);
     document.body.style.cursor = '';
     var state = dragState;
@@ -1035,6 +1044,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     var sourceId = stableId(state.el);
     var plan = state.plan;
     var containerId = plan.container === document.body ? '__body__' : stableId(plan.container);
+    odbg('drag-commit', { sourceId: sourceId, containerId: containerId, kind: plan.kind, insertBefore: plan.insertBefore ? stableId(plan.insertBefore) : null });
     if (plan.kind === 'inside' || !plan.insertBefore) {
       window.parent.postMessage({
         type: 'od-edit-structural-action',
@@ -1059,6 +1069,24 @@ export function buildManualEditBridge(enabled: boolean): string {
       ev.stopPropagation();
       endDrag(false);
     }
+  }
+  // The iframe lost focus mid-drag — treat that as an Esc cancel so the
+  // grabbing cursor is dropped and the placeholder is unwound. We do NOT
+  // commit because the user may have clicked outside intentionally.
+  function onDragWindowBlur(){
+    if (!dragState) return;
+    endDrag(false);
+  }
+  // mouseleave fires only when the cursor leaves the documentElement
+  // (i.e. the iframe entirely). When it does we end the drag — without
+  // this, releasing the mouse over the host canvas left dragState alive
+  // and the hand cursor stuck.
+  function onDragDocLeave(ev){
+    if (!dragState) return;
+    // Native browsers re-fire mouseleave when the user crosses a child
+    // element. Filter to genuine document exits.
+    if (ev.relatedTarget && ev.relatedTarget !== document.documentElement) return;
+    endDrag(false);
   }
   function isBridgeManagedNode(el){
     while (el && el !== document.body) {
@@ -1475,6 +1503,32 @@ export function buildManualEditBridge(enabled: boolean): string {
       document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
       if (!enabled) { finishInlineEdit(false); clearSelectedTarget(); teardownResizeHandles(); teardownPaddingHandles(); }
       if (enabled) setTimeout(postTargets, 0);
+      return;
+    }
+    // Snapshot the live DOM so the host can recover when a structural
+    // patch could not find its target in the source HTML (typical for
+    // single-file SPAs that render through inline React/Babel). We clone
+    // body, strip every node the bridge owns (overlays, ghosts, drop
+    // indicators) and every runtime-only attribute so the snapshot looks
+    // like a hand-authored page.
+    if (ev.data.type === 'od-edit-request-snapshot') {
+      var clone = document.body.cloneNode(true);
+      var overlays = clone.querySelectorAll('[data-od-edit-bridge]');
+      for (var i = 0; i < overlays.length; i++) {
+        var n = overlays[i];
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+      var runtimeAttrs = ['data-od-runtime-id', 'data-od-edit-selected', 'data-od-inline-editing', 'data-od-drag-source'];
+      for (var j = 0; j < runtimeAttrs.length; j++) {
+        var attrName = runtimeAttrs[j];
+        var stamped = clone.querySelectorAll('[' + attrName + ']');
+        for (var k = 0; k < stamped.length; k++) stamped[k].removeAttribute(attrName);
+      }
+      window.parent.postMessage({
+        type: 'od-edit-snapshot-response',
+        requestId: ev.data.requestId,
+        bodyHtml: clone.innerHTML,
+      }, '*');
       return;
     }
     // Static-preview signal: host sets this in any side-by-side or

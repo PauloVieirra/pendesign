@@ -226,6 +226,40 @@ function serializeSource(doc: Document, originalSource: string): string {
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }
 
+// Snapshot-replace: substitute the body content of `source` with the
+// runtime DOM the bridge captured. Used when a structural patch fails to
+// find its target node in the source HTML — typically because the source
+// is a single-file SPA (e.g. `<div id="root">` + inline React/Babel) and
+// the elements only exist at runtime.
+//
+// After this rewrite the source becomes a static snapshot of what the
+// SPA was rendering, so subsequent edits round-trip through the normal
+// patch path. We deliberately strip inline scripts that would re-render
+// over the snapshot (react CDN, babel transformer, type="text/babel"
+// blocks) — otherwise loading the file again would wipe the snapshot
+// the moment React mounts.
+export function replaceBodyWithSnapshot(source: string, bodyHtml: string): string {
+  const doc = parseSource(source);
+  if (!doc || !doc.body) return source;
+  doc.body.innerHTML = bodyHtml;
+  // Drop scripts that would re-execute and overwrite the snapshot on next
+  // load. We are intentionally aggressive: any inline script (even outside
+  // the typical react/babel CDNs) gets removed because we cannot tell
+  // whether it mutates the DOM the user just edited.
+  const scripts = Array.from(doc.querySelectorAll('script'));
+  for (const s of scripts) {
+    const src = s.getAttribute('src') ?? '';
+    const type = s.getAttribute('type') ?? '';
+    const isInline = src === '';
+    const isReactBabelCdn = /\b(react|react-dom|@babel\/standalone|babel\.min)\b/i.test(src);
+    const isBabelType = /text\/babel|application\/babel/i.test(type);
+    if (isInline || isReactBabelCdn || isBabelType) {
+      s.parentElement?.removeChild(s);
+    }
+  }
+  return serializeSource(doc, source);
+}
+
 export function isManualEditFullHtmlDocument(source: string): boolean {
   const normalized = firstSourceToken(source).slice(0, 32).toLowerCase();
   return normalized.startsWith('<!doctype') || normalized.startsWith('<html');

@@ -37,6 +37,7 @@ import {
   fetchDesignTemplates,
   fetchPromptTemplates,
   fetchSkills,
+  setupSpaSingleFileProject,
   startProjectReactSetup,
   uploadProjectFiles,
 } from './providers/registry';
@@ -894,6 +895,12 @@ export function App() {
         await startProjectReactSetup(project.id);
         setReactSetupProject({ id: project.id, name: project.name });
         return;
+      }
+      // SPA single-file projects just copy a small HTML template — no
+      // install, no loading overlay. Fire the request and continue into
+      // the project; the file is there by the time the canvas mounts.
+      if (input.metadata?.stack === 'spa-single-file') {
+        await setupSpaSingleFileProject(project.id);
       }
       navigate({
         kind: 'project',
