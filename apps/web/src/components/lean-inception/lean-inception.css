@@ -9,59 +9,92 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: color-mix(in srgb, var(--text-strong) 95%, var(--bg) 5%);
+  /* Force dark surface independent of app theme. */
+  background: var(--text-strong);
   color: var(--bg-panel);
+  /* Establish a local dark color context so children inherit it. */
+  color-scheme: dark;
 }
 
 /* ---- Board ---- */
 .li-board {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
-.li-board__wrapper,
-.li-board .react-transform-wrapper,
+/* react-zoom-pan-pinch wrappers — let the inner content size itself naturally
+   (do NOT force width:100% or its inner grid clamps and wraps). */
+.li-board .react-transform-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  /* Vertical & horizontal scroll governed by the pan transform, not the DOM. */
+  overflow: hidden;
+}
 .li-board .react-transform-component {
   width: 100% !important;
   height: 100% !important;
+  display: block !important;
+  /* Critical: do NOT let it impose flex/grid wrapping on our content. */
 }
 
 .li-board__grid {
-  display: flex;
-  flex-direction: row;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   gap: 24px;
-  padding: 48px 48px 24px 48px;
+  padding: 56px 48px 32px 48px;
   align-items: flex-start;
   width: max-content;
   min-width: 100%;
 }
 
+/* Gestalt continuity: right-edge fade hints that more columns exist when
+   horizontal scroll/zoom-out can reveal them. Sits above the board, below
+   the action icons. */
+.li-board::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 72px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--text-strong) 0%, transparent) 0%,
+    var(--text-strong) 100%
+  );
+  z-index: 10;
+}
+
 /* ---- Column ---- */
 .li-column {
-  flex-shrink: 0;
+  flex: 0 0 280px;
   width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .li-column__label {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.0625rem;
+  font-weight: 500;
   color: var(--bg-panel);
-  margin: 0 0 4px 4px;
+  margin: 0 0 0 2px;
+  letter-spacing: -0.005em;
 }
 
 .li-column__body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 560px;
-  background: color-mix(in srgb, var(--bg-panel) 4%, transparent);
-  border: 1px solid color-mix(in srgb, var(--bg-panel) 6%, transparent);
-  border-radius: var(--radius);
-  padding: 12px;
+  min-height: 64vh;
+  background: color-mix(in srgb, var(--bg-panel) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  border-radius: 12px;
+  padding: 14px;
 }
 
 .li-column__empty {
