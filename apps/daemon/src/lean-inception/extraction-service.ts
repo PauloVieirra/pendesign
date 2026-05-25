@@ -36,6 +36,48 @@ const MAX_BYTES = 500 * 1024;
 const EXTRACTION_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
+// Claude CLI envelope helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * `claude -p --output-format json` wraps the model's actual text output inside
+ * an envelope: `{ type: 'result', subtype, is_error, result: '<text>', usage, session_id }`.
+ * When the envelope is present, parse the `result` string again to get the real value.
+ * Falls back to the original value when no envelope is detected.
+ */
+function unwrapClaudeEnvelope(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj['result'] === 'string') {
+    const inner = parseLlmJsonOutput(obj['result'] as string);
+    if (inner.ok) return inner.value;
+  }
+  return value;
+}
+
+/**
+ * Extract token counts from the Claude CLI JSON envelope's `usage` field.
+ * Returns nulls when the envelope or its fields are absent.
+ */
+function readEnvelopeUsage(
+  value: unknown,
+): { prompt_tokens: number | null; output_tokens: number | null } {
+  if (typeof value !== 'object' || value === null)
+    return { prompt_tokens: null, output_tokens: null };
+  const obj = value as Record<string, unknown>;
+  const usage = obj['usage'];
+  if (typeof usage !== 'object' || usage === null)
+    return { prompt_tokens: null, output_tokens: null };
+  const u = usage as Record<string, unknown>;
+  return {
+    prompt_tokens:
+      typeof u['input_tokens'] === 'number' ? (u['input_tokens'] as number) : null,
+    output_tokens:
+      typeof u['output_tokens'] === 'number' ? (u['output_tokens'] as number) : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Manual schema validation for LLM output (no direct zod dependency in daemon)
 // ---------------------------------------------------------------------------
 
@@ -303,12 +345,14 @@ export async function extractDocumentForInception(
     };
   }
 
-  // 9. Validate schema.
-  const validation = validateRawOutput(parsed.value);
+  // 9. Validate schema — unwrap Claude CLI envelope first.
+  const unwrapped = unwrapClaudeEnvelope(parsed.value);
+  const envelopeUsage = readEnvelopeUsage(parsed.value);
+  const validation = validateRawOutput(unwrapped);
   if (!validation.ok) {
     finalizeExtraction(db, extraction.id, {
       status: 'failed',
-      error_message: validation.message,
+      error_message: `${validation.message} (raw head: ${JSON.stringify(unwrapped).slice(0, 200)})`,
     });
     updateDocumentExtractionStatus(
       db,
@@ -348,6 +392,10 @@ export async function extractDocumentForInception(
   }
 
   // 11. Atomic card insert + finalize extraction log.
+  // Prefer envelope usage (Claude CLI JSON format) and fall back to invoker-level fields.
+  const finalPromptTokens = envelopeUsage.prompt_tokens ?? invokeResult.promptTokens;
+  const finalOutputTokens = envelopeUsage.output_tokens ?? invokeResult.outputTokens;
+
   insertCardsAtomic(db, acceptedCards);
   finalizeExtraction(db, extraction.id, {
     status: 'succeeded',
@@ -355,8 +403,8 @@ export async function extractDocumentForInception(
     cards_dropped: dropped,
     warnings_count: dropped,
     duration_ms: invokeResult.durationMs,
-    prompt_tokens: invokeResult.promptTokens,
-    output_tokens: invokeResult.outputTokens,
+    prompt_tokens: finalPromptTokens,
+    output_tokens: finalOutputTokens,
   });
   updateDocumentExtractionStatus(db, docRow.id, 'extracted', null);
 
@@ -370,8 +418,8 @@ export async function extractDocumentForInception(
       model: invokeResult.model,
       prompt_version: LEAN_INCEPTION_PROMPT_VERSION,
       duration_ms: invokeResult.durationMs,
-      prompt_tokens: invokeResult.promptTokens,
-      output_tokens: invokeResult.outputTokens,
+      prompt_tokens: finalPromptTokens,
+      output_tokens: finalOutputTokens,
     },
   };
 }

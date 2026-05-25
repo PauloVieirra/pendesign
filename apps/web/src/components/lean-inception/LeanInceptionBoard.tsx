@@ -20,13 +20,14 @@ export interface BoardHandle {
 interface Props {
   state: LeanInceptionState;
   visibleColumns: readonly LeanInceptionColumnKey[];
+  loading: boolean;
   onDropFiles: (files: File[]) => void;
   onCardClick: (card: Card) => void;
   onDropActiveChange?: (active: boolean) => void;
 }
 
 export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanInceptionBoard(
-  { state, visibleColumns, onDropFiles, onCardClick, onDropActiveChange },
+  { state, visibleColumns, loading, onDropFiles, onCardClick, onDropActiveChange },
   ref,
 ) {
   const transformRef = useRef<ReactZoomPanPinchContentRef>(null);
@@ -93,6 +94,7 @@ export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanIn
                 status={snap.status}
                 cards={snap.cards}
                 documentNames={documentNames}
+                loading={loading}
                 onCardClick={onCardClick}
               />
             );

@@ -11,15 +11,28 @@ interface Props {
   status: LeanInceptionColumnStatus;
   cards: LeanInceptionCard[];
   documentNames: Map<string, string>;
+  loading: boolean;
   onCardClick: (card: LeanInceptionCard) => void;
 }
 
-export function LeanInceptionColumn({ columnKey, cards, documentNames, onCardClick }: Props) {
+export function LeanInceptionColumn({
+  columnKey,
+  cards,
+  documentNames,
+  loading,
+  onCardClick,
+}: Props) {
   return (
     <div className="li-column">
       <h3 className="li-column__label">{COLUMN_LABELS_PT[columnKey]}</h3>
       <div className="li-column__body">
-        {cards.length === 0 ? (
+        {loading && cards.length === 0 ? (
+          <>
+            <div className="li-skeleton" aria-hidden />
+            <div className="li-skeleton li-skeleton--short" aria-hidden />
+            <div className="li-skeleton" aria-hidden />
+          </>
+        ) : cards.length === 0 ? (
           <div data-testid="column-empty" className="li-column__empty" aria-hidden />
         ) : (
           cards.map((card) => (

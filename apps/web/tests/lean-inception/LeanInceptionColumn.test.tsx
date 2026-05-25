@@ -31,23 +31,56 @@ describe('LeanInceptionColumn', () => {
         status="complete"
         cards={[cardOf(1), cardOf(2), cardOf(3)]}
         documentNames={docMap}
+        loading={false}
         onCardClick={() => {}}
       />,
     );
     expect(screen.getByText('Persona')).toBeTruthy();
   });
 
-  it('shows empty placeholder when no cards', () => {
+  it('shows empty placeholder when no cards and not loading', () => {
     render(
       <LeanInceptionColumn
         columnKey="vision"
         status="not_identified"
         cards={[]}
         documentNames={docMap}
+        loading={false}
         onCardClick={() => {}}
       />,
     );
     expect(screen.getByTestId('column-empty')).toBeTruthy();
+  });
+
+  it('shows skeleton placeholders when loading and no cards', () => {
+    const { container } = render(
+      <LeanInceptionColumn
+        columnKey="vision"
+        status="not_identified"
+        cards={[]}
+        documentNames={docMap}
+        loading={true}
+        onCardClick={() => {}}
+      />,
+    );
+    const skeletons = container.querySelectorAll('.li-skeleton');
+    expect(skeletons.length).toBe(3);
+    expect(screen.queryByTestId('column-empty')).toBeNull();
+  });
+
+  it('shows cards (not skeletons) when loading but cards already present', () => {
+    const { container } = render(
+      <LeanInceptionColumn
+        columnKey="personas"
+        status="partial"
+        cards={[cardOf(1)]}
+        documentNames={docMap}
+        loading={true}
+        onCardClick={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll('.li-skeleton').length).toBe(0);
+    expect(container.querySelector('[data-testid="card-card_1"]')).toBeTruthy();
   });
 
   it('calls onCardClick when a card is clicked', async () => {
@@ -59,6 +92,7 @@ describe('LeanInceptionColumn', () => {
         status="partial"
         cards={[cardOf(1)]}
         documentNames={docMap}
+        loading={false}
         onCardClick={onCardClick}
       />,
     );

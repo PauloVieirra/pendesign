@@ -57,6 +57,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
         ref={boardRef}
         state={state}
         visibleColumns={columns.orderedVisible}
+        loading={isMutating}
         onDropFiles={(files) => void extract(files)}
         onCardClick={setDetailCard}
       />
