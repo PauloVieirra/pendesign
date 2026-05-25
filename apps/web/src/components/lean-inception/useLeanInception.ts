@@ -11,6 +11,8 @@ export interface UseLeanInception {
   state: LeanInceptionState | null;
   isLoading: boolean;
   isMutating: boolean;
+  /** True when at least one document is still being extracted in the background. */
+  hasExtractingDocs: boolean;
   error: string | null;
   refresh: () => Promise<void>;
   extract: (files: File[]) => Promise<void>;
@@ -150,5 +152,29 @@ export function useLeanInception(projectId: string): UseLeanInception {
     return () => { cancelled = true; };
   }, [fetchState]);
 
-  return { state, isLoading, isMutating, error, refresh, extract, removeDocument, reset };
+  const hasExtractingDocs = state?.documents.some(d => d.extraction_status === 'extracting') ?? false;
+
+  // Poll while any document is still being extracted in the background.
+  useEffect(() => {
+    if (!hasExtractingDocs) return;
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      void (async () => {
+        if (cancelled) return;
+        try {
+          await fetchState();
+        } catch {
+          // swallow; user will see toast on visible failure
+        }
+      })();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [hasExtractingDocs, fetchState]);
+
+  return { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, reset };
 }

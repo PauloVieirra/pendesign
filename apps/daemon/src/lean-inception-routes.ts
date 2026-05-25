@@ -14,18 +14,24 @@ import {
   deleteInception,
 } from './lean-inception/persistence.js';
 import {
-  extractDocumentForInception,
-  type ExtractionInfoSnapshot,
+  ingestDocumentForInception,
+  runExtractionForDocument,
+  type RagIngestor,
 } from './lean-inception/extraction-service.js';
 import type { LeanInceptionRuntimeInvoker } from './lean-inception/runtime-invoke.js';
 import { invokeAgentForExtraction } from './lean-inception/runtime-invoke.js';
+import { ingestDoc } from './rag.js';
 
 export interface LeanInceptionRoutesDeps {
   db: Database.Database;
   storageRoot: string;
   runtimeInvoker?: LeanInceptionRuntimeInvoker;
   defaultRuntime?: string;
+  ragIngest?: RagIngestor;
 }
+
+/** Per-inception in-flight extraction promise; serialises concurrent POSTs. */
+const inFlightExtractions = new Map<string, Promise<void>>();
 
 function sendError(res: Response, status: number, error: LeanInceptionError) {
   res.status(status).json({ error });
@@ -53,6 +59,16 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
   const invoker = deps.runtimeInvoker ?? invokeAgentForExtraction;
   const defaultRuntime = deps.defaultRuntime ?? 'claude';
 
+  // Build the RAG ingestor: use the injected one from tests, or the real one.
+  const ragIngest: RagIngestor = deps.ragIngest ?? (async ({ projectId, name, content }) => {
+    try {
+      await ingestDoc(deps.db, projectId, { name, content });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[lean-inception] RAG ingest failed for', name, err);
+    }
+  });
+
   app.get('/api/projects/:projectId/lean-inception', wrap((req, res) => {
     const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
     res.json({ state: readInceptionState(deps.db, inception.id) });
@@ -74,10 +90,17 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
     }
     const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
     const runtime = parse.data.runtime ?? defaultRuntime;
-    const extractions: ExtractionInfoSnapshot[] = [];
+
+    // Phase 1 (synchronous): validate + persist doc rows + fire RAG.
+    // Collect (ingestResult, docInput) pairs so we can kick off background work.
+    const ingestPairs: Array<{
+      ingestResult: import('./lean-inception/extraction-service.js').IngestResult;
+      docInput: (typeof parse.data.documents)[number];
+    }> = [];
+
     for (const docInput of parse.data.documents) {
       const buf = Buffer.from(docInput.content_base64, 'base64');
-      const result = await extractDocumentForInception({
+      const ingestResult = await ingestDocumentForInception({
         db: deps.db,
         inception,
         storageRoot: deps.storageRoot,
@@ -88,20 +111,62 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
           mimeType: docInput.mime_type,
           content: buf,
         },
+        ragIngest,
       });
-      if (!result.ok) {
+
+      if (!ingestResult.ok) {
         const status =
-          result.error.code === 'DOCUMENT_TOO_LARGE' ? 413
-          : result.error.code === 'RUNTIME_UNAVAILABLE' ? 503
-          : result.error.code === 'EXTRACTION_TIMEOUT' ? 504
+          ingestResult.error.code === 'DOCUMENT_TOO_LARGE' ? 413
+          : ingestResult.error.code === 'RUNTIME_UNAVAILABLE' ? 503
+          : ingestResult.error.code === 'EXTRACTION_TIMEOUT' ? 504
           : 400;
-        return sendError(res, status, result.error);
+        return sendError(res, status, ingestResult.error);
       }
-      extractions.push(result.extractionInfo);
+
+      ingestPairs.push({ ingestResult, docInput });
     }
-    res.json({
-      state: readInceptionState(deps.db, inception.id),
-      extractions,
+
+    // Respond 202 immediately with the current state (docs show extraction_status='extracting').
+    res.status(202).json({ state: readInceptionState(deps.db, inception.id) });
+
+    // Phase 2 (background): kick off the actual LLM extraction after responding.
+    // Serialise per inception to avoid concurrent extractions for the same project.
+    const backgroundWork = async () => {
+      for (const { ingestResult, docInput } of ingestPairs) {
+        // Skip idempotency fast-path (existing doc, no real extraction needed).
+        if (!ingestResult.extractionId) continue;
+
+        const buf = Buffer.from(docInput.content_base64, 'base64');
+        await runExtractionForDocument({
+          db: deps.db,
+          inception,
+          runtime,
+          invoke: invoker,
+          document: {
+            filename: docInput.filename,
+            mimeType: docInput.mime_type,
+            content: buf,
+          },
+          documentId: ingestResult.documentId,
+          extractionId: ingestResult.extractionId,
+          contentText: ingestResult.contentText,
+        }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('[lean-inception] background extraction error for', docInput.filename, err);
+        });
+      }
+    };
+
+    setImmediate(() => {
+      const previous = inFlightExtractions.get(inception.id) ?? Promise.resolve();
+      const next = previous.then(backgroundWork).catch(() => { /* logged inside */ });
+      inFlightExtractions.set(inception.id, next);
+      void next.finally(() => {
+        // Remove from map only when this is still the latest promise.
+        if (inFlightExtractions.get(inception.id) === next) {
+          inFlightExtractions.delete(inception.id);
+        }
+      });
     });
   }));
 

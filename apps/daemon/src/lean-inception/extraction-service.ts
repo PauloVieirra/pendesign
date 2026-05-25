@@ -155,6 +155,15 @@ export interface ExtractDocumentInput {
   content: Buffer;
 }
 
+/**
+ * Optional RAG injector. When provided, the content of the ingested document
+ * is fire-and-forget indexed into the project's vector store. Errors are
+ * caught internally and never bubble up — RAG failure must NOT break extraction.
+ */
+export interface RagIngestor {
+  (params: { projectId: string; name: string; content: string }): Promise<void>;
+}
+
 export interface ExtractDocumentForInceptionParams {
   db: SqliteDb;
   inception: InceptionRow;
@@ -162,6 +171,7 @@ export interface ExtractDocumentForInceptionParams {
   runtime: string;
   invoke: LeanInceptionRuntimeInvoker;
   document: ExtractDocumentInput;
+  ragIngest?: RagIngestor;
 }
 
 export type ExtractionResult =
@@ -174,6 +184,19 @@ export type ExtractionResult =
     }
   | { ok: false; error: LeanInceptionError; documentId?: string };
 
+/** Returned by `ingestDocumentForInception` on success. */
+export interface IngestResult {
+  ok: true;
+  documentId: string;
+  /** contentText extracted from the buffer — passed to runExtractionForDocument. */
+  contentText: string;
+  extractionId: string;
+}
+
+export type IngestDocumentResult =
+  | IngestResult
+  | { ok: false; error: LeanInceptionError; documentId?: string };
+
 export interface ExtractionInfoSnapshot {
   runtime: string;
   model: string | null;
@@ -181,6 +204,17 @@ export interface ExtractionInfoSnapshot {
   duration_ms: number;
   prompt_tokens: number | null;
   output_tokens: number | null;
+}
+
+export interface RunExtractionParams {
+  db: SqliteDb;
+  inception: InceptionRow;
+  runtime: string;
+  invoke: LeanInceptionRuntimeInvoker;
+  document: ExtractDocumentInput;
+  documentId: string;
+  extractionId: string;
+  contentText: string;
 }
 
 function errorResult(
@@ -192,55 +226,60 @@ function errorResult(
 }
 
 // ---------------------------------------------------------------------------
-// Orchestrator
+// Phase 1: synchronous ingestion (validate + persist doc row + fire RAG)
 // ---------------------------------------------------------------------------
 
-export async function extractDocumentForInception(
+/**
+ * Validates size/format/hash, persists the document row and writes the file,
+ * opens an extraction row (status='extracting'), and returns immediately.
+ * Also fires a fire-and-forget RAG ingest call when `ragIngest` is provided.
+ *
+ * Returns a discriminated union — callers should check `.ok` before calling
+ * `runExtractionForDocument`.
+ */
+export async function ingestDocumentForInception(
   params: ExtractDocumentForInceptionParams,
-): Promise<ExtractionResult> {
-  const { db, inception, storageRoot, runtime, invoke, document } = params;
+): Promise<IngestDocumentResult> {
+  const { db, inception, storageRoot, runtime, document, ragIngest } = params;
 
   // 1. Emptiness validation.
   if (
     document.content.byteLength === 0 ||
     document.content.toString('utf8').trim().length === 0
   ) {
-    return errorResult('EMPTY_DOCUMENT', 'document content is empty', {
-      filename: document.filename,
-    });
+    return { ok: false, error: { code: 'EMPTY_DOCUMENT', message: 'document content is empty', details: { filename: document.filename } } };
   }
 
   // 2. Size validation.
   if (document.content.byteLength > MAX_BYTES) {
-    return errorResult(
-      'DOCUMENT_TOO_LARGE',
-      `document exceeds ${MAX_BYTES} bytes`,
-      { filename: document.filename, byte_size: document.content.byteLength },
-    );
+    return {
+      ok: false,
+      error: {
+        code: 'DOCUMENT_TOO_LARGE',
+        message: `document exceeds ${MAX_BYTES} bytes`,
+        details: { filename: document.filename, byte_size: document.content.byteLength },
+      },
+    };
   }
 
   const contentText = document.content.toString('utf8');
 
-  // 3. Idempotency: identical hash → return existing.
+  // 3. Idempotency: identical hash → return existing without re-running extraction.
   const contentHash = computeContentHash(document.content);
   const sameHash = findDocumentByHash(db, inception.id, contentHash);
   if (sameHash) {
     const cardsPersistedRow = db
       .prepare('SELECT COUNT(*) AS c FROM lean_inception_cards WHERE document_id = ?')
       .get(sameHash.id) as { c: number };
+    const existingExtraction = db
+      .prepare('SELECT id FROM lean_inception_extractions WHERE document_id = ? ORDER BY started_at DESC LIMIT 1')
+      .get(sameHash.id) as { id: string } | undefined;
     return {
       ok: true,
       documentId: sameHash.id,
-      cardsPersisted: cardsPersistedRow.c,
-      cardsDropped: 0,
-      extractionInfo: {
-        runtime,
-        model: null,
-        prompt_version: LEAN_INCEPTION_PROMPT_VERSION,
-        duration_ms: 0,
-        prompt_tokens: null,
-        output_tokens: null,
-      },
+      contentText,
+      // Provide a sentinel extraction id so runExtractionForDocument can be skipped
+      extractionId: existingExtraction?.id ?? '',
     };
   }
 
@@ -261,7 +300,6 @@ export async function extractDocumentForInception(
   fs.mkdirSync(projectStorageDir, { recursive: true });
   const ext = document.mimeType === 'text/markdown' ? '.md' : '.txt';
 
-  // Insert with a provisional storage_path then patch with the real one once we know the doc id.
   const docRow = insertDocument(db, {
     inception_id: inception.id,
     filename: document.filename,
@@ -288,6 +326,38 @@ export async function extractDocumentForInception(
     prompt_version: LEAN_INCEPTION_PROMPT_VERSION,
   });
 
+  // 7. Fire-and-forget RAG ingest (errors must not break ingestion).
+  if (ragIngest) {
+    void ragIngest({ projectId: inception.project_id, name: document.filename, content: contentText })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('[lean-inception] RAG ingest failed for', document.filename, err);
+      });
+  }
+
+  return {
+    ok: true,
+    documentId: docRow.id,
+    contentText,
+    extractionId: extraction.id,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: async runtime call + parse + persist cards
+// ---------------------------------------------------------------------------
+
+/**
+ * Executes the LLM extraction for a document that has already been ingested
+ * (status='extracting'). Updates the document status to 'extracted' or 'failed'
+ * when done. This is safe to run in the background after the HTTP response has
+ * been sent.
+ */
+export async function runExtractionForDocument(
+  params: RunExtractionParams,
+): Promise<ExtractionResult> {
+  const { db, inception, runtime, invoke, document, documentId, extractionId, contentText } = params;
+
   // 7. Invoke runtime.
   let invokeResult;
   try {
@@ -308,40 +378,40 @@ export async function extractDocumentForInception(
         : err?.code === 'EXTRACTION_TIMEOUT'
           ? 'EXTRACTION_TIMEOUT'
           : 'EXTRACTION_FAILED';
-    finalizeExtraction(db, extraction.id, {
+    finalizeExtraction(db, extractionId, {
       status: 'failed',
       error_message: err?.message ?? String(err),
     });
     updateDocumentExtractionStatus(
       db,
-      docRow.id,
+      documentId,
       'failed',
       err?.message ?? String(err),
     );
     return {
       ok: false,
       error: { code, message: err?.message ?? String(err) },
-      documentId: docRow.id,
+      documentId,
     };
   }
 
   // 8. Parse JSON.
   const parsed = parseLlmJsonOutput(invokeResult.rawStdout);
   if (!parsed.ok) {
-    finalizeExtraction(db, extraction.id, {
+    finalizeExtraction(db, extractionId, {
       status: 'failed',
       error_message: parsed.reason,
     });
     updateDocumentExtractionStatus(
       db,
-      docRow.id,
+      documentId,
       'failed',
       `parse: ${parsed.reason}`,
     );
     return {
       ok: false,
       error: { code: 'INVALID_JSON_OUTPUT', message: parsed.reason },
-      documentId: docRow.id,
+      documentId,
     };
   }
 
@@ -350,13 +420,13 @@ export async function extractDocumentForInception(
   const envelopeUsage = readEnvelopeUsage(parsed.value);
   const validation = validateRawOutput(unwrapped);
   if (!validation.ok) {
-    finalizeExtraction(db, extraction.id, {
+    finalizeExtraction(db, extractionId, {
       status: 'failed',
       error_message: `${validation.message} (raw head: ${JSON.stringify(unwrapped).slice(0, 200)})`,
     });
     updateDocumentExtractionStatus(
       db,
-      docRow.id,
+      documentId,
       'failed',
       `schema: ${validation.message}`,
     );
@@ -366,7 +436,7 @@ export async function extractDocumentForInception(
         code: 'SCHEMA_VALIDATION_FAILED',
         message: validation.message,
       },
-      documentId: docRow.id,
+      documentId,
     };
   }
 
@@ -380,24 +450,23 @@ export async function extractDocumentForInception(
     }
     acceptedCards.push({
       inception_id: inception.id,
-      document_id: docRow.id,
+      document_id: documentId,
       column_key: c.column_key,
       title: c.title,
       content: c.content,
       confidence: c.confidence,
       source_anchor: c.source_anchor.slice(0, 280),
       source_line: c.source_line,
-      extraction_id: extraction.id,
+      extraction_id: extractionId,
     });
   }
 
   // 11. Atomic card insert + finalize extraction log.
-  // Prefer envelope usage (Claude CLI JSON format) and fall back to invoker-level fields.
   const finalPromptTokens = envelopeUsage.prompt_tokens ?? invokeResult.promptTokens;
   const finalOutputTokens = envelopeUsage.output_tokens ?? invokeResult.outputTokens;
 
   insertCardsAtomic(db, acceptedCards);
-  finalizeExtraction(db, extraction.id, {
+  finalizeExtraction(db, extractionId, {
     status: 'succeeded',
     cards_persisted: acceptedCards.length,
     cards_dropped: dropped,
@@ -406,11 +475,11 @@ export async function extractDocumentForInception(
     prompt_tokens: finalPromptTokens,
     output_tokens: finalOutputTokens,
   });
-  updateDocumentExtractionStatus(db, docRow.id, 'extracted', null);
+  updateDocumentExtractionStatus(db, documentId, 'extracted', null);
 
   return {
     ok: true,
-    documentId: docRow.id,
+    documentId,
     cardsPersisted: acceptedCards.length,
     cardsDropped: dropped,
     extractionInfo: {
@@ -422,4 +491,50 @@ export async function extractDocumentForInception(
       output_tokens: finalOutputTokens,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Orchestrator (kept for backward compat + direct test usage)
+// ---------------------------------------------------------------------------
+
+export async function extractDocumentForInception(
+  params: ExtractDocumentForInceptionParams,
+): Promise<ExtractionResult> {
+  const ingestResult = await ingestDocumentForInception(params);
+
+  if (!ingestResult.ok) {
+    return ingestResult;
+  }
+
+  // Idempotency fast-path: hash already existed, extraction row may be empty sentinel.
+  if (!ingestResult.extractionId) {
+    const cardsPersistedRow = params.db
+      .prepare('SELECT COUNT(*) AS c FROM lean_inception_cards WHERE document_id = ?')
+      .get(ingestResult.documentId) as { c: number };
+    return {
+      ok: true,
+      documentId: ingestResult.documentId,
+      cardsPersisted: cardsPersistedRow.c,
+      cardsDropped: 0,
+      extractionInfo: {
+        runtime: params.runtime,
+        model: null,
+        prompt_version: LEAN_INCEPTION_PROMPT_VERSION,
+        duration_ms: 0,
+        prompt_tokens: null,
+        output_tokens: null,
+      },
+    };
+  }
+
+  return runExtractionForDocument({
+    db: params.db,
+    inception: params.inception,
+    runtime: params.runtime,
+    invoke: params.invoke,
+    document: params.document,
+    documentId: ingestResult.documentId,
+    extractionId: ingestResult.extractionId,
+    contentText: ingestResult.contentText,
+  });
 }

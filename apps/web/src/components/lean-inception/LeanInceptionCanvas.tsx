@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function LeanInceptionCanvas({ projectId }: Props) {
-  const { state, isLoading, isMutating, error, refresh, extract, removeDocument, reset } =
+  const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, reset } =
     useLeanInception(projectId);
   const columns = useColumnVisibility(projectId);
 
@@ -57,7 +57,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
         ref={boardRef}
         state={state}
         visibleColumns={columns.orderedVisible}
-        loading={isMutating}
+        loading={hasExtractingDocs}
         onDropFiles={(files) => void extract(files)}
         onCardClick={setDetailCard}
       />

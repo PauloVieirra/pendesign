@@ -34,7 +34,7 @@ const fakeInvoker = (jsonResponse: object): LeanInceptionRuntimeInvoker =>
   });
 
 describe('POST /api/projects/:id/lean-inception/documents', () => {
-  it('extracts cards and returns state', async () => {
+  it('returns 202 immediately and background-extracts cards', async () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     migrateLeanInception(db);
@@ -70,11 +70,26 @@ describe('POST /api/projects/:id/lean-inception/documents', () => {
           }],
         }),
       });
-      expect(r.status).toBe(200);
+      expect(r.status).toBe(202);
       const body = await r.json() as any;
-      expect(body.state.columns.vision.cards).toHaveLength(1);
-      expect(body.state.columns.vision.status).toBe('insufficient');
-      expect(body.extractions).toHaveLength(1);
+      // Immediate response shows the doc with extracting status.
+      expect(body.state.documents).toHaveLength(1);
+      expect(body.state.documents[0].extraction_status).toBe('extracting');
+
+      // Poll until the background extraction finishes.
+      let finalState = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 50));
+        const sr = await fetch(`${server.url}/api/projects/prj_1/lean-inception`);
+        const sb = await sr.json() as any;
+        if (sb.state.documents[0]?.extraction_status === 'extracted') {
+          finalState = sb;
+          break;
+        }
+      }
+      expect(finalState).not.toBeNull();
+      expect(finalState!.state.columns.vision.cards).toHaveLength(1);
+      expect(finalState!.state.columns.vision.status).toBe('insufficient');
     } finally {
       server.close();
       fs.rmSync(storageRoot, { recursive: true, force: true });

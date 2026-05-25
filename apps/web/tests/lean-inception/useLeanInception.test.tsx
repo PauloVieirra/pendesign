@@ -51,10 +51,9 @@ describe('useLeanInception', () => {
     (fetch as any)
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) })
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true, status: 202,
         json: async () => ({
           state: { ...emptyState('prj_1'), documents: [{ id: 'doc_1', filename: 'a.md', mime_type: 'text/markdown', byte_size: 5, content_hash: 'h', ingested_at: 't', last_extracted_at: 't', extraction_status: 'extracted', extraction_error: null, card_count: 0 }] },
-          extractions: [],
         }),
       });
     const { result } = renderHook(() => useLeanInception('prj_1'));
@@ -70,6 +69,36 @@ describe('useLeanInception', () => {
     const body = JSON.parse(lastCall[1].body);
     expect(body.documents[0].mime_type).toBe('text/markdown');
     expect(body.documents[0].content_base64).toBe(Buffer.from('hello').toString('base64'));
+  });
+
+  it('hasExtractingDocs is true when any document extraction_status is extracting', async () => {
+    const extractingState = {
+      ...emptyState('prj_1'),
+      documents: [{
+        id: 'doc_1', filename: 'a.md', mime_type: 'text/markdown', byte_size: 5,
+        content_hash: 'h', ingested_at: 't', last_extracted_at: null,
+        extraction_status: 'extracting', extraction_error: null, card_count: 0,
+      }],
+    };
+    (fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => ({ state: extractingState }) });
+    const { result } = renderHook(() => useLeanInception('prj_1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasExtractingDocs).toBe(true);
+  });
+
+  it('hasExtractingDocs is false when all documents are extracted', async () => {
+    const extractedState = {
+      ...emptyState('prj_1'),
+      documents: [{
+        id: 'doc_1', filename: 'a.md', mime_type: 'text/markdown', byte_size: 5,
+        content_hash: 'h', ingested_at: 't', last_extracted_at: 't',
+        extraction_status: 'extracted', extraction_error: null, card_count: 0,
+      }],
+    };
+    (fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => ({ state: extractedState }) });
+    const { result } = renderHook(() => useLeanInception('prj_1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasExtractingDocs).toBe(false);
   });
 
   it('extract rejects unsupported formats locally without fetching', async () => {
