@@ -7,10 +7,9 @@ import {
 import type {
   LeanInceptionState,
   LeanInceptionCard as Card,
+  LeanInceptionColumnKey,
 } from '@open-design/contracts';
-import { COLUMN_ORDER } from './constants';
 import { LeanInceptionColumn } from './LeanInceptionColumn';
-import { LeanInceptionDropOverlay } from './LeanInceptionDropOverlay';
 
 export interface BoardHandle {
   zoomIn: () => void;
@@ -20,16 +19,18 @@ export interface BoardHandle {
 
 interface Props {
   state: LeanInceptionState;
+  visibleColumns: readonly LeanInceptionColumnKey[];
   onDropFiles: (files: File[]) => void;
   onCardClick: (card: Card) => void;
+  onDropActiveChange?: (active: boolean) => void;
 }
 
 export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanInceptionBoard(
-  { state, onDropFiles, onCardClick },
+  { state, visibleColumns, onDropFiles, onCardClick, onDropActiveChange },
   ref,
 ) {
   const transformRef = useRef<ReactZoomPanPinchContentRef>(null);
-  const [dropActive, setDropActive] = useState(false);
+  const [, setDropActive] = useState(false);
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => transformRef.current?.zoomIn(),
@@ -39,37 +40,39 @@ export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanIn
 
   const documentNames = new Map(state.documents.map((d) => [d.id, d.filename]));
 
+  const setActive = (active: boolean) => {
+    setDropActive(active);
+    onDropActiveChange?.(active);
+  };
+
   const onDragEnter = (e: DragEvent) => {
     if (e.dataTransfer.types.includes('Files')) {
       e.preventDefault();
-      setDropActive(true);
+      setActive(true);
     }
   };
   const onDragOver = (e: DragEvent) => {
-    if (e.dataTransfer.types.includes('Files')) {
-      e.preventDefault();
-    }
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault();
   };
   const onDragLeave = (e: DragEvent) => {
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-    setDropActive(false);
+    setActive(false);
   };
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
-    setDropActive(false);
+    setActive(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) onDropFiles(files);
   };
 
   return (
     <div
-      className="li-board relative flex-1 overflow-hidden"
+      className="li-board"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <LeanInceptionDropOverlay active={dropActive} />
       <TransformWrapper
         ref={transformRef}
         initialScale={1}
@@ -79,8 +82,8 @@ export const LeanInceptionBoard = forwardRef<BoardHandle, Props>(function LeanIn
         wheel={{ step: 0.1 }}
         doubleClick={{ disabled: true }}
       >
-        <TransformComponent wrapperClass="w-full h-full" contentClass="li-board-grid flex flex-row gap-4 p-4 items-start">
-          {COLUMN_ORDER.map((key) => {
+        <TransformComponent wrapperClass="li-board__wrapper" contentClass="li-board__grid">
+          {visibleColumns.map((key) => {
             const snap = state.columns[key];
             if (!snap) return null;
             return (

@@ -3,10 +3,6 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LeanInceptionColumn } from '../../src/components/lean-inception/LeanInceptionColumn';
 
-vi.mock('../../src/i18n', () => ({
-  useT: () => (key: string) => key,
-}));
-
 const cardOf = (i: number) => ({
   id: `card_${i}`,
   inception_id: 'li_1',
@@ -28,7 +24,7 @@ afterEach(() => {
 });
 
 describe('LeanInceptionColumn', () => {
-  it('renders header with translated label and count', () => {
+  it('renders header with Portuguese label', () => {
     render(
       <LeanInceptionColumn
         columnKey="personas"
@@ -38,8 +34,7 @@ describe('LeanInceptionColumn', () => {
         onCardClick={() => {}}
       />,
     );
-    expect(screen.getByText('lean_inception.column.personas')).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('Persona')).toBeTruthy();
   });
 
   it('shows empty placeholder when no cards', () => {

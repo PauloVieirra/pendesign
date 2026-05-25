@@ -23,12 +23,37 @@ export const CONFIDENCE_DOT_CLASS: Record<LeanInceptionConfidence, string> = {
 
 export const COLUMN_ORDER: readonly LeanInceptionColumnKey[] = [
   'vision',
-  'objective',
   'problem',
-  'personas',
+  'objective',
   'features',
   'business_rules',
+  'personas',
+  'user_journey',
+  'ideation',
   'acceptance_criteria',
 ];
+
+export const DEFAULT_VISIBLE_COLUMNS: readonly LeanInceptionColumnKey[] = [
+  'vision',
+  'problem',
+  'objective',
+  'features',
+  'business_rules',
+  'personas',
+  'user_journey',
+  'ideation',
+];
+
+export const COLUMN_LABELS_PT: Record<LeanInceptionColumnKey, string> = {
+  vision: 'Visão',
+  problem: 'Problema',
+  objective: 'Objetivo',
+  features: 'Features',
+  business_rules: 'Regra de negócio',
+  personas: 'Persona',
+  user_journey: 'Jornada do usuário',
+  ideation: 'Ideação',
+  acceptance_criteria: 'Critérios de aceite',
+};
 
 export const MAX_FILE_BYTES = 500 * 1024;

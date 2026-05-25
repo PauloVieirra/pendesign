@@ -1,47 +1,38 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useRef, useState } from 'react';
 import type { LeanInceptionCard } from '@open-design/contracts';
-import { useT } from '../../i18n';
 import { useLeanInception } from './useLeanInception';
-import { LeanInceptionToolbar } from './LeanInceptionToolbar';
+import { useColumnVisibility } from './useColumnVisibility';
 import { LeanInceptionBoard, type BoardHandle } from './LeanInceptionBoard';
 import { LeanInceptionDetailDrawer } from './LeanInceptionDetailDrawer';
-import { LeanInceptionEmptyState } from './LeanInceptionEmptyState';
+import { LeanInceptionDropBar } from './LeanInceptionDropBar';
+import { LeanInceptionActions } from './LeanInceptionActions';
 
 interface Props {
   projectId: string;
 }
 
 export function LeanInceptionCanvas({ projectId }: Props) {
-  const t = useT();
   const { state, isLoading, isMutating, error, refresh, extract, removeDocument, reset } =
     useLeanInception(projectId);
+  const columns = useColumnVisibility(projectId);
 
   const [detailCard, setDetailCard] = useState<LeanInceptionCard | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const boardRef = useRef<BoardHandle>(null);
 
-  const onAdd = () => fileInputRef.current?.click();
-  const onFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      void extract(Array.from(e.target.files));
-      e.target.value = '';
-    }
-  };
   const onConfirmReset = async () => {
     setConfirmingReset(false);
     await reset();
   };
 
   if (isLoading) {
-    return <div data-testid="canvas-loading" className="li-canvas__loading flex items-center justify-center h-full">Loading…</div>;
+    return <div data-testid="canvas-loading" className="li-loading">Loading…</div>;
   }
-
   if (!state) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="li-canvas__error">{error ?? 'Failed to load Lean Inception.'}</p>
-        <button type="button" onClick={() => void refresh()} className="li-canvas__retry px-3 py-1.5 rounded-md text-sm">Retry</button>
+      <div className="li-error">
+        <p className="li-error__msg">{error ?? 'Failed to load Lean Inception.'}</p>
+        <button type="button" onClick={() => void refresh()} className="li-error__retry">Retry</button>
       </div>
     );
   }
@@ -51,61 +42,44 @@ export function LeanInceptionCanvas({ projectId }: Props) {
     : null;
 
   return (
-    <div className="li-canvas flex flex-col h-full">
-      <LeanInceptionToolbar
+    <div className="li-canvas">
+      <LeanInceptionActions
         documents={state.documents}
+        visible={columns.visible}
         isMutating={isMutating}
-        onAdd={onAdd}
         onRefresh={() => void refresh()}
         onReset={() => setConfirmingReset(true)}
         onRemoveDoc={(id) => void removeDocument(id)}
-        onZoomIn={() => boardRef.current?.zoomIn()}
-        onZoomOut={() => boardRef.current?.zoomOut()}
-        onZoomFit={() => boardRef.current?.fit()}
+        onToggleColumn={columns.toggle}
       />
 
-      <div className="relative flex-1 overflow-hidden">
-        <LeanInceptionBoard
-          ref={boardRef}
-          state={state}
-          onDropFiles={(files) => void extract(files)}
-          onCardClick={setDetailCard}
-        />
-        {state.documents.length === 0 && <LeanInceptionEmptyState onAdd={onAdd} />}
-      </div>
+      <LeanInceptionBoard
+        ref={boardRef}
+        state={state}
+        visibleColumns={columns.orderedVisible}
+        onDropFiles={(files) => void extract(files)}
+        onCardClick={setDetailCard}
+      />
+
+      <LeanInceptionDropBar onFiles={(files) => void extract(files)} isMutating={isMutating} />
 
       <LeanInceptionDetailDrawer card={detailCard} filename={filename} onClose={() => setDetailCard(null)} />
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".md,.txt"
-        multiple
-        className="hidden"
-        onChange={onFileInputChange}
-      />
-
       {confirmingReset && (
-        <div className="li-modal-scrim fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="li-modal rounded-lg shadow-xl p-6 max-w-sm">
-            <h3 className="li-modal__title text-lg font-semibold mb-2">{t('lean_inception.confirm.reset.title')}</h3>
-            <p className="li-modal__desc text-sm mb-4">{t('lean_inception.confirm.reset.description')}</p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setConfirmingReset(false)} className="li-modal__cancel px-3 py-1.5 rounded-md text-sm">
-                {t('lean_inception.confirm.reset.cancel')}
-              </button>
-              <button type="button" onClick={() => void onConfirmReset()} className="li-modal__confirm px-3 py-1.5 rounded-md text-sm">
-                {t('lean_inception.confirm.reset.confirm')}
-              </button>
+        <div className="li-modal-scrim">
+          <div className="li-modal">
+            <h3 className="li-modal__title">Resetar Lean Inception?</h3>
+            <p className="li-modal__desc">Isso apaga todos os documentos e cards. Não pode ser desfeito.</p>
+            <div className="li-modal__actions">
+              <button type="button" onClick={() => setConfirmingReset(false)} className="li-modal__cancel">Cancelar</button>
+              <button type="button" onClick={() => void onConfirmReset()} className="li-modal__confirm">Resetar</button>
             </div>
           </div>
         </div>
       )}
 
       {error && !isLoading && (
-        <div className="li-toast absolute bottom-4 right-4 max-w-sm rounded-md px-3 py-2 text-sm shadow">
-          {error}
-        </div>
+        <div className="li-toast">{error}</div>
       )}
     </div>
   );

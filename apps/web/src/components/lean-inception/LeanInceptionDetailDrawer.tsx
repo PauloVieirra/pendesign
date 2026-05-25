@@ -26,22 +26,22 @@ export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
   return (
     <>
       <div
-        className="li-drawer-scrim fixed inset-0 z-40"
+        className="li-drawer-scrim"
         onClick={onClose}
         aria-hidden
       />
       <aside
-        className="li-drawer fixed top-0 right-0 h-full w-[400px] z-50 shadow-xl flex flex-col"
+        className="li-drawer"
         role="dialog"
         aria-modal="true"
       >
-        <header className="li-drawer__header flex items-start justify-between p-4">
-          <div className="flex items-start gap-2">
+        <header className="li-drawer__header">
+          <div className="li-card__row">
             <span
               aria-hidden
-              className={`mt-1.5 inline-block w-2 h-2 rounded-full ${CONFIDENCE_DOT_CLASS[card.confidence]}`}
+              className={`li-confidence-dot ${CONFIDENCE_DOT_CLASS[card.confidence]}`}
             />
-            <h2 className="li-drawer__title text-base font-semibold">{card.title}</h2>
+            <h2 className="li-drawer__title">{card.title}</h2>
           </div>
           <button
             type="button"
@@ -52,16 +52,16 @@ export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
             ✕
           </button>
         </header>
-        <div className="li-drawer__body flex-1 overflow-auto p-4 space-y-4 text-sm">
+        <div className="li-drawer__body">
           <p>{card.content}</p>
-          <section>
-            <h3 className="li-drawer__section-label text-xs uppercase tracking-wide mb-2">
+          <section className="li-drawer__section">
+            <h3 className="li-drawer__section-title">
               {t('lean_inception.detail.source')}
             </h3>
-            <blockquote className="li-drawer__blockquote pl-3 italic">
+            <blockquote className="li-drawer__quote">
               {card.source_anchor}
             </blockquote>
-            <div className="li-drawer__source-meta mt-2 text-xs">
+            <div className="li-drawer__meta">
               {filename && <span>{filename}</span>}
               {card.source_line != null && (
                 <span className="ml-2">

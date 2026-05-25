@@ -9,11 +9,13 @@ const emptyState = () => ({
   documents: [],
   columns: {
     vision:              { status: 'not_identified', cards: [] },
-    objective:           { status: 'not_identified', cards: [] },
     problem:             { status: 'not_identified', cards: [] },
-    personas:            { status: 'not_identified', cards: [] },
+    objective:           { status: 'not_identified', cards: [] },
     features:            { status: 'not_identified', cards: [] },
     business_rules:      { status: 'not_identified', cards: [] },
+    personas:            { status: 'not_identified', cards: [] },
+    user_journey:        { status: 'not_identified', cards: [] },
+    ideation:            { status: 'not_identified', cards: [] },
     acceptance_criteria: { status: 'not_identified', cards: [] },
   },
 });
@@ -26,14 +28,23 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('LeanInceptionCanvas', () => {
-  it('shows empty state when no documents after load', async () => {
+  it('shows the drop bar after load', async () => {
     render(<LeanInceptionCanvas projectId="prj_1" />);
-    await waitFor(() => expect(screen.getByText('No documents yet')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/DROP FILES HERE/)).toBeInTheDocument());
   });
 
-  it('renders all 7 column headers', async () => {
+  it('renders the 8 default Portuguese column labels', async () => {
     render(<LeanInceptionCanvas projectId="prj_1" />);
-    await waitFor(() => expect(screen.getAllByText(/Vision|Objective|Problem|Personas|Features|Business rules|Acceptance criteria/).length).toBeGreaterThanOrEqual(7));
+    await waitFor(() => {
+      expect(screen.getByText('Visão')).toBeInTheDocument();
+      expect(screen.getByText('Problema')).toBeInTheDocument();
+      expect(screen.getByText('Objetivo')).toBeInTheDocument();
+      expect(screen.getByText('Features')).toBeInTheDocument();
+      expect(screen.getByText('Regra de negócio')).toBeInTheDocument();
+      expect(screen.getByText('Persona')).toBeInTheDocument();
+      expect(screen.getByText('Jornada do usuário')).toBeInTheDocument();
+      expect(screen.getByText('Ideação')).toBeInTheDocument();
+    });
   });
 
   it('shows loading state initially', () => {
