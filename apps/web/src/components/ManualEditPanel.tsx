@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 import type { VariablesFile } from '../providers/design-system-variables';
 import { VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';

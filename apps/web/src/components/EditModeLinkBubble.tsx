@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ManualEditRect } from '../edit-mode/types';
+import type { ManualEditRect } from '@open-design/edit-bridge';
 
 export interface EditModeLinkBubbleState {
   open: boolean;

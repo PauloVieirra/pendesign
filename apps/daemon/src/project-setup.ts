@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildStandaloneBridgeJs, buildStandaloneBridgeCss } from '@open-design/edit-bridge';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +81,7 @@ export function startProjectSetup(projectId: string, projectDir: string): Projec
 
 async function runSetup(projectId: string, projectDir: string): Promise<void> {
   await extractViteReactTemplate(projectDir);
+  await writeBridgeAssets(projectDir);
   const state = states.get(projectId);
   if (!state) return;
   state.phase = 'installing';
@@ -93,6 +95,23 @@ async function runSetup(projectId: string, projectDir: string): Promise<void> {
 
 async function extractViteReactTemplate(targetDir: string): Promise<void> {
   await copyDirRecursive(TEMPLATE_DIR, targetDir);
+}
+
+// Writes the edit-mode bridge into the project's public/ folder so the
+// Vite dev server serves it first-party. The iframe carrying the React
+// app loads /edit-bridge.js the same way it loads any other asset — no
+// cross-origin shim, no rewrite — and the bridge can mutate DOM and
+// postMessage back to the host canvas.
+//
+// Re-running setup overwrites public/edit-bridge.js on purpose: if the
+// bridge gets a fix or feature, every project picks it up on next open
+// (or on the next `od files refresh` round-trip). User edits to other
+// files under public/ are not touched.
+async function writeBridgeAssets(projectDir: string): Promise<void> {
+  const publicDir = path.join(projectDir, 'public');
+  await mkdir(publicDir, { recursive: true });
+  await writeFile(path.join(publicDir, 'edit-bridge.js'), buildStandaloneBridgeJs(), 'utf8');
+  await writeFile(path.join(publicDir, 'edit-bridge.css'), buildStandaloneBridgeCss(), 'utf8');
 }
 
 async function copyDirRecursive(srcDir: string, destDir: string): Promise<void> {

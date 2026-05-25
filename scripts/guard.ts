@@ -56,6 +56,7 @@ const residualAllowedExactPaths = new Set([
   // dist output exists.
   "packages/agui-adapter/esbuild.config.mjs",
   "packages/contracts/esbuild.config.mjs",
+  "packages/edit-bridge/esbuild.config.mjs",
   "packages/platform/esbuild.config.mjs",
   "packages/plugin-runtime/esbuild.config.mjs",
   "packages/registry-protocol/esbuild.config.mjs",

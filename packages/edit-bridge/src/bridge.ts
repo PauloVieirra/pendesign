@@ -1719,3 +1719,23 @@ html[data-od-static-preview] *:not([hidden]):not([aria-hidden="true"]) {
 }
 </style>`;
 }
+
+// Variants for hosts that need the bridge as plain assets (a project's
+// public/ folder served by Vite, for example) rather than HTML strings
+// injected into a srcdoc. We strip the wrapping <script>/<style> tags so
+// the output goes straight into a .js / .css file the iframe can load
+// first-party — this is how the daemon makes the bridge work inside the
+// React dev server without a cross-origin shim.
+export function buildStandaloneBridgeJs(): string {
+  const html = buildManualEditBridge(true);
+  return html
+    .replace(/^<script[^>]*>/, '')
+    .replace(/<\/script>\s*$/, '');
+}
+
+export function buildStandaloneBridgeCss(): string {
+  const html = buildManualEditBridgeStyle();
+  return html
+    .replace(/^<style[^>]*>/, '')
+    .replace(/<\/style>\s*$/, '');
+}

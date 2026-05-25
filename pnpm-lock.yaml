@@ -50,6 +50,9 @@ importers:
       '@open-design/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@open-design/edit-bridge':
+        specifier: workspace:*
+        version: link:../../packages/edit-bridge
       '@open-design/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -237,6 +240,9 @@ importers:
       '@open-design/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@open-design/edit-bridge':
+        specifier: workspace:*
+        version: link:../../packages/edit-bridge
       '@open-design/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -351,6 +357,15 @@ importers:
       vitest:
         specifier: 4.1.6
         version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.12.2)(jsdom@29.1.1)(vite@7.3.3(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.2)(yaml@2.9.0))
+
+  packages/edit-bridge:
+    devDependencies:
+      esbuild:
+        specifier: 0.28.0
+        version: 0.28.0
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
 
   packages/platform:
     devDependencies:
@@ -4334,6 +4349,11 @@ packages:
 
   typescript-auto-import-cache@0.3.6:
     resolution: {integrity: sha512-RpuHXrknHdVdK7wv/8ug3Fr0WNsNi5l5aB8MYYuXhq2UH5lnEB1htJ1smhtD5VeCsGr2p8mUDtd83LCQDFVgjQ==}
+
+  typescript@5.6.3:
+    resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -9097,6 +9117,8 @@ snapshots:
   typescript-auto-import-cache@0.3.6:
     dependencies:
       semver: 7.7.4
+
+  typescript@5.6.3: {}
 
   typescript@5.9.3: {}
 

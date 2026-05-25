@@ -7,7 +7,7 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
-} from '../../src/edit-mode/source-patches';
+} from '@open-design/edit-bridge';
 
 const baseSource = `<!doctype html>
 <html>

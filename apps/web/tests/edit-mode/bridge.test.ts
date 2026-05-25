@@ -7,7 +7,7 @@ import {
   isSourceMappableManualEditElement,
   manualEditDomPathForElement,
   manualEditStableIdForElement,
-} from '../../src/edit-mode/bridge';
+} from '@open-design/edit-bridge';
 
 describe('manual edit bridge target normalization', () => {
   it('prefers explicit data-od-id over generated ids', () => {

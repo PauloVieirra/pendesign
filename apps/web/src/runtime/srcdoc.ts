@@ -19,7 +19,7 @@ import {
   buildManualEditBridgeStyle,
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
-} from '../edit-mode/bridge';
+} from '@open-design/edit-bridge';
 import { buildConsoleBridge } from './console-bridge';
 
 export type SrcdocOptions = {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
-import type { ManualEditMediaRequestKind, ManualEditMediaTarget, ManualEditRect } from '../edit-mode/types';
+import type { ManualEditMediaRequestKind, ManualEditMediaTarget, ManualEditRect } from '@open-design/edit-bridge';
 
 const ICON_CATALOG: IconName[] = [
   'arrow-left','arrow-up','attach','bell','check','chevron-down','chevron-left','chevron-right',

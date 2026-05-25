@@ -115,8 +115,8 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
-} from '../edit-mode/source-patches';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+} from '@open-design/edit-bridge';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import { BreakpointRuler, BREAKPOINT_PRESETS } from './BreakpointRuler';
 import { CodeEditor } from './CodeEditor';

@@ -4,7 +4,7 @@ import {
   applyManualEditPatchViaStore,
   manualEditPatchToOps,
 } from '../../src/document/legacy-adapter';
-import { emptyManualEditStyles } from '../../src/edit-mode/types';
+import { emptyManualEditStyles } from '@open-design/edit-bridge';
 
 describe('manualEditPatchToOps', () => {
   it('converts set-text to a single set-text op', () => {
