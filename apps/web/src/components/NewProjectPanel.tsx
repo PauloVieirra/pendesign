@@ -730,13 +730,8 @@ export function NewProjectPanel({
   }
 
   function handleCreate() {
-    console.log('[create-debug] handleCreate fired', { canCreate, submitting, tab, step, projectStack });
-    if (!canCreate || submitting) {
-      console.warn('[create-debug] blocked: canCreate=', canCreate, 'submitting=', submitting);
-      return;
-    }
+    if (!canCreate || submitting) return;
     if (tab === 'figma') {
-      console.log('[create-debug] routing to handleCreateFigma');
       void handleCreateFigma();
       return;
     }
@@ -797,25 +792,22 @@ export function NewProjectPanel({
     );
     setSubmitting(true);
     try {
-      const payload = {
-        name: trimmedName || autoName(tab, mediaSurface, t),
-        skillId: skillIdForTab,
-        designSystemId: primaryDs,
-        metadata: {
-          ...metadata,
-          nameSource: trimmedName ? 'user' : 'generated' as 'user' | 'generated',
-          ...((tab === 'prototype' || tab === 'other') && projectStack === 'react-vite'
-            ? { stack: 'react-vite' as const }
-            : {}),
-        },
-        requestId,
-        docs: docs.length > 0 ? docs : undefined,
-      };
-      console.log('[create-debug] calling onCreate with', payload);
-      void Promise.resolve(onCreate(payload))
-        .then((result) => { console.log('[create-debug] onCreate resolved', result); })
-        .catch((err) => { console.error('[create-debug] onCreate rejected', err); })
-        .finally(() => setSubmitting(false));
+      void Promise.resolve(
+        onCreate({
+          name: trimmedName || autoName(tab, mediaSurface, t),
+          skillId: skillIdForTab,
+          designSystemId: primaryDs,
+          metadata: {
+            ...metadata,
+            nameSource: trimmedName ? 'user' : 'generated',
+            ...((tab === 'prototype' || tab === 'other') && projectStack === 'react-vite'
+              ? { stack: 'react-vite' }
+              : {}),
+          },
+          requestId,
+          docs: docs.length > 0 ? docs : undefined,
+        }),
+      ).finally(() => setSubmitting(false));
     } catch {
       setSubmitting(false);
     }
@@ -2471,9 +2463,11 @@ function DesignSystemPicker({
                     avatar={<DesignSystemAvatar system={d} />}
                     title={d.title}
                     badge={
-                      d.id === defaultDesignSystemId
-                        ? t('newproj.dsBadgeDefault')
-                        : undefined
+                      d.status === 'draft'
+                        ? 'draft'
+                        : d.id === defaultDesignSystemId
+                          ? t('newproj.dsBadgeDefault')
+                          : undefined
                     }
                     subtitle={d.summary || d.category || ''}
                   />
@@ -2535,7 +2529,13 @@ function DsPickerItem({
       <span className="ds-picker-item-text">
         <span className="ds-picker-item-title">
           {title}
-          {badge ? <span className="ds-picker-item-badge">{badge}</span> : null}
+          {badge ? (
+            <span
+              className={`ds-picker-item-badge${badge === 'draft' ? ' ds-picker-item-badge--draft' : ''}`}
+            >
+              {badge}
+            </span>
+          ) : null}
         </span>
         <span className="ds-picker-item-sub">{subtitle}</span>
       </span>

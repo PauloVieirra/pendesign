@@ -6972,6 +6972,12 @@ a.avatar-item:visited {
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 4px;
+  text-transform: uppercase;
+}
+.ds-picker-item-badge--draft {
+  color: rgb(168, 95, 30);
+  border-color: rgba(168, 95, 30, 0.4);
+  background: rgba(245, 158, 11, 0.08);
 }
 .ds-picker-item-sub {
   font-size: 11px;

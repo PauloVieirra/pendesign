@@ -10768,6 +10768,11 @@ export async function startServer({
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
       routineService?.stop();
+      // Kill every Vite dev server we spawned. Without this, restarting
+      // the daemon would orphan node/Vite processes that keep holding
+      // their ports — the next dev server start would pick a different
+      // port and the user would lose preview continuity.
+      stopAllDevServers();
     };
     const shutdownDaemonRuns = async () => {
       if (daemonShutdownStarted) return;
