@@ -1,11 +1,11 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import type { LeanInceptionCard } from '@open-design/contracts';
 import { useT } from '../../i18n';
-import { useLeanInception } from './useLeanInception.js';
-import { LeanInceptionToolbar } from './LeanInceptionToolbar.js';
-import { LeanInceptionBoard, type BoardHandle } from './LeanInceptionBoard.js';
-import { LeanInceptionDetailDrawer } from './LeanInceptionDetailDrawer.js';
-import { LeanInceptionEmptyState } from './LeanInceptionEmptyState.js';
+import { useLeanInception } from './useLeanInception';
+import { LeanInceptionToolbar } from './LeanInceptionToolbar';
+import { LeanInceptionBoard, type BoardHandle } from './LeanInceptionBoard';
+import { LeanInceptionDetailDrawer } from './LeanInceptionDetailDrawer';
+import { LeanInceptionEmptyState } from './LeanInceptionEmptyState';
 
 interface Props {
   projectId: string;

@@ -4,8 +4,8 @@ import type {
   LeanInceptionColumnStatus,
 } from '@open-design/contracts';
 import { useT } from '../../i18n';
-import { STATUS_COLOR_CLASS } from './constants.js';
-import { LeanInceptionCard as CardView } from './LeanInceptionCard.js';
+import { STATUS_COLOR_CLASS } from './constants';
+import { LeanInceptionCard as CardView } from './LeanInceptionCard';
 
 interface Props {
   columnKey: LeanInceptionColumnKey;

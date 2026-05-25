@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { LeanInceptionDocument } from '@open-design/contracts';
 import { useT } from '../../i18n';
-import { LeanInceptionDocumentsList } from './LeanInceptionDocumentsList.js';
+import { LeanInceptionDocumentsList } from './LeanInceptionDocumentsList';
 
 interface Props {
   documents: LeanInceptionDocument[];

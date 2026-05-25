@@ -1,5 +1,5 @@
 import type { LeanInceptionCard as Card } from '@open-design/contracts';
-import { CONFIDENCE_DOT_CLASS } from './constants.js';
+import { CONFIDENCE_DOT_CLASS } from './constants';
 
 interface Props {
   card: Card;

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { LeanInceptionCard } from '@open-design/contracts';
 import { useT } from '../../i18n';
-import { CONFIDENCE_DOT_CLASS } from './constants.js';
+import { CONFIDENCE_DOT_CLASS } from './constants';
 
 interface Props {
   card: LeanInceptionCard | null;

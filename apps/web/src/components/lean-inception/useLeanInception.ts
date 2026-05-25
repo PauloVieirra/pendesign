@@ -5,7 +5,7 @@ import type {
   ExtractDocumentsResponse,
   ExtractDocumentInput,
 } from '@open-design/contracts';
-import { SUPPORTED_EXTENSIONS } from './constants.js';
+import { SUPPORTED_EXTENSIONS } from './constants';
 
 export interface UseLeanInception {
   state: LeanInceptionState | null;

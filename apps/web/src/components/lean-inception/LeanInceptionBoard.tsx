@@ -8,9 +8,9 @@ import type {
   LeanInceptionState,
   LeanInceptionCard as Card,
 } from '@open-design/contracts';
-import { COLUMN_ORDER } from './constants.js';
-import { LeanInceptionColumn } from './LeanInceptionColumn.js';
-import { LeanInceptionDropOverlay } from './LeanInceptionDropOverlay.js';
+import { COLUMN_ORDER } from './constants';
+import { LeanInceptionColumn } from './LeanInceptionColumn';
+import { LeanInceptionDropOverlay } from './LeanInceptionDropOverlay';
 
 export interface BoardHandle {
   zoomIn: () => void;

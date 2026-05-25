@@ -50,8 +50,8 @@ import {
   parseSketchWorkspaceDocument,
   type SketchItem,
 } from './sketch-model';
-import { LEAN_INCEPTION_TAB } from './lean-inception/constants.js';
-import { LeanInceptionCanvas } from './lean-inception/LeanInceptionCanvas.js';
+import { LEAN_INCEPTION_TAB } from './lean-inception/constants';
+import { LeanInceptionCanvas } from './lean-inception/LeanInceptionCanvas';
 
 interface Props {
   projectId: string;
