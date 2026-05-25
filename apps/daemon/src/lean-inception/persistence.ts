@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { deriveColumnStatus } from './derive-column-status.js';
+import {
+  LEAN_INCEPTION_COLUMN_KEYS,
+  type LeanInceptionColumnKey,
+} from './column-keys.js';
+import type {
+  LeanInceptionCard,
+  LeanInceptionDocument,
+  LeanInceptionState,
+} from '@open-design/contracts';
 
 type SqliteDb = Database.Database;
 
@@ -200,4 +210,242 @@ export function updateDocumentExtractionStatus(
      SET extraction_status = ?, extraction_error = ?, last_extracted_at = ?
      WHERE id = ?`
   ).run(status, errorMessage, nowIso(), documentId);
+}
+
+// ---------------------------------------------------------------------------
+// Extraction CRUD
+// ---------------------------------------------------------------------------
+
+export interface ExtractionRow {
+  id: string;
+  inception_id: string;
+  document_id: string;
+  runtime: string;
+  model: string | null;
+  prompt_version: number;
+  prompt_tokens: number | null;
+  output_tokens: number | null;
+  duration_ms: number | null;
+  warnings_count: number;
+  cards_persisted: number;
+  cards_dropped: number;
+  started_at: string;
+  finished_at: string | null;
+  status: 'running' | 'succeeded' | 'failed';
+  error_message: string | null;
+}
+
+function newExtractionId() { return `ext_${randomUUID().replace(/-/g, '')}`; }
+
+export interface InsertExtractionInput {
+  inception_id: string;
+  document_id: string;
+  runtime: string;
+  model: string | null;
+  prompt_version: number;
+}
+
+export function insertExtraction(db: SqliteDb, input: InsertExtractionInput): ExtractionRow {
+  const row: ExtractionRow = {
+    id: newExtractionId(),
+    inception_id: input.inception_id,
+    document_id: input.document_id,
+    runtime: input.runtime,
+    model: input.model,
+    prompt_version: input.prompt_version,
+    prompt_tokens: null,
+    output_tokens: null,
+    duration_ms: null,
+    warnings_count: 0,
+    cards_persisted: 0,
+    cards_dropped: 0,
+    started_at: nowIso(),
+    finished_at: null,
+    status: 'running',
+    error_message: null,
+  };
+  db.prepare(
+    `INSERT INTO lean_inception_extractions
+     (id, inception_id, document_id, runtime, model, prompt_version,
+      prompt_tokens, output_tokens, duration_ms, warnings_count,
+      cards_persisted, cards_dropped, started_at, finished_at, status, error_message)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    row.id, row.inception_id, row.document_id, row.runtime, row.model, row.prompt_version,
+    row.prompt_tokens, row.output_tokens, row.duration_ms, row.warnings_count,
+    row.cards_persisted, row.cards_dropped, row.started_at, row.finished_at, row.status, row.error_message,
+  );
+  return row;
+}
+
+export interface FinalizeExtractionInput {
+  status: 'succeeded' | 'failed';
+  cards_persisted?: number;
+  cards_dropped?: number;
+  warnings_count?: number;
+  duration_ms?: number;
+  prompt_tokens?: number | null;
+  output_tokens?: number | null;
+  error_message?: string | null;
+}
+
+export function finalizeExtraction(db: SqliteDb, extractionId: string, input: FinalizeExtractionInput): void {
+  db.prepare(
+    `UPDATE lean_inception_extractions
+     SET status = ?, cards_persisted = COALESCE(?, cards_persisted),
+         cards_dropped = COALESCE(?, cards_dropped),
+         warnings_count = COALESCE(?, warnings_count),
+         duration_ms = COALESCE(?, duration_ms),
+         prompt_tokens = COALESCE(?, prompt_tokens),
+         output_tokens = COALESCE(?, output_tokens),
+         error_message = COALESCE(?, error_message),
+         finished_at = ?
+     WHERE id = ?`
+  ).run(
+    input.status,
+    input.cards_persisted ?? null,
+    input.cards_dropped ?? null,
+    input.warnings_count ?? null,
+    input.duration_ms ?? null,
+    input.prompt_tokens ?? null,
+    input.output_tokens ?? null,
+    input.error_message ?? null,
+    nowIso(),
+    extractionId,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card CRUD
+// ---------------------------------------------------------------------------
+
+export interface CardRow {
+  id: string;
+  inception_id: string;
+  document_id: string;
+  column_key: LeanInceptionColumnKey;
+  title: string;
+  content: string;
+  confidence: 'low' | 'medium' | 'high';
+  source_anchor: string;
+  source_line: number | null;
+  extraction_id: string;
+  created_at: string;
+}
+
+function newCardId() { return `card_${randomUUID().replace(/-/g, '')}`; }
+
+export interface InsertCardInput {
+  inception_id: string;
+  document_id: string;
+  column_key: LeanInceptionColumnKey;
+  title: string;
+  content: string;
+  confidence: 'low' | 'medium' | 'high';
+  source_anchor: string;
+  source_line: number | null;
+  extraction_id: string;
+}
+
+export function insertCardsAtomic(db: SqliteDb, cards: readonly InsertCardInput[]): void {
+  const stmt = db.prepare(
+    `INSERT INTO lean_inception_cards
+     (id, inception_id, document_id, column_key, title, content, confidence,
+      source_anchor, source_line, extraction_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const tx = db.transaction((rows: readonly InsertCardInput[]) => {
+    const ts = nowIso();
+    for (const c of rows) {
+      stmt.run(
+        newCardId(), c.inception_id, c.document_id, c.column_key, c.title, c.content,
+        c.confidence, c.source_anchor, c.source_line, c.extraction_id, ts,
+      );
+    }
+  });
+  tx(cards);
+}
+
+export function listCardsByDocument(db: SqliteDb, documentId: string): CardRow[] {
+  return db.prepare(
+    'SELECT * FROM lean_inception_cards WHERE document_id = ? ORDER BY created_at ASC'
+  ).all(documentId) as CardRow[];
+}
+
+export function listCardsByInception(db: SqliteDb, inceptionId: string): CardRow[] {
+  return db.prepare(
+    'SELECT * FROM lean_inception_cards WHERE inception_id = ? ORDER BY created_at ASC'
+  ).all(inceptionId) as CardRow[];
+}
+
+// ---------------------------------------------------------------------------
+// State reader
+// ---------------------------------------------------------------------------
+
+function cardRowToDto(row: CardRow): LeanInceptionCard {
+  return {
+    id: row.id,
+    inception_id: row.inception_id,
+    document_id: row.document_id,
+    column_key: row.column_key,
+    title: row.title,
+    content: row.content,
+    confidence: row.confidence,
+    source_anchor: row.source_anchor,
+    source_line: row.source_line,
+    extraction_id: row.extraction_id,
+    created_at: row.created_at,
+  };
+}
+
+function docRowToDto(row: DocumentRow, cardCount: number): LeanInceptionDocument {
+  return {
+    id: row.id,
+    inception_id: row.inception_id,
+    filename: row.filename,
+    mime_type: row.mime_type,
+    byte_size: row.byte_size,
+    content_hash: row.content_hash,
+    ingested_at: row.ingested_at,
+    last_extracted_at: row.last_extracted_at,
+    extraction_status: row.extraction_status,
+    extraction_error: row.extraction_error,
+    card_count: cardCount,
+  };
+}
+
+export function readInceptionState(db: SqliteDb, inceptionId: string): LeanInceptionState {
+  const inception = db.prepare(
+    'SELECT * FROM lean_inceptions WHERE id = ?'
+  ).get(inceptionId) as InceptionRow | undefined;
+  if (!inception) {
+    throw new Error(`inception not found: ${inceptionId}`);
+  }
+
+  const docs = listDocuments(db, inceptionId);
+  const cardCounts = db.prepare(
+    'SELECT document_id, COUNT(*) AS c FROM lean_inception_cards WHERE inception_id = ? GROUP BY document_id'
+  ).all(inceptionId) as Array<{ document_id: string; c: number }>;
+  const countByDoc = new Map(cardCounts.map(r => [r.document_id, r.c]));
+
+  const cards = listCardsByInception(db, inceptionId);
+  const cardsByColumn = new Map<LeanInceptionColumnKey, CardRow[]>();
+  for (const key of LEAN_INCEPTION_COLUMN_KEYS) cardsByColumn.set(key, []);
+  for (const c of cards) cardsByColumn.get(c.column_key)?.push(c);
+
+  const columns = {} as LeanInceptionState['columns'];
+  for (const key of LEAN_INCEPTION_COLUMN_KEYS) {
+    const colCards = cardsByColumn.get(key) ?? [];
+    columns[key] = {
+      status: deriveColumnStatus(colCards),
+      cards: colCards.map(cardRowToDto),
+    };
+  }
+
+  return {
+    inception_id: inception.id,
+    project_id: inception.project_id,
+    documents: docs.map(d => docRowToDto(d, countByDoc.get(d.id) ?? 0)),
+    columns,
+  };
 }
