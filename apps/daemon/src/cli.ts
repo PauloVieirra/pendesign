@@ -7,6 +7,7 @@ import { runConnectorsToolCli } from './tools-connectors-cli.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
+import { runLeanInception } from './lean-inception-cli.js';
 
 const argv = process.argv.slice(2);
 
@@ -226,6 +227,7 @@ const SUBCOMMAND_MAP = {
   version: runVersion,
   doctor: runDoctor,
   config: runConfig,
+  'lean-inception': runLeanInception,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
