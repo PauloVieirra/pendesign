@@ -50,6 +50,8 @@ import {
   parseSketchWorkspaceDocument,
   type SketchItem,
 } from './sketch-model';
+import { LEAN_INCEPTION_TAB } from './lean-inception/constants.js';
+import { LeanInceptionCanvas } from './lean-inception/LeanInceptionCanvas.js';
 
 interface Props {
   projectId: string;
@@ -271,7 +273,7 @@ export function FileWorkspace({
   // back to the last remaining tab. Skip transient activeTab values
   // (DESIGN_FILES_TAB, pending sketches) since those aren't in persistedTabs.
   useEffect(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return;
     if (sketches[activeTab] && !sketches[activeTab]!.persisted) return;
     if (!persistedTabs.includes(activeTab)) {
       setPersistedActive(persistedTabs[persistedTabs.length - 1] ?? null);
@@ -435,7 +437,7 @@ export function FileWorkspace({
   // The Design Files entry is already sticky-pinned, so we only scroll
   // for real workspace tabs. Issue #775.
   useEffect(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return;
     const tabBar = tabsBarRef.current;
     if (!tabBar) return;
     const el = tabBar.querySelector<HTMLElement>('.ws-tab.active');
@@ -697,7 +699,7 @@ export function FileWorkspace({
   }
 
   const activeFile = useMemo<ProjectFile | null>(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return null;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return null;
     const onDisk = visibleFiles.find((f) => f.name === activeTab);
     if (onDisk) return onDisk;
     if (isSketchName(activeTab) && sketches[activeTab]) {
@@ -713,7 +715,7 @@ export function FileWorkspace({
   }, [activeTab, visibleFiles, sketches]);
 
   const activeLiveArtifact = useMemo<LiveArtifactWorkspaceEntry | null>(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return null;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return null;
     return liveArtifactEntries.find((entry) => entry.tabId === activeTab) ?? null;
   }, [activeTab, liveArtifactEntries]);
 
@@ -769,6 +771,21 @@ export function FileWorkspace({
             clearTabDragState();
           }}
         >
+          <button
+            type="button"
+            className={`ws-tab lean-inception-tab ${activeTab === LEAN_INCEPTION_TAB ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === LEAN_INCEPTION_TAB}
+            tabIndex={0}
+            data-testid="lean-inception-tab"
+            onClick={() => setActiveTab(LEAN_INCEPTION_TAB)}
+            title="Lean Inception"
+          >
+            <span className="tab-icon" aria-hidden>
+              <Icon name="kanban" size={13} />
+            </span>
+            <span className="ws-tab-label">{t('lean_inception.tab.title')}</span>
+          </button>
           {designSystemProject ? (
             <button
               type="button"
@@ -873,7 +890,9 @@ export function FileWorkspace({
             </button>
           </div>
         ) : null}
-        {activeTab === DESIGN_SYSTEM_TAB && designSystemProject ? (
+        {activeTab === LEAN_INCEPTION_TAB ? (
+          <LeanInceptionCanvas projectId={projectId} />
+        ) : activeTab === DESIGN_SYSTEM_TAB && designSystemProject ? (
           <DesignSystemProjectPanel
             projectId={projectId}
             system={designSystemProject}
