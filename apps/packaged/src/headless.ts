@@ -56,6 +56,10 @@ function resolveHeadlessConfig(): PackagedConfig {
     daemonSidecarEntry: null,
     namespace,
     namespaceBaseRoot,
+    // Headless launchers always pass an explicit namespaceBaseRoot via
+    // OD_DATA_DIR / OD_NAMESPACE_BASE_ROOT, so the legacy Open Design
+    // migration must NOT auto-fire here.
+    namespaceBaseRootIsDefault: false,
     nodeCommand: null,
     resourceRoot,
     telemetryRelayUrl: process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL?.trim() || null,
