@@ -3,6 +3,7 @@ import type { ReadinessAssessment } from './readiness';
 
 interface Props {
   assessment: ReadinessAssessment;
+  onStartCreation: () => Promise<void> | void;
 }
 
 const DOT_CLASS: Record<ReadinessAssessment['level'], string> = {
@@ -11,7 +12,7 @@ const DOT_CLASS: Record<ReadinessAssessment['level'], string> = {
   insufficient: 'li-readiness__dot--insufficient',
 };
 
-export function LeanInceptionReadiness({ assessment }: Props) {
+export function LeanInceptionReadiness({ assessment, onStartCreation }: Props) {
   const [open, setOpen] = useState(false);
   return (
     <div className="li-readiness">
@@ -45,6 +46,21 @@ export function LeanInceptionReadiness({ assessment }: Props) {
               </ul>
             </>
           )}
+          <footer className="li-readiness__footer">
+            <button
+              type="button"
+              className="li-readiness__cta"
+              onClick={() => void onStartCreation()}
+              disabled={assessment.level === 'insufficient'}
+              title={
+                assessment.level === 'insufficient'
+                  ? 'Adicione documentos antes de criar — dados insuficientes para gerar telas com qualidade.'
+                  : 'Sincroniza a Lean Inception ao contexto do projeto e abre o chat com um prompt pronto.'
+              }
+            >
+              Criar agora
+            </button>
+          </footer>
         </div>
       )}
     </div>

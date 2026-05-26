@@ -24,6 +24,7 @@ import { runResearchForInception } from './lean-inception/research-service.js';
 import type { LeanInceptionRuntimeInvoker } from './lean-inception/runtime-invoke.js';
 import { invokeAgentForExtraction } from './lean-inception/runtime-invoke.js';
 import { ingestDoc } from './rag.js';
+import { syncInceptionToRag } from './lean-inception/sync-to-rag.js';
 
 export interface LeanInceptionRoutesDeps {
   db: Database.Database;
@@ -220,5 +221,12 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
       safeRm(path.resolve(deps.storageRoot, doc.storage_path));
     }
     res.json({ ok: true });
+  }));
+
+  app.post('/api/projects/:projectId/lean-inception/sync-to-rag', wrap(async (req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
+    const state = readInceptionState(deps.db, inception.id);
+    const result = await syncInceptionToRag(deps.db, inception.project_id, state);
+    res.json({ ok: true, result });
   }));
 }

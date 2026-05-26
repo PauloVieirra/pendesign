@@ -425,6 +425,17 @@ export function deleteProjectDoc(
   return Number(result.changes ?? 0);
 }
 
+export function deleteProjectDocsByName(
+  db: SqliteDb,
+  projectId: string,
+  docName: string,
+): number {
+  const result = db
+    .prepare(`DELETE FROM project_docs WHERE project_id = ? AND doc_name = ?`)
+    .run(projectId, docName);
+  return Number(result.changes ?? 0);
+}
+
 function safeParseFloatArray(json: string): number[] | null {
   try {
     const parsed = JSON.parse(json);

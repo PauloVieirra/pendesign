@@ -139,6 +139,21 @@ describe('useLeanInception', () => {
     expect(lastCall[1].method).toBe('DELETE');
   });
 
+  it('syncToRag POSTs to /sync-to-rag and returns the chunk count', async () => {
+    (fetch as any)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) }) // mount
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, result: { docId: 'd', chunkCount: 3, embedded: false, charsIngested: 1000 } }) });
+    const { result } = renderHook(() => useLeanInception('prj_1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let out: any;
+    await act(async () => { out = await result.current.syncToRag(); });
+    expect(out).toEqual({ chunkCount: 3, embedded: false });
+    const lastCall = (fetch as any).mock.calls.at(-1);
+    expect(lastCall[0]).toContain('/sync-to-rag');
+    expect(lastCall[1].method).toBe('POST');
+  });
+
   it('reset issues DELETE on inception then refresh', async () => {
     (fetch as any)
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) }) // mount

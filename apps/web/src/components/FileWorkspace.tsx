@@ -281,6 +281,16 @@ export function FileWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistedTabs, activeTab]);
 
+  // Lean Inception "Criar agora" — switch away from the LI tab so the chat
+  // composer becomes visible and picks up the pending prompt.
+  useEffect(() => {
+    const onStart = () => {
+      setActiveTab(DESIGN_FILES_TAB);
+    };
+    window.addEventListener('lean-inception:start-creation', onStart);
+    return () => window.removeEventListener('lean-inception:start-creation', onStart);
+  }, []);
+
   // External open requests from chat (tool cards, produced-file chips,
   // deep-linked URL, or the parent's auto-open after an agent Write) —
   // add the file to the open-tabs set and focus it.

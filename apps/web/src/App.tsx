@@ -1122,6 +1122,22 @@ export function App() {
     navigate({ kind: 'home', view: 'integrations' });
   }, []);
 
+  // Lean Inception "Criar agora" flow: sync state is already written to RAG by
+  // the time this event fires. We just need to pre-fill pendingPrompt so the
+  // chat composer auto-submits it on next mount.
+  useEffect(() => {
+    const onStart = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { projectId?: string; prompt?: string } | undefined;
+      if (!detail?.projectId || !detail.prompt) return;
+      void patchProject(detail.projectId, { pendingPrompt: detail.prompt });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === detail.projectId ? { ...p, pendingPrompt: detail.prompt } : p)),
+      );
+    };
+    window.addEventListener('lean-inception:start-creation', onStart as EventListener);
+    return () => window.removeEventListener('lean-inception:start-creation', onStart as EventListener);
+  }, []);
+
   // Cmd+, (mac) / Ctrl+, (win/linux) opens Settings. Capture phase so we
   // beat the browser's default Preferences dialog. Platform-gated so
   // meta/ctrl don't conflict across OS.

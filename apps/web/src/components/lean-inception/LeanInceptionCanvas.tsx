@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function LeanInceptionCanvas({ projectId }: Props) {
-  const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset } =
+  const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset, syncToRag } =
     useLeanInception(projectId);
   const columns = useColumnVisibility(projectId);
   const readiness = assessReadiness(state ?? null);
@@ -26,6 +26,18 @@ export function LeanInceptionCanvas({ projectId }: Props) {
   const onConfirmReset = async () => {
     setConfirmingReset(false);
     await reset();
+  };
+
+  const onStartCreation = async () => {
+    const result = await syncToRag();
+    if (!result) return; // error already set by the hook
+    // Pre-fill chat with a short prompt; the RAG carries the full context.
+    window.dispatchEvent(new CustomEvent('lean-inception:start-creation', {
+      detail: {
+        projectId,
+        prompt: `Crie as telas do sistema descrito na Lean Inception deste projeto. Consulte o contexto do projeto (visão, problema, personas, jornada, features, regras de negócio, ideação) para fundamentar as decisões de UI e UX.`,
+      },
+    }));
   };
 
   if (isLoading) {
@@ -47,7 +59,7 @@ export function LeanInceptionCanvas({ projectId }: Props) {
   return (
     <div className="li-canvas">
       <div className="li-top-right">
-        <LeanInceptionReadiness assessment={readiness} />
+        <LeanInceptionReadiness assessment={readiness} onStartCreation={onStartCreation} />
         <LeanInceptionActions
           documents={state.documents}
           visible={columns.visible}

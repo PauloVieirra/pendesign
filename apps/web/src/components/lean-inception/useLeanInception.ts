@@ -19,6 +19,7 @@ export interface UseLeanInception {
   removeDocument: (documentId: string) => Promise<void>;
   removeCard: (cardId: string) => Promise<void>;
   reset: () => Promise<void>;
+  syncToRag: () => Promise<{ chunkCount: number; embedded: boolean } | null>;
 }
 
 const baseFor = (projectId: string) =>
@@ -150,6 +151,22 @@ export function useLeanInception(projectId: string): UseLeanInception {
     }
   }, [projectId]);
 
+  const syncToRag = useCallback(async (): Promise<{ chunkCount: number; embedded: boolean } | null> => {
+    setError(null);
+    try {
+      const res = await fetch(`${baseFor(projectId)}/sync-to-rag`, { method: 'POST' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: LeanInceptionError } | null;
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { ok: boolean; result: { chunkCount: number; embedded: boolean } };
+      return { chunkCount: data.result.chunkCount, embedded: data.result.embedded };
+    } catch (e) {
+      setError(errorToString(e));
+      return null;
+    }
+  }, [projectId]);
+
   const reset = useCallback(async (): Promise<void> => {
     setError(null);
     setIsMutating(true);
@@ -200,5 +217,5 @@ export function useLeanInception(projectId: string): UseLeanInception {
     };
   }, [hasExtractingDocs, fetchState]);
 
-  return { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset };
+  return { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset, syncToRag };
 }
