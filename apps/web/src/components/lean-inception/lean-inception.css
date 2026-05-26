@@ -45,7 +45,7 @@
   width: max-content !important;
   min-width: 100%;
   gap: 24px;
-  padding: 96px 48px 32px 48px;
+  padding: 24px 48px 32px 48px;
   align-items: flex-start;
 }
 
@@ -233,15 +233,21 @@
   display: none;
 }
 
-/* ---- Top-right group (readiness badge + action icons) ---- */
+/* ---- Top-right group (readiness badge + action icons) ----
+   Sits in normal flow as the FIRST child of .li-canvas (flex column) so it
+   occupies its own vertical band at the top. This guarantees breathing room
+   between the controls and the column headers below, without depending on
+   the .li-board__grid padding-top which can be defeated by
+   react-zoom-pan-pinch's inner transform. */
 .li-top-right {
-  position: absolute;
-  top: 12px;
-  right: 16px;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  padding: 14px 16px;
+  flex-shrink: 0;
 }
 
 .li-actions {
