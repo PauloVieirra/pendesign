@@ -12,6 +12,8 @@ import {
   listDocuments,
   deleteDocument,
   deleteInception,
+  findCardById,
+  deleteCard,
 } from './lean-inception/persistence.js';
 import {
   ingestDocumentForInception,
@@ -193,6 +195,20 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
     }
     deleteDocument(deps.db, target.id);
     safeRm(path.resolve(deps.storageRoot, target.storage_path));
+    res.json({ state: readInceptionState(deps.db, inception.id) });
+  }));
+
+  app.delete('/api/projects/:projectId/lean-inception/cards/:cardId', wrap((req, res) => {
+    const inception = upsertInceptionForProject(deps.db, req.params.projectId!);
+    const cardId = req.params.cardId!;
+    const card = findCardById(deps.db, cardId);
+    if (!card || card.inception_id !== inception.id) {
+      return sendError(res, 404, {
+        code: 'CARD_NOT_FOUND',
+        message: `card not found: ${cardId}`,
+      });
+    }
+    deleteCard(deps.db, cardId);
     res.json({ state: readInceptionState(deps.db, inception.id) });
   }));
 

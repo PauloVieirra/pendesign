@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function LeanInceptionCanvas({ projectId }: Props) {
-  const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, reset } =
+  const { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset } =
     useLeanInception(projectId);
   const columns = useColumnVisibility(projectId);
   const readiness = assessReadiness(state ?? null);
@@ -70,7 +70,15 @@ export function LeanInceptionCanvas({ projectId }: Props) {
 
       <LeanInceptionDropBar onFiles={(files) => void extract(files)} isMutating={isMutating} />
 
-      <LeanInceptionDetailDrawer card={detailCard} filename={filename} onClose={() => setDetailCard(null)} />
+      <LeanInceptionDetailDrawer
+        card={detailCard}
+        filename={filename}
+        onClose={() => setDetailCard(null)}
+        onDelete={async (cardId) => {
+          await removeCard(cardId);
+          setDetailCard(null);
+        }}
+      />
 
       {confirmingReset && (
         <div className="li-modal-scrim">

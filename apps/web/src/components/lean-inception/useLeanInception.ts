@@ -17,6 +17,7 @@ export interface UseLeanInception {
   refresh: () => Promise<void>;
   extract: (files: File[]) => Promise<void>;
   removeDocument: (documentId: string) => Promise<void>;
+  removeCard: (cardId: string) => Promise<void>;
   reset: () => Promise<void>;
 }
 
@@ -128,6 +129,27 @@ export function useLeanInception(projectId: string): UseLeanInception {
     }
   }, [projectId]);
 
+  const removeCard = useCallback(async (cardId: string): Promise<void> => {
+    setError(null);
+    setIsMutating(true);
+    try {
+      const res = await fetch(
+        `${baseFor(projectId)}/cards/${encodeURIComponent(cardId)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: LeanInceptionError } | null;
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { state: LeanInceptionState };
+      setState(data.state);
+    } catch (e) {
+      setError(errorToString(e));
+    } finally {
+      setIsMutating(false);
+    }
+  }, [projectId]);
+
   const reset = useCallback(async (): Promise<void> => {
     setError(null);
     setIsMutating(true);
@@ -178,5 +200,5 @@ export function useLeanInception(projectId: string): UseLeanInception {
     };
   }, [hasExtractingDocs, fetchState]);
 
-  return { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, reset };
+  return { state, isLoading, isMutating, hasExtractingDocs, error, refresh, extract, removeDocument, removeCard, reset };
 }

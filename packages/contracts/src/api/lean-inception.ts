@@ -118,6 +118,7 @@ export const LEAN_INCEPTION_ERROR_CODES = [
   'INVALID_JSON_OUTPUT',
   'SCHEMA_VALIDATION_FAILED',
   'DOCUMENT_NOT_FOUND',
+  'CARD_NOT_FOUND',
 ] as const;
 
 export const LeanInceptionErrorCodeSchema = z.enum(LEAN_INCEPTION_ERROR_CODES);

@@ -25,14 +25,14 @@ const card = {
 describe('LeanInceptionDetailDrawer', () => {
   it('renders nothing when card is null', () => {
     const { container } = render(
-      <LeanInceptionDetailDrawer card={null} filename={null} onClose={() => {}} />,
+      <LeanInceptionDetailDrawer card={null} filename={null} onClose={() => {}} onDelete={() => {}} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('renders title, content, source_anchor, line, filename', () => {
     render(
-      <LeanInceptionDetailDrawer card={card} filename="discovery.md" onClose={() => {}} />,
+      <LeanInceptionDetailDrawer card={card} filename="discovery.md" onClose={() => {}} onDelete={() => {}} />,
     );
     expect(screen.getByText('Sync stock counts')).toBeTruthy();
     expect(screen.getByText('Push stock to Shopify and Mercado Livre.')).toBeTruthy();
@@ -43,7 +43,7 @@ describe('LeanInceptionDetailDrawer', () => {
 
   it('calls onClose on X button click', async () => {
     const onClose = vi.fn();
-    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={onClose} />);
+    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={onClose} onDelete={() => {}} />);
     const button = screen.getByRole('button', { name: /close/i });
     fireEvent.click(button);
     expect(onClose).toBeCalled();
@@ -51,8 +51,33 @@ describe('LeanInceptionDetailDrawer', () => {
 
   it('calls onClose on ESC key', async () => {
     const onClose = vi.fn();
-    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={onClose} />);
+    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={onClose} onDelete={() => {}} />);
     await userEvent.keyboard('{Escape}');
     expect(onClose).toBeCalled();
+  });
+
+  it('shows confirmation before deleting and never calls onDelete without confirmation', async () => {
+    const onDelete = vi.fn();
+    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={() => {}} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', { name: /Excluir card/i }));
+    expect(screen.getByText(/permanentemente do sistema/i)).toBeTruthy();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('calls onDelete with the card id after confirmation', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={() => {}} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', { name: /Excluir card/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Excluir definitivamente/i }));
+    expect(onDelete).toHaveBeenCalledWith(card.id);
+  });
+
+  it('cancel returns to the normal footer without calling onDelete', async () => {
+    const onDelete = vi.fn();
+    render(<LeanInceptionDetailDrawer card={card} filename="x.md" onClose={() => {}} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole('button', { name: /Excluir card/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Cancelar/i }));
+    expect(screen.queryByText(/permanentemente do sistema/i)).toBeNull();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

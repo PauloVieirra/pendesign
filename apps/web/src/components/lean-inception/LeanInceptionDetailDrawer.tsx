@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { LeanInceptionCard } from '@open-design/contracts';
 import { useT } from '../../i18n';
 import { CONFIDENCE_DOT_CLASS } from './constants';
@@ -7,13 +7,19 @@ interface Props {
   card: LeanInceptionCard | null;
   filename: string | null;
   onClose: () => void;
+  onDelete: (cardId: string) => Promise<void> | void;
 }
 
-export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
+export function LeanInceptionDetailDrawer({ card, filename, onClose, onDelete }: Props) {
   const t = useT();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (!card) return;
+    if (!card) {
+      setConfirmingDelete(false);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -22,6 +28,16 @@ export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
   }, [card, onClose]);
 
   if (!card) return null;
+
+  const onConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(card.id);
+    } finally {
+      setIsDeleting(false);
+      setConfirmingDelete(false);
+    }
+  };
 
   return (
     <>
@@ -71,6 +87,42 @@ export function LeanInceptionDetailDrawer({ card, filename, onClose }: Props) {
             </div>
           </section>
         </div>
+        <footer className="li-drawer__footer">
+          {!confirmingDelete ? (
+            <button
+              type="button"
+              className="li-drawer__delete"
+              onClick={() => setConfirmingDelete(true)}
+              aria-label="Excluir card"
+            >
+              Excluir card
+            </button>
+          ) : (
+            <div className="li-drawer__confirm">
+              <p className="li-drawer__confirm-msg">
+                A informação será removida permanentemente do sistema. Esta ação não pode ser desfeita.
+              </p>
+              <div className="li-drawer__confirm-actions">
+                <button
+                  type="button"
+                  className="li-drawer__confirm-cancel"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={isDeleting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="li-drawer__confirm-delete"
+                  onClick={() => void onConfirmDelete()}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'Excluindo…' : 'Excluir definitivamente'}
+                </button>
+              </div>
+            </div>
+          )}
+        </footer>
       </aside>
     </>
   );

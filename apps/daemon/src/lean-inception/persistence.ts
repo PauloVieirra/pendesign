@@ -378,6 +378,16 @@ export function listCardsByInception(db: SqliteDb, inceptionId: string): CardRow
   ).all(inceptionId) as CardRow[];
 }
 
+export function findCardById(db: SqliteDb, cardId: string): CardRow | null {
+  const row = db.prepare('SELECT * FROM lean_inception_cards WHERE id = ?').get(cardId) as CardRow | undefined;
+  return row ?? null;
+}
+
+export function deleteCard(db: SqliteDb, cardId: string): boolean {
+  const info = db.prepare('DELETE FROM lean_inception_cards WHERE id = ?').run(cardId);
+  return info.changes > 0;
+}
+
 // ---------------------------------------------------------------------------
 // State reader
 // ---------------------------------------------------------------------------

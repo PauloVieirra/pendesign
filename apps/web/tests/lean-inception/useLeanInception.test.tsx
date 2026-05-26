@@ -113,6 +113,19 @@ describe('useLeanInception', () => {
     expect(result.current.error).toMatch(/Only .md, .txt, .png, .jpg/);
   });
 
+  it('removeCard issues DELETE to /cards/:id and updates state', async () => {
+    (fetch as any)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) });
+    const { result } = renderHook(() => useLeanInception('prj_1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => { await result.current.removeCard('card_1'); });
+    const lastCall = (fetch as any).mock.calls.at(-1);
+    expect(lastCall[0]).toContain('/api/projects/prj_1/lean-inception/cards/card_1');
+    expect(lastCall[1].method).toBe('DELETE');
+  });
+
   it('removeDocument issues DELETE and updates state', async () => {
     (fetch as any)
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ state: emptyState('prj_1') }) })
