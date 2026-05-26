@@ -57,7 +57,7 @@ export function Header({
           <span className='brand-mark'>
             <img src='/logo.png' alt='' width={36} height={36} />
           </span>
-          <span>Open Design</span>
+          <span>Vision Design</span>
           <span className='brand-meta'>
             <b>Studio Nº 01</b>Berlin / Open / Earth
           </span>
@@ -100,7 +100,7 @@ export function Header({
           <a
             className='nav-cta ghost'
             href={REPO_RELEASES}
-            aria-label='Download Open Design desktop'
+            aria-label='Download Vision Design desktop'
             title='Download the desktop app'
             {...ext}
           >
@@ -109,7 +109,7 @@ export function Header({
           <a
             className='nav-cta'
             href={REPO}
-            aria-label='Star Open Design on GitHub'
+            aria-label='Star Vision Design on GitHub'
             title='Click to star us on GitHub'
             {...ext}
           >

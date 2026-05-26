@@ -101,9 +101,9 @@ interface PendingPluginUseHandoff {
 }
 
 const AUTHORING_DEFAULT_SCENARIO_INPUTS = {
-  artifactKind: 'Open Design plugin',
-  audience: 'Open Design plugin authors',
-  topic: 'packaging a reusable workflow as an Open Design plugin',
+  artifactKind: 'Vision Design plugin',
+  audience: 'Vision Design plugin authors',
+  topic: 'packaging a reusable workflow as an Vision Design plugin',
 };
 
 interface Props {

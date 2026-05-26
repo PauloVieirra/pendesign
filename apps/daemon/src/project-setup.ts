@@ -170,7 +170,7 @@ async function detectPackageManager(projectDir: string): Promise<'pnpm' | 'npm'>
 async function runInstall(projectId: string, projectDir: string, pm: 'pnpm' | 'npm'): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // Critical: if the daemon is running inside a pnpm workspace (the
-    // Open Design monorepo, for example), pnpm walks up from `cwd` and
+    // Vision Design monorepo, for example), pnpm walks up from `cwd` and
     // discovers pnpm-workspace.yaml, then treats the new project as a
     // workspace member. It then ignores the project's package.json and
     // re-runs the monorepo's postinstall scripts instead of installing

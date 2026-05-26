@@ -3,7 +3,7 @@
 @import './components/lean-inception/lean-inception.css';
 
 /* ============================================================
-   Open Design — neutral product workspace
+   Vision Design — neutral product workspace
    ============================================================ */
 :root {
   /* Surface palette — neutral app chrome that does not bias generated artifacts.
@@ -25,7 +25,7 @@
   --text-soft: #989590;
   --text-faint: #b3b0a8;
 
-  /* Accent — Open Design action color for app chrome only. */
+  /* Accent — Vision Design action color for app chrome only. */
   --accent: #c96442;
   --accent-strong: #b45a3b;
   --accent-soft: #f5d8cb;

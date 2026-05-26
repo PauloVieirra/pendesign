@@ -46,8 +46,8 @@ describe("resolveMacInstallIdentity", () => {
   it("keeps stable builds on the canonical mac identity", () => {
     expect(resolveMacInstallIdentity(makeConfig("/work", "release-stable"))).toMatchObject({
       appId: "io.open-design.desktop",
-      productName: "Open Design",
-      publicAppBundleName: "Open Design.app",
+      productName: "Vision Design",
+      publicAppBundleName: "Vision Design.app",
     });
   });
 
@@ -56,12 +56,12 @@ describe("resolveMacInstallIdentity", () => {
 
     expect(resolveMacInstallIdentity(config)).toEqual({
       appId: "io.open-design.desktop.beta",
-      executableName: "Open Design Beta",
-      productName: "Open Design Beta",
-      publicAppBundleName: "Open Design Beta.app",
-      systemAppBundleName: "Open Design Beta.app",
+      executableName: "Vision Design Beta",
+      productName: "Vision Design Beta",
+      publicAppBundleName: "Vision Design Beta.app",
+      systemAppBundleName: "Vision Design Beta.app",
     });
-    expect(resolveMacPaths(config).appPath).toMatch(/Open Design Beta\.app$/);
+    expect(resolveMacPaths(config).appPath).toMatch(/Vision Design Beta\.app$/);
   });
 
   it("uses first-class preview app identity for preview release namespaces", () => {
@@ -69,11 +69,11 @@ describe("resolveMacInstallIdentity", () => {
 
     expect(resolveMacInstallIdentity(config)).toEqual({
       appId: "io.open-design.desktop.preview",
-      executableName: "Open Design Preview",
-      productName: "Open Design Preview",
-      publicAppBundleName: "Open Design Preview.app",
-      systemAppBundleName: "Open Design Preview.app",
+      executableName: "Vision Design Preview",
+      productName: "Vision Design Preview",
+      publicAppBundleName: "Vision Design Preview.app",
+      systemAppBundleName: "Vision Design Preview.app",
     });
-    expect(resolveMacPaths(config).appPath).toMatch(/Open Design Preview\.app$/);
+    expect(resolveMacPaths(config).appPath).toMatch(/Vision Design Preview\.app$/);
   });
 });

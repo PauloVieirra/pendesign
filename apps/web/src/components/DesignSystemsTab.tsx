@@ -235,7 +235,7 @@ export function DesignSystemsTab({
           <button type="button" className="ds-create-row" onClick={onCreate}>
             <span>
               <strong>Create new design system</strong>
-              <small>Teach Open Design your brand, product, code, assets, and design references.</small>
+              <small>Teach Vision Design your brand, product, code, assets, and design references.</small>
             </span>
             <span className="ds-create-row__action">Create</span>
           </button>
@@ -813,7 +813,7 @@ function FigmaImportRow({ onImported, projectContext }: FigmaImportRowProps) {
               autoFocus
             />
             <small>
-              File, page, or frame URL. If you include a <code>node-id</code> Open Design will also sample spacing and radii from that subtree.
+              File, page, or frame URL. If you include a <code>node-id</code> Vision Design will also sample spacing and radii from that subtree.
             </small>
           </label>
           {projectContext ? (

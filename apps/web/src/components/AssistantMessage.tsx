@@ -874,7 +874,7 @@ function PluginActionPanel({
                 <span>
                   {busyKey === `contribute:${folder.path}`
                     ? "Sending..."
-                    : "Open Design PR"}
+                    : "Vision Design PR"}
                 </span>
               </button>
               {onRequestOpenFile ? (
@@ -970,7 +970,7 @@ function pathMatchesFolderFileBasename(
 }
 
 function hasPluginFinalActionHint(content: string): boolean {
-  return /\b(Add to My plugins|Open Design PR|Publish repo|plugin publish|ready to publish|ready to add)\b/i.test(
+  return /\b(Add to My plugins|Vision Design PR|Publish repo|plugin publish|ready to publish|ready to add)\b/i.test(
     content,
   );
 }

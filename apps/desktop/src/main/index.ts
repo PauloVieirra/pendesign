@@ -142,7 +142,7 @@ function buildUpdateMenuItems(updater: DesktopUpdater): MenuItemConstructorOptio
       async click() {
         const next = await updater.installUpdate();
         if (next.state === "error") {
-          dialog.showErrorBox("Open Design update failed", next.error?.message ?? "Could not open the downloaded installer.");
+          dialog.showErrorBox("Vision Design update failed", next.error?.message ?? "Could not open the downloaded installer.");
         }
       },
     },
@@ -155,8 +155,8 @@ async function showUpdateResultDialog(updater: DesktopUpdater, status = updater.
     const result = await dialog.showMessageBox({
       buttons: ["Install Update", "Later"],
       defaultId: 0,
-      message: "A new Open Design version has been downloaded.",
-      detail: "Open the installer to update Open Design. You may need to quit the app and replace the existing copy.",
+      message: "A new Vision Design version has been downloaded.",
+      detail: "Open the installer to update Vision Design. You may need to quit the app and replace the existing copy.",
       type: "info",
     });
     if (result.response === 0) await updater.installUpdate();
@@ -165,7 +165,7 @@ async function showUpdateResultDialog(updater: DesktopUpdater, status = updater.
   if (status.state === "not-available") {
     await dialog.showMessageBox({
       buttons: ["OK"],
-      message: "Open Design is up to date.",
+      message: "Vision Design is up to date.",
       type: "info",
     });
     return;
@@ -174,13 +174,13 @@ async function showUpdateResultDialog(updater: DesktopUpdater, status = updater.
     await dialog.showMessageBox({
       buttons: ["OK"],
       detail: status.error?.message,
-      message: "Updates are not available for this Open Design build.",
+      message: "Updates are not available for this Vision Design build.",
       type: "info",
     });
     return;
   }
   if (status.state === "error") {
-    dialog.showErrorBox("Open Design update failed", status.error?.message ?? "Could not check for updates.");
+    dialog.showErrorBox("Vision Design update failed", status.error?.message ?? "Could not check for updates.");
   }
 }
 
@@ -257,7 +257,7 @@ function installDesktopMenu(updater: DesktopUpdater): () => void {
         label: "Help",
         submenu: [
           {
-            label: "Open Design",
+            label: "Vision Design",
             click() {
               void shell.openExternal("https://github.com/nexu-io/open-design");
             },

@@ -93,7 +93,7 @@ async function runElectronBuilderRaw(config: ToolPackConfig, paths: WinPaths, pr
     ? await writeWebStandaloneHookConfig(config, paths)
     : null;
   const builderConfig = {
-    appId: "io.open-design.desktop",
+    appId: "io.vision-design.desktop",
     afterPack: webStandaloneHookConfigPath == null ? undefined : winResources.webStandaloneAfterPackHook,
     asar: ELECTRON_BUILDER_ASAR,
     buildDependenciesFromSource: ELECTRON_BUILDER_BUILD_DEPENDENCIES_FROM_SOURCE,
@@ -135,7 +135,7 @@ async function runElectronBuilderRaw(config: ToolPackConfig, paths: WinPaths, pr
       warningsAsErrors: false,
     },
     productName: PRODUCT_NAME,
-    publish: [{ provider: "generic", url: "https://updates.invalid/open-design" }],
+    publish: [{ provider: "generic", url: "https://updates.invalid/vision-design" }],
     win: {
       artifactName: `${PRODUCT_NAME}-${namespaceToken}.\${ext}`,
       icon: paths.winIconPath,

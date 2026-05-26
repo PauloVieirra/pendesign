@@ -1433,7 +1433,7 @@ export function createAgentRuntimeToolPrompt(
     '',
     `- Daemon URL: \`${daemonUrl}\` (also available as \`OD_DAEMON_URL\`).`,
     '- `OD_NODE_BIN` is the absolute path to the Node-compatible runtime that started the daemon; packaged desktop installs provide this even when the user has no system `node` on PATH.',
-    '- `OD_BIN` is the absolute path to the Open Design CLI script. On POSIX shells run wrappers with `"$OD_NODE_BIN" "$OD_BIN" tools ...`; do not call bare `od`, which may resolve to the system octal-dump command on Unix-like systems.',
+    '- `OD_BIN` is the absolute path to the Vision Design CLI script. On POSIX shells run wrappers with `"$OD_NODE_BIN" "$OD_BIN" tools ...`; do not call bare `od`, which may resolve to the system octal-dump command on Unix-like systems.',
     '- On PowerShell use `& $env:OD_NODE_BIN $env:OD_BIN tools ...`; on cmd.exe use `"%OD_NODE_BIN%" "%OD_BIN%" tools ...`.',
     tokenLine,
     '- Prefer project wrapper commands through `OD_NODE_BIN` + `OD_BIN` over raw HTTP. The wrappers read these environment values automatically.',
@@ -1674,7 +1674,7 @@ function githubRepoNameFromPluginName(name) {
 
 const PLUGIN_SHARE_ACTION_LABELS = {
   'publish-github': 'Publish to GitHub',
-  'contribute-open-design': 'Contribute to Open Design',
+  'contribute-open-design': 'Contribute to Vision Design',
 };
 
 const USER_PLUGIN_SOURCE_KINDS = new Set([
@@ -1721,10 +1721,10 @@ function renderPluginSharePrompt({ action, sourcePlugin, stagedPath }) {
   const title = sourcePlugin.title || sourcePlugin.id;
   if (action === 'publish-github') {
     return [
-      `Publish the local Open Design plugin "${title}" as a new public GitHub repository.`,
+      `Publish the local Vision Design plugin "${title}" as a new public GitHub repository.`,
       '',
       `The plugin source files have been copied into this project at \`${stagedPath}\`.`,
-      'Use the local daemon share endpoint so the publish flow runs through Open Design\'s validated GitHub path:',
+      'Use the local daemon share endpoint so the publish flow runs through Vision Design\'s validated GitHub path:',
       '',
       '```bash',
       `curl -sS -X POST "$OD_DAEMON_URL/api/projects/$OD_PROJECT_ID/plugins/publish-github" \\`,
@@ -1738,10 +1738,10 @@ function renderPluginSharePrompt({ action, sourcePlugin, stagedPath }) {
     ].join('\n');
   }
   return [
-    `Open a pull request to add the local Open Design plugin "${title}" to the Open Design repository.`,
+    `Open a pull request to add the local Vision Design plugin "${title}" to the Vision Design repository.`,
     '',
     `The plugin source files have been copied into this project at \`${stagedPath}\`.`,
-    'Use the local daemon share endpoint so the contribution flow runs through Open Design\'s validated GitHub path:',
+    'Use the local daemon share endpoint so the contribution flow runs through Vision Design\'s validated GitHub path:',
     '',
     '```bash',
     `curl -sS -X POST "$OD_DAEMON_URL/api/projects/$OD_PROJECT_ID/plugins/contribute-open-design" \\`,
@@ -2153,7 +2153,7 @@ function renderOAuthResultPage(opts) {
   const title = ok ? 'Connected' : 'Authorization failed';
   const heading = ok ? '✅ Connected' : '⚠️ Authorization failed';
   const body = ok
-    ? `Your MCP server <code>${escapeHtml(opts.serverId ?? '')}</code> is now connected. You can close this tab and return to Open Design.`
+    ? `Your MCP server <code>${escapeHtml(opts.serverId ?? '')}</code> is now connected. You can close this tab and return to Vision Design.`
     : escapeHtml(opts.message ?? 'Authorization could not be completed.');
   const accent = ok ? '#1a7f37' : '#cf222e';
   const payload = ok
@@ -2163,7 +2163,7 @@ function renderOAuthResultPage(opts) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>${escapeHtml(title)} — Open Design</title>
+<title>${escapeHtml(title)} — Vision Design</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root { color-scheme: light dark; }
@@ -7439,7 +7439,7 @@ export async function startServer({
       for (const [cmd, args] of [
         ['git', ['init']],
         ['git', ['add', '.']],
-        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Publish ${meta.title}`]],
+        ['git', ['-c', 'user.name=Vision Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Publish ${meta.title}`]],
       ]) {
         const result = await execFileBuffered(cmd, args, { cwd: work });
         log.push(result.stdout || result.stderr);
@@ -7512,7 +7512,7 @@ export async function startServer({
       const branch = `plugin/${repoName}-${Date.now()}`;
       const dest = path.join(work, 'plugins', 'community', repoName);
       const bodyText = [
-        `Adds ${meta.title} as a community Open Design plugin.`,
+        `Adds ${meta.title} as a community Vision Design plugin.`,
         '',
         '## Source',
         '',
@@ -7542,7 +7542,7 @@ export async function startServer({
           /already exists/i.test(String(result.stderr || result.stdout));
         if (!result.ok && !toleratedExistingFork && !toleratedExistingRemote) {
           await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Vision Design PR.`, log });
           return;
         }
       }
@@ -7550,14 +7550,14 @@ export async function startServer({
       await fs.promises.cp(folder, dest, { recursive: true });
       for (const [cmd, args] of [
         ['git', ['add', `plugins/community/${repoName}`]],
-        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Add ${meta.title} plugin`]],
+        ['git', ['-c', 'user.name=Vision Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Add ${meta.title} plugin`]],
         ['git', ['push', '-u', 'fork', branch]],
       ]) {
         const result = await execFileBuffered(cmd, args, { cwd: work });
         log.push(result.stdout || result.stderr);
         if (!result.ok) {
           await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Vision Design PR.`, log });
           return;
         }
       }
@@ -7578,12 +7578,12 @@ export async function startServer({
       log.push(pr.stdout || pr.stderr);
       await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
       if (!pr.ok) {
-        res.status(500).json({ ok: false, code: 'gh-pr-create-failed', message: 'Open Design PR creation failed.', log });
+        res.status(500).json({ ok: false, code: 'gh-pr-create-failed', message: 'Vision Design PR creation failed.', log });
         return;
       }
       res.json({
         ok: true,
-        message: `Created Open Design PR for ${meta.title}.`,
+        message: `Created Vision Design PR for ${meta.title}.`,
         url: pr.stdout || undefined,
         log,
       });
@@ -9144,7 +9144,7 @@ export async function startServer({
     });
 
     // External MCP servers configured by the user in Settings → External MCP.
-    // Open Design relays them to the agent so the model can call those tools.
+    // Vision Design relays them to the agent so the model can call those tools.
     // Two delivery shapes today:
     //   - Claude Code: write a `.mcp.json` into the project cwd. Claude Code
     //     auto-loads that file at spawn (same format the CLI accepts via
@@ -10209,7 +10209,7 @@ export async function startServer({
       systemPrompt: [
         renderOrbitTemplateSystemPrompt(template),
         systemPrompt,
-        'You are Orbit, an autonomous activity-summary agent inside Open Design.',
+        'You are Orbit, an autonomous activity-summary agent inside Vision Design.',
         'You must discover connectors and connector tools yourself through the OD CLI; the daemon has not chosen tools for you.',
         'You must create and register a Live Artifact as the final deliverable. Do not merely describe what you would do.',
         'Do not ask follow-up questions, do not emit <question-form>, and do not wait for user input. This run is unattended; pick reasonable defaults and complete the artifact.',
@@ -10857,7 +10857,7 @@ function assembleExample(templateHtml, slidesHtml, title) {
     .replace('<!-- SLIDES_HERE -->', slidesHtml)
     .replace(
       /<title>.*?<\/title>/,
-      `<title>${title} | Open Design Example</title>`,
+      `<title>${title} | Vision Design Example</title>`,
     );
 }
 

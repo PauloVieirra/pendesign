@@ -22,10 +22,10 @@ function sanitizeNamespace(value: string): string {
 export function resolveMacInstallIdentity(config: Pick<ToolPackConfig, "namespace">): MacInstallIdentity {
   const namespaceToken = sanitizeNamespace(config.namespace);
   const channelIdentity = isChannelNamespace(config.namespace, "beta")
-    ? { appId: "io.open-design.desktop.beta", productName: `${PRODUCT_NAME} Beta` }
+    ? { appId: "io.vision-design.desktop.beta", productName: `${PRODUCT_NAME} Beta` }
     : isChannelNamespace(config.namespace, "preview")
-      ? { appId: "io.open-design.desktop.preview", productName: `${PRODUCT_NAME} Preview` }
-      : { appId: "io.open-design.desktop", productName: PRODUCT_NAME };
+      ? { appId: "io.vision-design.desktop.preview", productName: `${PRODUCT_NAME} Preview` }
+      : { appId: "io.vision-design.desktop", productName: PRODUCT_NAME };
   const publicAppBundleName = `${channelIdentity.productName}.app`;
   const systemAppBundleName = (
     config.namespace === SIDECAR_DEFAULTS.namespace ||

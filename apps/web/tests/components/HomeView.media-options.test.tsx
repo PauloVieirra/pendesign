@@ -129,7 +129,7 @@ describe('HomeView media composer options', () => {
     const textInput = screen.getByTestId('home-hero-prompt-option-text-input');
 
     let value = '';
-    for (const character of 'Welcome to Open Design.') {
+    for (const character of 'Welcome to Vision Design.') {
       value += character;
       fireEvent.change(textInput, { target: { value } });
       expect(screen.getByTestId('home-hero-prompt-option-text')).toBeTruthy();
@@ -137,7 +137,7 @@ describe('HomeView media composer options', () => {
 
     expect(screen.getByTestId('home-hero-prompt-option-text')).toBeTruthy();
     expect((screen.getByTestId('home-hero-input') as HTMLTextAreaElement).value).toContain(
-      'from Welcome to Open Design.',
+      'from Welcome to Vision Design.',
     );
   });
 
@@ -358,19 +358,19 @@ describe('HomeView media composer options', () => {
     fireEvent.click(await screen.findByTestId('home-hero-rail-audio'));
     await openOption('text');
     fireEvent.change(screen.getByTestId('home-hero-prompt-option-text-input'), {
-      target: { value: 'Welcome to Open Design.' },
+      target: { value: 'Welcome to Vision Design.' },
     });
 
     expect((screen.getByTestId('home-hero-input') as HTMLTextAreaElement).value).toContain(
-      'from Welcome to Open Design.',
+      'from Welcome to Vision Design.',
     );
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         pluginInputs: expect.objectContaining({
-          subject: 'Welcome to Open Design.',
-          text: 'Welcome to Open Design.',
+          subject: 'Welcome to Vision Design.',
+          text: 'Welcome to Vision Design.',
         }),
       }));
     });

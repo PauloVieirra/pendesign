@@ -1,6 +1,6 @@
 // `od mcp` - stdio MCP server that proxies project tool calls to the
 // running daemon's HTTP API. Lets a coding agent in a *different* repo
-// (Claude Code, Cursor, Zed) pull files from a local Open Design
+// (Claude Code, Cursor, Zed) pull files from a local Vision Design
 // project and create project-scoped artifacts without the
 // export-zip-import dance.
 //
@@ -79,20 +79,20 @@ const WRITE_ANNOTATIONS = {
 // shipped to the model on every session.
 const PROJECT_ARG = {
   type: 'string',
-  description: 'Project id (UUID) or name substring. Optional; defaults to the active project (expires after ~5 minutes of no Open Design activity).',
+  description: 'Project id (UUID) or name substring. Optional; defaults to the active project (expires after ~5 minutes of no Vision Design activity).',
 } as const;
 
 const TOOL_DEFS = [
   {
     name: 'list_projects',
-    description: 'List every Open Design project on this daemon.',
+    description: 'List every Vision Design project on this daemon.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    annotations: { ...READ_ANNOTATIONS, title: 'List Open Design projects' },
+    annotations: { ...READ_ANNOTATIONS, title: 'List Vision Design projects' },
   },
   {
     name: 'get_active_context',
     description:
-      'Project + file the user has open in Open Design right now. Returns {active:false, hint:"..."} when no project is active so the agent can ask the user to interact with Open Design (the active context expires ~5 minutes after the last user interaction). Most tools default to this when project is omitted, so you rarely need to call this directly.',
+      'Project + file the user has open in Vision Design right now. Returns {active:false, hint:"..."} when no project is active so the agent can ask the user to interact with Vision Design (the active context expires ~5 minutes after the last user interaction). Most tools default to this when project is omitted, so you rarely need to call this directly.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { ...READ_ANNOTATIONS, title: 'What is the user looking at?' },
   },
@@ -107,7 +107,7 @@ const TOOL_DEFS = [
         entry: {
           type: 'string',
           description:
-            "Entry file path relative to project root. Defaults to the active file or project's metadata.entryFile. Active-file fallback expires after ~5 minutes of no Open Design activity.",
+            "Entry file path relative to project root. Defaults to the active file or project's metadata.entryFile. Active-file fallback expires after ~5 minutes of no Vision Design activity.",
         },
         include: {
           type: 'string',
@@ -133,7 +133,7 @@ const TOOL_DEFS = [
       properties: { project: PROJECT_ARG },
       additionalProperties: false,
     },
-    annotations: { ...READ_ANNOTATIONS, title: 'Get Open Design project' },
+    annotations: { ...READ_ANNOTATIONS, title: 'Get Vision Design project' },
   },
   {
     name: 'get_file',
@@ -146,7 +146,7 @@ const TOOL_DEFS = [
         path: {
           type: 'string',
           description:
-            'File path relative to project root, forward slashes. Optional; defaults to the active file when project is also omitted. Active-file fallback expires after ~5 minutes of no Open Design activity.',
+            'File path relative to project root, forward slashes. Optional; defaults to the active file when project is also omitted. Active-file fallback expires after ~5 minutes of no Vision Design activity.',
         },
         offset: {
           type: 'number',
@@ -207,7 +207,7 @@ const TOOL_DEFS = [
   {
     name: 'create_artifact',
     description:
-      'Create one normal Open Design project artifact entry file. Writes name+content, rejects existing targets, and persists artifactManifest when supplied. HTML, Markdown, and SVG entries get a default manifest when omitted. Project optional; defaults to the active project.',
+      'Create one normal Vision Design project artifact entry file. Writes name+content, rejects existing targets, and persists artifactManifest when supplied. HTML, Markdown, and SVG entries get a default manifest when omitted. Project optional; defaults to the active project.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -228,16 +228,16 @@ const TOOL_DEFS = [
         artifactManifest: {
           type: 'object',
           additionalProperties: true,
-          description: 'Optional ArtifactManifest sidecar. If omitted, Open Design infers one for HTML, Markdown, or SVG entry files.',
+          description: 'Optional ArtifactManifest sidecar. If omitted, Vision Design infers one for HTML, Markdown, or SVG entry files.',
         },
       },
       required: ['name', 'content'],
       additionalProperties: false,
     },
-    annotations: { ...WRITE_ANNOTATIONS, title: 'Create Open Design artifact' },
+    annotations: { ...WRITE_ANNOTATIONS, title: 'Create Vision Design artifact' },
   },
   // Catalog (skills, design systems) is intentionally NOT exposed as
-  // MCP tools. Skills are recipes that Open Design itself uses to
+  // MCP tools. Skills are recipes that Vision Design itself uses to
   // generate artifacts; an external coding agent consuming Open
   // Design's output can't run them. Design systems are reference material a
   // user can opt into via the resource URIs (od://design-systems/...)
@@ -253,7 +253,7 @@ export async function runMcpStdio({ daemonUrl }: RunMcpOptions): Promise<void> {
     {
       capabilities: { tools: {}, resources: {} },
       instructions: [
-        'Open Design (OD) is a local-first design workspace. The user typically',
+        'Vision Design (OD) is a local-first design workspace. The user typically',
         'has OD running on their machine; each project contains a rendered',
         'artifact (HTML/JSX/CSS) plus its source files.',
         '',
@@ -297,7 +297,7 @@ export async function runMcpStdio({ daemonUrl }: RunMcpOptions): Promise<void> {
         'available at od://skills/<id>/SKILL.md but are mostly relevant',
         'when the user asks about how a particular artifact was generated.',
         '',
-        'When extending an Open Design design in another codebase, pull',
+        'When extending an Vision Design design in another codebase, pull',
         'the full bundle once with get_artifact and work from those files',
         'locally - do not fetch files one-by-one if you can avoid it.',
       ].join('\n'),
@@ -316,8 +316,8 @@ export async function runMcpStdio({ daemonUrl }: RunMcpOptions): Promise<void> {
     const resources = [
       {
         uri: 'od://focus/active',
-        name: 'Active Open Design context',
-        description: 'The project/file the user has open in Open Design right now.',
+        name: 'Active Vision Design context',
+        description: 'The project/file the user has open in Vision Design right now.',
         mimeType: 'application/json',
       },
     ];
@@ -429,7 +429,7 @@ async function handleMcpToolCall(baseUrl: string, name: unknown, args: McpArgs) 
         if (!data || data.active === false) {
           return ok({
             active: false,
-            hint: 'Open Design has no active project right now. The active context expires about 5 minutes after the last user interaction with Open Design, so the user may need to click into a project (or switch tabs inside one) to wake it up. Alternatively, pass project="<id-or-name>" to other tools to bypass active context entirely.',
+            hint: 'Vision Design has no active project right now. The active context expires about 5 minutes after the last user interaction with Vision Design, so the user may need to click into a project (or switch tabs inside one) to wake it up. Alternatively, pass project="<id-or-name>" to other tools to bypass active context entirely.',
           });
         }
         return ok(data);
@@ -548,7 +548,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Short-lived cache for the project list. A typical agent session
 // makes several name-based lookups in quick succession; without this
 // each one re-fetches /api/projects. The TTL is short so a project
-// renamed in the Open Design UI shows up within a few seconds.
+// renamed in the Vision Design UI shows up within a few seconds.
 const PROJECT_LIST_TTL_MS = 5000;
 let projectListCache: ProjectListCache | null = null;
 
@@ -568,7 +568,7 @@ async function fetchProjectList(baseUrl: string): Promise<ProjectSummary[]> {
 }
 
 // When the agent omits `project`, fall back to whatever the user has
-// open in Open Design. Returns the resolved id plus, for echo-back to the
+// open in Vision Design. Returns the resolved id plus, for echo-back to the
 // caller, the active-context payload that was used. Throws a clear
 // error when neither is available so the agent can prompt the user
 // rather than guessing.
@@ -587,7 +587,7 @@ async function resolveProjectArg(baseUrl: string, arg: unknown): Promise<{ id: s
   }
   if (!active || active.active === false || !active.projectId) {
     throw new Error(
-      'project arg omitted and Open Design has no active project. The active context expires about 5 minutes after the last user interaction with Open Design - the user may need to click into a project to wake it up. Otherwise pass project="<id-or-name>".',
+      'project arg omitted and Vision Design has no active project. The active context expires about 5 minutes after the last user interaction with Vision Design - the user may need to click into a project to wake it up. Otherwise pass project="<id-or-name>".',
     );
   }
   return { id: active.projectId, resolved: null, active };
@@ -1014,7 +1014,7 @@ function formatError(err: unknown, daemonUrl: string): string {
   const code = e && (e.cause?.code || e.code);
   const msg = errorMessage(err);
   if (code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
-    return `cannot reach the Open Design daemon at ${daemonUrl}. Is it running? Start it with \`pnpm tools-dev\`.`;
+    return `cannot reach the Vision Design daemon at ${daemonUrl}. Is it running? Start it with \`pnpm tools-dev\`.`;
   }
   return msg;
 }

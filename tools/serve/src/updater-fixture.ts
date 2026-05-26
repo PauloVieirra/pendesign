@@ -86,7 +86,7 @@ export async function startUpdaterFixtureServer(options: UpdaterFixtureOptions =
   const artifactName = `open-design-${version}-mac-arm64.dmg`;
   const artifactBody = Buffer.isBuffer(options.artifactBody)
     ? options.artifactBody
-    : Buffer.from(options.artifactBody ?? `Open Design updater fixture ${version}\n`, "utf8");
+    : Buffer.from(options.artifactBody ?? `Vision Design updater fixture ${version}\n`, "utf8");
   const sha256 = createHash("sha256").update(artifactBody).digest("hex");
 
   let info: UpdaterFixtureInfo | null = null;

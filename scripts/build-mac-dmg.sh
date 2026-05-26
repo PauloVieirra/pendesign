@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the Mac DMG installer using the `release-stable` namespace so it
 # attaches to the existing project silo at
-# ~/Library/Application Support/Open Design/namespaces/release-stable/data/.
+# ~/Library/Application Support/Vision Design/namespaces/release-stable/data/.
 #
 # Without the namespace flag, `tools-pack` defaults to `default`, which is a
 # DIFFERENT silo with its own SQLite + project folders — so old projects
@@ -27,7 +27,7 @@ done
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 NAMESPACE=release-stable
-DEST="$HOME/Desktop/Open-Design.dmg"
+DEST="$HOME/Desktop/Vision-Design.dmg"
 
 cd "$REPO_ROOT"
 
@@ -38,7 +38,7 @@ pnpm tools-pack mac build \
   --namespace "$NAMESPACE" \
   "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
-SRC="$REPO_ROOT/.tmp/tools-pack/out/mac/namespaces/$NAMESPACE/dmg/Open Design-$NAMESPACE.dmg"
+SRC="$REPO_ROOT/.tmp/tools-pack/out/mac/namespaces/$NAMESPACE/dmg/Vision Design-$NAMESPACE.dmg"
 if [[ ! -f "$SRC" ]]; then
   echo "✗ DMG not found at: $SRC" >&2
   exit 1

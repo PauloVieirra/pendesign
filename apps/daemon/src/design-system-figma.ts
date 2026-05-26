@@ -99,7 +99,7 @@ function figmaFetchError(label: string, resp: Response, detail: string): FigmaIm
   if (status === 404) {
     return new FigmaImportError(
       'FIGMA_NOT_FOUND',
-      `Figma file not found (404). Double-check the URL — Open Design expects https://figma.com/design/<KEY>/... or https://figma.com/file/<KEY>/...${detail ? ` Figma said: ${detail}` : ''}`,
+      `Figma file not found (404). Double-check the URL — Vision Design expects https://figma.com/design/<KEY>/... or https://figma.com/file/<KEY>/...${detail ? ` Figma said: ${detail}` : ''}`,
       status,
     );
   }

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Open Design proxies this dev server through the daemon so the canvas
+// Vision Design proxies this dev server through the daemon so the canvas
 // can inject the edit bridge. Leave the port unfixed — the daemon reads
 // the value Vite chooses from stdout and stores it.
 export default defineConfig({

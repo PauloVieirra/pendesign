@@ -11,7 +11,7 @@ export function Welcome() {
     <main className="welcome">
       <Header
         title="Your React project is ready"
-        subtitle="Vite + React + TypeScript scaffolded by Open Design"
+        subtitle="Vite + React + TypeScript scaffolded by Vision Design"
       />
 
       <section className="welcome__cards">

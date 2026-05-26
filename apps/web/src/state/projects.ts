@@ -86,7 +86,7 @@ export async function createProject(input: {
   lastCreateProjectError = null;
   try {
     // `randomUUID` falls back to `crypto.getRandomValues` / `Math.random`
-    // when `crypto.randomUUID` is unavailable. Open Design served over
+    // when `crypto.randomUUID` is unavailable. Vision Design served over
     // plain HTTP on a LAN IP (Docker / unRAID self-hosting) is a
     // non-secure context, where `crypto.randomUUID` is undefined and
     // calling it directly throws — the surrounding try/catch then turns

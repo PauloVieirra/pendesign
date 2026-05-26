@@ -19,6 +19,7 @@ import {
   PackagedPathAccessError,
   applyPackagedElectronPathOverrides,
   ensurePackagedNamespacePaths,
+  migrateLegacyOpenDesignDataIfNeeded,
 } from "./launch.js";
 import {
   attachPackagedDesktopProcessLogging,
@@ -63,6 +64,14 @@ async function main(): Promise<void> {
   const namespace = argvStamp?.namespace ?? config.namespace;
   const paths = resolvePackagedNamespacePaths(config, namespace);
   const stamp = argvStamp ?? createPackagedDesktopStamp(namespace);
+
+  // One-shot migration: copy legacy "Open Design" userData into the new
+  // "Vision Design" userData root so existing projects remain visible.
+  // Only runs when namespaceBaseRoot was not explicitly configured.
+  if (config.namespaceBaseRootIsDefault) {
+    const { dirname } = await import("node:path");
+    await migrateLegacyOpenDesignDataIfNeeded(dirname(config.namespaceBaseRoot));
+  }
 
   await ensurePackagedNamespacePaths(paths);
   packagedLogger = createPackagedDesktopLogger(paths);

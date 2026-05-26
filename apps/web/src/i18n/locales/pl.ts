@@ -41,13 +41,13 @@ export const pl: Dict = {
   'common.daysShort': '{n}d',
   'common.untitled': 'Bez tytułu',
 
-  'app.brand': 'Open Design',
+  'app.brand': 'Vision Design',
   'app.brandPill': 'Wersja badawcza',
   'app.brandSubtitle': 'od Nexu Labs',
   'app.welcomeLoading': 'Ładowanie obszaru roboczego…',
 
   'settings.welcomeKicker': 'Witaj',
-  'settings.welcomeTitle': 'Skonfiguruj Open Design',
+  'settings.welcomeTitle': 'Skonfiguruj Vision Design',
   'settings.welcomeSubtitle':
       "Wybierz sposób generowania projektów. Możesz to zmienić w dowolnym momencie w Ustawieniach na górnym pasku.",
   'settings.kicker': 'Ustawienia',
@@ -90,10 +90,10 @@ export const pl: Dict = {
   'settings.agentInstall.install': 'Zainstaluj',
   'settings.agentInstall.docs': 'Dokumentacja',
   'settings.agentInstall.pathHint':
-    'Jeśli zainstalowano CLI przez npm lub Homebrew, ale nadal widnieje jako niezainstalowana, upewnij się, że katalog bin narzędzia jest w PATH dziedziczonym przez daemon Open Design (na macOS PATH w Terminalu i aplikacjach GUI może się różnić). Zobacz QUICKSTART.md (sekcja "Local agent CLI and PATH").',
+    'Jeśli zainstalowano CLI przez npm lub Homebrew, ale nadal widnieje jako niezainstalowana, upewnij się, że katalog bin narzędzia jest w PATH dziedziczonym przez daemon Vision Design (na macOS PATH w Terminalu i aplikacjach GUI może się różnić). Zobacz QUICKSTART.md (sekcja "Local agent CLI and PATH").',
   'settings.agentInstall.stepOpenLinks': 'Otwórz Zainstaluj lub Dokumentacja dla wybranego agenta.',
   'settings.agentInstall.stepAuth':
-    'Uwierzytelnij się w CLI dostawcy (zaloguj się lub dodaj dane API), zanim wrócisz do Open Design.',
+    'Uwierzytelnij się w CLI dostawcy (zaloguj się lub dodaj dane API), zanim wrócisz do Vision Design.',
   'settings.agentInstall.stepRescan': 'Kliknij Ponów skanowanie w tej sekcji.',
   'settings.agentInstall.stepSelect': 'Wybierz kartę agenta, gdy pojawi się jako zainstalowany.',
   'settings.noAgentsDetected':
@@ -144,7 +144,7 @@ export const pl: Dict = {
   'settings.modelPickerLiveHint':
     'Models were refreshed from the installed CLI. Default still uses the CLI config.',
   'settings.modelPickerFallbackHint':
-    'Using Open Design fallback models because the installed CLI did not return live model metadata. Rescan after updating or logging in to the CLI.',
+    'Using Vision Design fallback models because the installed CLI did not return live model metadata. Rescan after updating or logging in to the CLI.',
   'settings.cliEnvTitle': 'CLI config locations',
   'settings.cliEnvHint':
     'Set non-secret config directories for packaged app runs and agent detection.',
@@ -162,7 +162,7 @@ export const pl: Dict = {
   'settings.mediaProvidersHint':
       'Klucze API do generowania obrazów, wideo i dźwięku. Przechowywane lokalnie i synchronizowane z lokalnym daemonem.',
   'settings.mcpServerTitle': 'Serwer MCP',
-  'settings.mcpServerHint': 'Udostępnij Open Design jako serwer MCP dla swojego agenta kodu.',
+  'settings.mcpServerHint': 'Udostępnij Vision Design jako serwer MCP dla swojego agenta kodu.',
   'settings.externalMcpTitle': 'Zewnętrzny MCP',
   'settings.externalMcpHint': 'Dodaj narzędzia MCP z usług zewnętrznych (Higgsfield, GitHub, …).',
   'settings.mediaProviderApiKey': 'Klucz API',
@@ -178,9 +178,9 @@ export const pl: Dict = {
   'settings.mediaProviderReloadSuccess': 'Ustawienia dostawców mediów zostały ponownie wczytane z lokalnego demona.',
   'settings.mediaProviderLoadError': 'Nie udało się wczytać ustawień dostawców mediów z lokalnego demona. Na razie używane będą ustawienia zapisane w przeglądarce.',
   'settings.privacy': 'Privacy',
-  'settings.privacyHint': 'What data is shared with the Open Design team',
-  'settings.privacyConsentKicker': 'Help us improve Open Design',
-  'settings.privacyConsentLead': 'Open Design can share usage data with our team to help us improve. This includes:',
+  'settings.privacyHint': 'What data is shared with the Vision Design team',
+  'settings.privacyConsentKicker': 'Help us improve Vision Design',
+  'settings.privacyConsentLead': 'Vision Design can share usage data with our team to help us improve. This includes:',
   'settings.privacyConsentFooter': 'You can change either of these any time in Settings → Privacy. We never upload the contents of your generated artifact files.',
   'settings.privacyConsentShare': 'Share usage data',
   'settings.privacyConsentDecline': "Don't share",
@@ -233,7 +233,7 @@ export const pl: Dict = {
   'entry.helpDownloadDesktop': 'Pobierz aplikację na komputer',
   'entry.githubStarLabel': 'Star',
   'entry.githubStarTitle': 'Daj nam gwiazdkę na GitHubie',
-  'entry.githubStarAria': 'Daj Open Design gwiazdkę na GitHubie',
+  'entry.githubStarAria': 'Daj Vision Design gwiazdkę na GitHubie',
   'entry.tabImageTemplates': 'Szablony obrazów',
   'entry.tabVideoTemplates': 'Szablony wideo',
   'promptTemplates.searchPlaceholder': 'Szukaj szablonów…',
@@ -715,7 +715,7 @@ export const pl: Dict = {
   'preview.closeTitle': 'Zamknij (Esc)',
   'preview.loading': 'Ładowanie {label}…',
   'preview.errorTitle': 'Nie udało się załadować tego przykładu.',
-  'preview.errorBody': 'Nie udało się pobrać kodu HTML przykładu. Upewnij się, że Open Design jest uruchomiony, i spróbuj ponownie.',
+  'preview.errorBody': 'Nie udało się pobrać kodu HTML przykładu. Upewnij się, że Vision Design jest uruchomiony, i spróbuj ponownie.',
   'preview.retry': 'Spróbuj ponownie',
   'preview.unavailableTitle': 'Brak dołączonego podglądu dla tej umiejętności.',
   'preview.unavailableBody': 'Ta umiejętność tworzy {kind} wynik — uruchom prompt w czacie, aby go wygenerować.',
@@ -1146,7 +1146,7 @@ export const pl: Dict = {
 
   'pet.title': 'Pupile',
   'pet.tabBuiltIn': 'Wbudowane',
-  'pet.tabBuiltInHint': 'Towarzysze dołączeni do Open Design — wybierz jednego i adoptuj.',
+  'pet.tabBuiltInHint': 'Towarzysze dołączeni do Vision Design — wybierz jednego i adoptuj.',
   'pet.builtInEmpty': 'Wbudowane zwierzaki są teraz niedostępne. Odśwież zakładkę Społeczność, gdy daemon wróci.',
   'pet.tabCustom': 'Własny',
   'pet.tabCustomHint': 'Ustaw imię, glif, kolor lub wgraj sprite.',
@@ -1245,7 +1245,7 @@ export const pl: Dict = {
   'pet.communitySyncDone': 'Zsynchronizowano {wrote} nowych zwierzaków (łącznie {total}).',
   'pet.communitySyncFailed': 'Błąd synchronizacji: {error}',
   'pet.codexBundled': 'W zestawie',
-  'pet.codexBundledTitle': 'Dostarczany z Open Design — bez pobierania.',
+  'pet.codexBundledTitle': 'Dostarczany z Vision Design — bez pobierania.',
 
   'settings.notifications': 'Powiadomienia',
   'settings.notificationsHint': 'Dźwięk i powiadomienie pulpitu po zakończeniu zadania',
@@ -1355,7 +1355,7 @@ export const pl: Dict = {
   'settings.memoryStarterFeedbackDesc': 'Dark mode, large body text, low information density',
   'settings.memoryStarterFeedbackBody': '- Theme: dark by default\n- Body text: ≥ 18px\n- Information density: prefer whitespace, fewer items per screen\n\nWhy: less eye strain during long sessions.\nWhen to apply: whenever you generate UI, web pages, or slides.',
   'settings.memoryStarterProjectName': 'Current project',
-  'settings.memoryStarterProjectDesc': 'Open Design v0.5 — chat-driven design editor',
+  'settings.memoryStarterProjectDesc': 'Vision Design v0.5 — chat-driven design editor',
   'settings.memoryStarterProjectBody': '- Goal: ship the chat-driven editor this quarter\n- Priorities: streaming render, local multimodal, offline-first\n- Stack: Next.js 16, Express daemon, SQLite\n\nWhen to apply: in any conversation about this project.',
   'settings.memorySaveHint': 'Not auto-saved — click Create / Save to apply.',
   'settings.memoryIndexSaveHint': 'Edits to the index are not auto-saved — click Save index to apply.',
