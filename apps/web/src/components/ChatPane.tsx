@@ -397,6 +397,22 @@ export function ChatPane({
     }
   }, [initialDraft]);
 
+  // Lean Inception "Criar agora" flow: dispatched from LeanInceptionCanvas
+  // after the LI state has been synced to the project RAG. The seededRef
+  // inside ChatComposer latches at mount even when initialDraft is undefined,
+  // so a later prop change cannot push the prompt into the textarea. We bypass
+  // the latch by calling setDraft() imperatively via the composer ref.
+  useEffect(() => {
+    const onStart = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { prompt?: string } | undefined;
+      if (!detail?.prompt) return;
+      composerRef.current?.setDraft(detail.prompt);
+      composerRef.current?.focus?.();
+    };
+    window.addEventListener('lean-inception:start-creation', onStart as EventListener);
+    return () => window.removeEventListener('lean-inception:start-creation', onStart as EventListener);
+  }, []);
+
   useEffect(() => {
     const el = logRef.current;
     if (!el || didInitialScrollRef.current || messages.length === 0) return;
