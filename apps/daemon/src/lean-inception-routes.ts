@@ -18,6 +18,7 @@ import {
   runExtractionForDocument,
   type RagIngestor,
 } from './lean-inception/extraction-service.js';
+import { runResearchForInception } from './lean-inception/research-service.js';
 import type { LeanInceptionRuntimeInvoker } from './lean-inception/runtime-invoke.js';
 import { invokeAgentForExtraction } from './lean-inception/runtime-invoke.js';
 import { ingestDoc } from './rag.js';
@@ -154,6 +155,16 @@ export function registerLeanInceptionRoutes(app: Express, deps: LeanInceptionRou
           // eslint-disable-next-line no-console
           console.error('[lean-inception] background extraction error for', docInput.filename, err);
         });
+      }
+
+      // After all docs are processed, run market research + ideation enrichment.
+      try {
+        await runResearchForInception({
+          db: deps.db, inception, runtime, invoke: invoker,
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[lean-inception] research enrichment failed', err);
       }
     };
 

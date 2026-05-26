@@ -37,7 +37,7 @@ export function LeanInceptionDropBar({ onFiles, isMutating }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept=".md,.txt"
+        accept=".md,.txt,.png,.jpg,.jpeg"
         multiple
         className="li-dropbar__input"
         onChange={onChange}

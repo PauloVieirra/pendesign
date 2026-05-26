@@ -11,6 +11,7 @@ import {
   LEAN_INCEPTION_SYSTEM_PROMPT_V1,
   LEAN_INCEPTION_PROMPT_VERSION,
   buildUserPromptV1,
+  buildImagePromptV1,
 } from './prompts/v1.js';
 import {
   findDocumentByHash,
@@ -151,7 +152,7 @@ function validateRawOutput(value: unknown): ValidationResult {
 
 export interface ExtractDocumentInput {
   filename: string;
-  mimeType: 'text/markdown' | 'text/plain';
+  mimeType: 'text/markdown' | 'text/plain' | 'image/png' | 'image/jpeg';
   content: Buffer;
 }
 
@@ -188,7 +189,7 @@ export type ExtractionResult =
 export interface IngestResult {
   ok: true;
   documentId: string;
-  /** contentText extracted from the buffer — passed to runExtractionForDocument. */
+  /** contentText extracted from the buffer — passed to runExtractionForDocument (empty for images). */
   contentText: string;
   extractionId: string;
 }
@@ -214,6 +215,7 @@ export interface RunExtractionParams {
   document: ExtractDocumentInput;
   documentId: string;
   extractionId: string;
+  /** For text documents: the decoded UTF-8 text. For image documents: empty string. */
   contentText: string;
 }
 
@@ -242,12 +244,21 @@ export async function ingestDocumentForInception(
 ): Promise<IngestDocumentResult> {
   const { db, inception, storageRoot, runtime, document, ragIngest } = params;
 
+  const isImage = document.mimeType === 'image/png' || document.mimeType === 'image/jpeg';
+
   // 1. Emptiness validation.
-  if (
-    document.content.byteLength === 0 ||
-    document.content.toString('utf8').trim().length === 0
-  ) {
-    return { ok: false, error: { code: 'EMPTY_DOCUMENT', message: 'document content is empty', details: { filename: document.filename } } };
+  if (isImage) {
+    // For images use byte length as the emptiness proxy (< 100 bytes is not a real image).
+    if (document.content.byteLength < 100) {
+      return { ok: false, error: { code: 'EMPTY_DOCUMENT', message: 'image content is too small', details: { filename: document.filename } } };
+    }
+  } else {
+    if (
+      document.content.byteLength === 0 ||
+      document.content.toString('utf8').trim().length === 0
+    ) {
+      return { ok: false, error: { code: 'EMPTY_DOCUMENT', message: 'document content is empty', details: { filename: document.filename } } };
+    }
   }
 
   // 2. Size validation.
@@ -262,7 +273,8 @@ export async function ingestDocumentForInception(
     };
   }
 
-  const contentText = document.content.toString('utf8');
+  // For images contentText is empty — the actual bytes are passed as an attachment in runExtractionForDocument.
+  const contentText = isImage ? '' : document.content.toString('utf8');
 
   // 3. Idempotency: identical hash → return existing without re-running extraction.
   const contentHash = computeContentHash(document.content);
@@ -298,7 +310,10 @@ export async function ingestDocumentForInception(
     'docs',
   );
   fs.mkdirSync(projectStorageDir, { recursive: true });
-  const ext = document.mimeType === 'text/markdown' ? '.md' : '.txt';
+  const ext = document.mimeType === 'text/markdown' ? '.md'
+    : document.mimeType === 'image/png' ? '.png'
+    : document.mimeType === 'image/jpeg' ? '.jpg'
+    : '.txt';
 
   const docRow = insertDocument(db, {
     inception_id: inception.id,
@@ -326,8 +341,8 @@ export async function ingestDocumentForInception(
     prompt_version: LEAN_INCEPTION_PROMPT_VERSION,
   });
 
-  // 7. Fire-and-forget RAG ingest (errors must not break ingestion).
-  if (ragIngest) {
+  // 7. Fire-and-forget RAG ingest (errors must not break ingestion; skip for images).
+  if (ragIngest && !isImage) {
     void ragIngest({ projectId: inception.project_id, name: document.filename, content: contentText })
       .catch((err) => {
         // eslint-disable-next-line no-console
@@ -358,19 +373,29 @@ export async function runExtractionForDocument(
 ): Promise<ExtractionResult> {
   const { db, inception, runtime, invoke, document, documentId, extractionId, contentText } = params;
 
+  const isImage = document.mimeType === 'image/png' || document.mimeType === 'image/jpeg';
+
   // 7. Invoke runtime.
   let invokeResult;
   try {
-    invokeResult = await invoke({
+    const userPrompt = isImage
+      ? buildImagePromptV1(document.filename)
+      : buildUserPromptV1({
+          filename: document.filename,
+          mimeType: document.mimeType as 'text/markdown' | 'text/plain',
+          content: contentText,
+        });
+    const baseReq = {
       runtime,
       systemPrompt: LEAN_INCEPTION_SYSTEM_PROMPT_V1,
-      userPrompt: buildUserPromptV1({
-        filename: document.filename,
-        mimeType: document.mimeType,
-        content: contentText,
-      }),
+      userPrompt,
       timeoutMs: EXTRACTION_TIMEOUT_MS,
-    });
+    };
+    invokeResult = await invoke(
+      isImage
+        ? { ...baseReq, attachments: [{ filename: document.filename, mimeType: document.mimeType, content: document.content }] }
+        : baseReq,
+    );
   } catch (err: any) {
     const code: LeanInceptionErrorCode =
       err?.code === 'RUNTIME_UNAVAILABLE'
@@ -441,10 +466,15 @@ export async function runExtractionForDocument(
   }
 
   // 10. Anchor verification: drop cards with paraphrased / hallucinated anchors.
+  // For image-derived cards there is no text to quote — the anchor must be exactly "image:<filename>".
+  const expectedImageAnchor = `image:${document.filename}`;
   const acceptedCards: Array<Parameters<typeof insertCardsAtomic>[1][number]> = [];
   let dropped = 0;
   for (const c of validation.cards) {
-    if (!isAnchorValid(c.source_anchor, contentText)) {
+    const anchorAcceptable = isImage
+      ? c.source_anchor === expectedImageAnchor
+      : isAnchorValid(c.source_anchor, contentText);
+    if (!anchorAcceptable) {
       dropped += 1;
       continue;
     }

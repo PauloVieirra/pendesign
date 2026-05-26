@@ -6,7 +6,7 @@ import type {
 
 export const LEAN_INCEPTION_TAB = '__lean_inception__';
 
-export const SUPPORTED_EXTENSIONS = new Set<string>(['.md', '.txt']);
+export const SUPPORTED_EXTENSIONS = new Set<string>(['.md', '.txt', '.png', '.jpg', '.jpeg']);
 
 export const STATUS_COLOR_CLASS: Record<LeanInceptionColumnStatus, string> = {
   complete:        'li-status--complete',

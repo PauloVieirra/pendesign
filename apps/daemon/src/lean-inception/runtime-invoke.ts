@@ -1,10 +1,21 @@
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import path from 'node:path';
+
+export interface LeanInceptionRuntimeAttachment {
+  filename: string;
+  mimeType: string;
+  content: Buffer;
+}
 
 export interface LeanInceptionRuntimeRequest {
   runtime: string;            // 'claude' | 'codex' | ...
   systemPrompt: string;
   userPrompt: string;
   timeoutMs: number;
+  /** Optional image attachments. Each is written to a temp file and passed via --image flags. */
+  attachments?: LeanInceptionRuntimeAttachment[];
 }
 
 export interface LeanInceptionRuntimeResponse {
@@ -49,12 +60,31 @@ export const invokeAgentForExtraction: LeanInceptionRuntimeInvoker = async (req)
     '--system-prompt', req.systemPrompt,
   ];
 
+  // Write image attachments to temp files and pass via --image flags.
+  let tempDir: string | null = null;
+  const tempPaths: string[] = [];
+  if (req.attachments && req.attachments.length > 0) {
+    tempDir = mkdtempSync(path.join(tmpdir(), 'li-img-'));
+    for (const att of req.attachments) {
+      const tmpPath = path.join(tempDir, att.filename);
+      writeFileSync(tmpPath, att.content);
+      tempPaths.push(tmpPath);
+      args.push('--image', tmpPath);
+    }
+  }
+
   const start = Date.now();
   return new Promise<LeanInceptionRuntimeResponse>((resolve, reject) => {
     const child = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+
+    const cleanupTempFiles = () => {
+      for (const p of tempPaths) {
+        try { unlinkSync(p); } catch { /* best-effort */ }
+      }
+    };
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -63,6 +93,7 @@ export const invokeAgentForExtraction: LeanInceptionRuntimeInvoker = async (req)
 
     child.on('error', (err: any) => {
       clearTimeout(timer);
+      cleanupTempFiles();
       if (err?.code === 'ENOENT') {
         reject(new RuntimeInvocationError('RUNTIME_UNAVAILABLE', `claude CLI not found on PATH`));
         return;
@@ -75,6 +106,7 @@ export const invokeAgentForExtraction: LeanInceptionRuntimeInvoker = async (req)
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      cleanupTempFiles();
       if (timedOut) {
         reject(new RuntimeInvocationError('EXTRACTION_TIMEOUT', `claude extraction timed out after ${req.timeoutMs}ms`));
         return;

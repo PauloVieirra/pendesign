@@ -36,10 +36,12 @@ function fileExtension(file: File): string {
   return idx >= 0 ? file.name.slice(idx).toLowerCase() : '';
 }
 
-function fileMime(file: File): 'text/markdown' | 'text/plain' | null {
+function fileMime(file: File): 'text/markdown' | 'text/plain' | 'image/png' | 'image/jpeg' | null {
   const ext = fileExtension(file);
   if (ext === '.md') return 'text/markdown';
   if (ext === '.txt') return 'text/plain';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
   return null;
 }
 
@@ -79,7 +81,7 @@ export function useLeanInception(projectId: string): UseLeanInception {
     for (const file of files) {
       const mime = fileMime(file);
       if (!mime || !SUPPORTED_EXTENSIONS.has(fileExtension(file))) {
-        setError('Only .md and .txt are supported.');
+        setError('Only .md, .txt, .png, .jpg files are supported.');
         return;
       }
       const content_base64 = await readFileAsBase64(file);

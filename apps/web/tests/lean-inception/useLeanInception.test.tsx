@@ -110,7 +110,7 @@ describe('useLeanInception', () => {
     await act(async () => { await result.current.extract([file]); });
 
     expect((fetch as any).mock.calls).toHaveLength(1); // only the initial GET
-    expect(result.current.error).toMatch(/Only .md and .txt/);
+    expect(result.current.error).toMatch(/Only .md, .txt, .png, .jpg/);
   });
 
   it('removeDocument issues DELETE and updates state', async () => {

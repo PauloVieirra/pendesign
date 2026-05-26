@@ -14,6 +14,7 @@ ABSOLUTE RULES:
    - "high": explicit, complete, unambiguous information.
    - "medium": clear but incomplete, OR implicit but unequivocal.
    - "low": heavily inferred, or mentioned in passing.
+6. When the document is an image (mime_type starts with "image/"), source_anchor MUST be exactly "image:<filename>" and source_line MUST be null. The literal-anchor rule does NOT apply to image sources because there is no text to quote.
 
 COLUMNS (extract exactly these, with these criteria):
 
@@ -59,4 +60,18 @@ ${body}
 ---
 
 Extract the cards according to the system prompt rules and return ONLY the JSON of the schema.`;
+}
+
+export function buildImagePromptV1(filename: string): string {
+  return `IMAGE (filename: ${filename}):
+The attached image is part of a Lean Inception briefing — it could be a UI screenshot, a design mockup, a flow diagram, a competitor product image, or any visual reference.
+
+ANALYZE the image and extract Lean Inception cards according to the system prompt rules. Since the source is an image rather than text:
+
+- Use "image:${filename}" as the source_anchor for every card.
+- source_line MUST be null.
+- Set confidence based on how clearly the image conveys each piece of information.
+- IDENTIFY actors visible (people/roles), problems implied, features shown, journey steps depicted, business rules implied, ideation possibilities, market positioning, etc.
+
+Return ONLY the JSON of the schema.`;
 }

@@ -76,7 +76,7 @@ export type LeanInceptionState = z.infer<typeof LeanInceptionStateSchema>;
 export const ExtractDocumentInputSchema = z.object({
   filename: z.string().min(1),
   content_base64: z.string().min(1),
-  mime_type: z.enum(['text/markdown', 'text/plain']),
+  mime_type: z.enum(['text/markdown', 'text/plain', 'image/png', 'image/jpeg']),
 });
 export type ExtractDocumentInput = z.infer<typeof ExtractDocumentInputSchema>;
 
