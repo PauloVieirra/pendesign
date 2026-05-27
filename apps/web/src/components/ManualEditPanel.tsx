@@ -30,6 +30,11 @@ function isCssVarToken(value: string): boolean {
   return /^var\(\s*--/.test((value || '').trim());
 }
 
+/** Matches a valid-but-incomplete decimal draft (e.g. "", "1", "1.", "1.23"). Rejects negatives. */
+const FIXED_PX_DRAFT = /^\d*(\.\d{0,4})?$/;
+/** Matches a complete positive decimal suitable for committing (e.g. "1", "1.23"). Rejects negatives. */
+const FIXED_PX_COMMIT = /^\d+(\.\d{0,4})?$/;
+
 function sizeModeFromValue(value: string): SizeMode {
   const trimmed = (value || '').trim();
   if (trimmed === '') return 'unset';
@@ -38,10 +43,10 @@ function sizeModeFromValue(value: string): SizeMode {
   return 'fixed';
 }
 
-function sizeValueFromMode(mode: SizeMode, fixedPx: number): string {
+function sizeValueFromMode(mode: SizeMode, fixedPx: string): string {
   if (mode === 'fill') return '100%';
   if (mode === 'hug') return 'fit-content';
-  return `${fixedPx}px`;
+  return `${fixedPx || '0'}px`;
 }
 
 /**
@@ -85,8 +90,8 @@ function SizeRow({
   }
   const mode = sizeModeFromValue(value);
   const fixedPx = (() => {
-    const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
-    return match ? Number(match[1]) : 120;
+    const match = /^(-?\d+(?:\.\d+)?)px$/.exec((value || '').trim());
+    return match ? match[1]! : '';
   })();
   const modeLabels: Record<Exclude<SizeMode, 'unset'>, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
   return (
@@ -115,23 +120,24 @@ function SizeRow({
 
 /**
  * Numeric input for Fixed-mode Width/Height. Uses `type="text"
- * inputMode="decimal"` instead of `type="number"` so the browser does not
- * round to integers, strip trailing zeros via `Number()`, or eat pasted
- * values that exceed an HTML max. Local draft commits on blur (or Enter),
- * matching the original behavior of emitting once per edit rather than
- * once per keystroke.
+ * inputMode="decimal"` so the browser does not coerce values through
+ * Number() (which would strip trailing zeros), round to integers, or
+ * silently clamp to an HTML max. The value flows as a string end-to-end
+ * so `120.5050` survives the round trip through the parent, instead of
+ * collapsing to `120.505` the moment the prop refreshes.
+ *
+ * Negative values are rejected at the draft level (Width/Height don't
+ * accept negatives) and again on commit, matching the original guard.
  */
 function FixedPxInput({ value, onChange, ariaLabel }: {
-  value: number;
+  value: string;
   onChange: (raw: string) => void;
   ariaLabel: string;
 }) {
-  const [draft, setDraft] = useState<string>(String(value));
+  const [draft, setDraft] = useState<string>(value);
   useEffect(() => {
-    setDraft(String(value));
+    setDraft(value);
   }, [value]);
-  const acceptDraft = /^-?\d*(\.\d{0,4})?$/;
-  const validCommit = /^-?\d+(\.\d{0,4})?$/;
   return (
     <input
       type="text"
@@ -140,11 +146,11 @@ function FixedPxInput({ value, onChange, ariaLabel }: {
       aria-label={`${ariaLabel} size in pixels`}
       onChange={(e) => {
         const next = e.target.value;
-        if (next === '' || acceptDraft.test(next)) setDraft(next);
+        if (next === '' || FIXED_PX_DRAFT.test(next)) setDraft(next);
       }}
       onBlur={() => {
-        if (validCommit.test(draft)) onChange(draft);
-        else setDraft(String(value));
+        if (FIXED_PX_COMMIT.test(draft)) onChange(draft);
+        else setDraft(value);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();

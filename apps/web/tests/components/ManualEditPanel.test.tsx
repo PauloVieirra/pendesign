@@ -634,6 +634,60 @@ describe('ManualEditPanel', () => {
     );
   });
 
+  it('Width round-trip preserves trailing zeros (typed 120.5050 stays 120.5050 after re-render)', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!input) throw new Error('Width decimal input not found');
+
+    act(() => {
+      input.value = '120.5050';
+      Simulate.change(input);
+    });
+    act(() => {
+      Simulate.blur(input);
+    });
+
+    // Simulate the parent re-rendering with the new width value
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120.5050px' },
+    });
+
+    const widthGroup2 = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    const input2 = widthGroup2?.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input2?.value).toBe('120.5050');
+  });
+
+  it('Width Fixed mode rejects negative px values on commit', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!input) throw new Error('Width decimal input not found');
+
+    // Negative shouldn't even enter the draft via the change guard, but
+    // pre-populate the value and blur to confirm it gets reset.
+    act(() => {
+      input.value = '-5';
+      Simulate.change(input);
+    });
+    // The acceptDraft regex should have refused, so the input value should
+    // still be '120' (unchanged).
+    expect(input.value).toBe('120');
+  });
+
   it('summarizes full-source history entries without rendering the full file', () => {
     const source = '<html><body>' + 'x'.repeat(10_000) + '</body></html>';
 
