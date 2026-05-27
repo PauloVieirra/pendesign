@@ -23,10 +23,15 @@ export function emptyManualEditDraft(source = ''): ManualEditDraft {
   };
 }
 
-type SizeMode = 'fixed' | 'fill' | 'hug';
+type SizeMode = 'unset' | 'fixed' | 'fill' | 'hug';
+
+function isCssVarToken(value: string): boolean {
+  return /^var\(\s*--/.test((value || '').trim());
+}
 
 function sizeModeFromValue(value: string): SizeMode {
   const trimmed = (value || '').trim();
+  if (trimmed === '') return 'unset';
   if (trimmed === '100%') return 'fill';
   if (trimmed === 'fit-content' || trimmed === 'auto') return 'hug';
   return 'fixed';
@@ -41,7 +46,10 @@ function sizeValueFromMode(mode: SizeMode, fixedPx: number): string {
 /**
  * Fill / Hug / Fixed 3-way toggle for width or height. Maps to inline-style
  * values: Fixed → `<n>px`, Fill → `100%`, Hug → `fit-content`. The Fixed mode
- * reveals a numeric px input so the user can dial in the value.
+ * reveals a numeric px input so the user can dial in the value. When the
+ * underlying source uses a `var(--token)` for the dimension, the row renders
+ * a read-only chip with a clear button instead — this prevents user interaction
+ * from silently overwriting the token with a px literal.
  */
 function SizeRow({
   label,
@@ -60,12 +68,26 @@ function SizeRow({
   fillLabel: string;
   hugLabel: string;
 }) {
+  if (isCssVarToken(value)) {
+    return (
+      <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
+        <span className="manual-edit-size-label">{label}</span>
+        <span className="manual-edit-size-token" title={value}>{value}</span>
+        <button
+          type="button"
+          className="manual-edit-size-clear"
+          onClick={() => onChange('')}
+          aria-label="Clear token"
+        >×</button>
+      </div>
+    );
+  }
   const mode = sizeModeFromValue(value);
   const fixedPx = (() => {
     const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
     return match ? Number(match[1]) : 120;
   })();
-  const modeLabels: Record<SizeMode, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
+  const modeLabels: Record<Exclude<SizeMode, 'unset'>, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
   return (
     <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
       <span className="manual-edit-size-label">{label}</span>
@@ -77,23 +99,55 @@ function SizeRow({
               name={ariaLabel}
               checked={mode === m}
               onChange={() => onChange(sizeValueFromMode(m, fixedPx))}
-              aria-label={m}
+              aria-label={m === 'fixed' ? fixedLabel : m === 'fill' ? fillLabel : hugLabel}
             />
             <span>{modeLabels[m]}</span>
           </label>
         ))}
       </div>
       {mode === 'fixed' ? (
-        <input
-          type="number"
-          value={fixedPx}
-          min={0}
-          aria-label={`${ariaLabel} pixels`}
-          onChange={(e) => onChange(`${Number(e.currentTarget.value) || 0}px`)}
-          className="manual-edit-size-input"
-        />
+        <FixedPxInput value={fixedPx} onChange={(n) => onChange(`${n}px`)} ariaLabel={ariaLabel} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Numeric px input for Fixed mode. Holds a local draft string and commits via
+ * `onChange` only on blur (or Enter), so a 4-digit edit emits one update
+ * instead of one per keystroke. The draft re-syncs from the prop when the
+ * external value changes (e.g. mode switch reset).
+ */
+function FixedPxInput({ value, onChange, ariaLabel }: {
+  value: number;
+  onChange: (n: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+  return (
+    <input
+      type="number"
+      role="spinbutton"
+      value={draft}
+      min={0}
+      max={10000}
+      aria-label={`${ariaLabel} size in pixels`}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const n = Number(draft);
+        if (Number.isFinite(n) && n >= 0) onChange(n);
+        else setDraft(String(value));
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className="manual-edit-size-input"
+    />
   );
 }
 

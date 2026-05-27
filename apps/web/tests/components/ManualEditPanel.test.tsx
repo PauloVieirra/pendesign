@@ -432,10 +432,10 @@ describe('ManualEditPanel', () => {
 
     const widthRadios = Array.from(widthGroup.querySelectorAll('input[type="radio"]'));
     const widthModes = widthRadios.map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
-    expect(widthModes).toEqual(['fixed', 'fill', 'hug']);
+    expect(widthModes).toEqual(['Fixed', 'Fill', 'Hug']);
     const heightModes = Array.from(heightGroup.querySelectorAll('input[type="radio"]'))
       .map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
-    expect(heightModes).toEqual(['fixed', 'fill', 'hug']);
+    expect(heightModes).toEqual(['Fixed', 'Fill', 'Hug']);
   });
 
   it('switching Width to Fill emits onStyleChange with width: 100%', () => {
@@ -447,7 +447,7 @@ describe('ManualEditPanel', () => {
 
     const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
     if (!widthGroup) throw new Error('Width group not found');
-    const fillRadio = widthGroup.querySelector('input[aria-label="fill"]') as HTMLInputElement | null;
+    const fillRadio = widthGroup.querySelector('input[aria-label="Fill"]') as HTMLInputElement | null;
     if (!fillRadio) throw new Error('Width fill radio not found');
 
     act(() => {
@@ -470,7 +470,7 @@ describe('ManualEditPanel', () => {
 
     const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
     if (!heightGroup) throw new Error('Height group not found');
-    const hugRadio = heightGroup.querySelector('input[aria-label="hug"]') as HTMLInputElement | null;
+    const hugRadio = heightGroup.querySelector('input[aria-label="Hug"]') as HTMLInputElement | null;
     if (!hugRadio) throw new Error('Height hug radio not found');
 
     act(() => {
@@ -484,7 +484,7 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('Fixed mode reveals a px input that emits onStyleChange on change', () => {
+  it('Fixed mode reveals a px input that emits onStyleChange on blur', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
@@ -502,12 +502,109 @@ describe('ManualEditPanel', () => {
       numberInput.value = '240';
       Simulate.change(numberInput);
     });
+    act(() => {
+      Simulate.blur(numberInput);
+    });
 
     expect(onStyleChange).toHaveBeenCalledWith(
       'hero-title',
       expect.objectContaining({ width: '240px' }),
       'Style: Hero Title',
     );
+  });
+
+  it('renders a clear-token chip when width is a var() token (no data loss)', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: 'var(--container-max)' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+
+    const tokenChip = widthGroup.querySelector('.manual-edit-size-token') as HTMLElement | null;
+    if (!tokenChip) throw new Error('Width token chip not found');
+    expect(tokenChip.textContent).toBe('var(--container-max)');
+    // Radios must NOT be rendered when the value is a token — that's the data-loss
+    // surface this fix closes.
+    expect(widthGroup.querySelectorAll('input[type="radio"]').length).toBe(0);
+    expect(widthGroup.querySelector('input[type="number"]')).toBeNull();
+
+    const clearButton = widthGroup.querySelector('button[aria-label="Clear token"]') as HTMLButtonElement | null;
+    if (!clearButton) throw new Error('Clear token button not found');
+
+    act(() => {
+      clearButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('does not check any radio when width is unset (empty string)', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), width: '' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+
+    const radios = Array.from(widthGroup.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+    expect(radios.length).toBe(3);
+    expect(radios.every((r) => !r.checked)).toBe(true);
+    // No Fixed px input should be visible either — unset means no radio + no input.
+    expect(widthGroup.querySelector('input[type="number"]')).toBeNull();
+  });
+
+  it('Fixed mode emits once on blur, not on every keystroke', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const numberInput = widthGroup.querySelector('input[type="number"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width fixed px input not found');
+
+    // Simulate the three keystrokes of typing "240" — each change event should
+    // only update the local draft, NOT call onStyleChange.
+    act(() => {
+      numberInput.value = '2';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      numberInput.value = '24';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      numberInput.value = '240';
+      Simulate.change(numberInput);
+    });
+
+    const widthCalls = onStyleChange.mock.calls.filter((call) =>
+      Object.prototype.hasOwnProperty.call(call[1] ?? {}, 'width'),
+    );
+    expect(widthCalls.length).toBe(0);
+
+    act(() => {
+      Simulate.blur(numberInput);
+    });
+
+    const widthCallsAfterBlur = onStyleChange.mock.calls.filter((call) =>
+      Object.prototype.hasOwnProperty.call(call[1] ?? {}, 'width'),
+    );
+    expect(widthCallsAfterBlur.length).toBe(1);
+    expect(widthCallsAfterBlur[0]).toEqual([
+      'hero-title',
+      expect.objectContaining({ width: '240px' }),
+      'Style: Hero Title',
+    ]);
   });
 
   it('summarizes full-source history entries without rendering the full file', () => {

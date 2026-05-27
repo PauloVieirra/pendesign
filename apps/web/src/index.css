@@ -27245,3 +27245,27 @@ body.desktop-pet-shell .pet-task-item {
   color: var(--text);
   font-size: 12px;
 }
+.manual-edit-size-token {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manual-edit-size-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.manual-edit-size-clear:hover {
+  color: var(--text);
+}
