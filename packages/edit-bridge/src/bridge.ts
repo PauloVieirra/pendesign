@@ -722,7 +722,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     var hit = elementUnderCursor(clientX, clientY);
     while (hit && hit !== document.documentElement) {
       if (hit === document.body) return document.body;
-      if (hit !== draggedEl && !(draggedEl.contains && draggedEl.contains(hit)) && isSourceMappable(hit)) return hit;
+      if (hit !== draggedEl && !(draggedEl && draggedEl.contains && draggedEl.contains(hit)) && isSourceMappable(hit)) return hit;
       hit = hit.parentElement;
     }
     return document.body;
@@ -1558,6 +1558,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-insert-arm') {
+      if (!enabled) return;
       // Arming a new tool overrides any previously-armed one.
       armedTool = ev.data.tool;
       hideDropIndicator();

@@ -184,4 +184,17 @@ describe('manual edit bridge insert flow', () => {
     // The insert arm Escape handler clears via the shared helper.
     expect(bridge).toContain('clearInsertArm');
   });
+
+  it('findDropAnchor tolerates a null draggedEl in the bridge script body', () => {
+    const bridge = buildManualEditBridge(true);
+    // The fix pattern from draggableChildrenOf must be present in findDropAnchor too:
+    // a leading `draggedEl && ` guard before any `.contains` access.
+    expect(bridge).toContain('!(draggedEl && draggedEl.contains && draggedEl.contains(hit))');
+  });
+
+  it('od-edit-insert-arm is gated on edit-mode being enabled', () => {
+    const bridge = buildManualEditBridge(true);
+    // The arm branch must early-return when edit-mode is off.
+    expect(bridge).toMatch(/od-edit-insert-arm[\s\S]{0,200}if \(!enabled\) return;/);
+  });
 });
