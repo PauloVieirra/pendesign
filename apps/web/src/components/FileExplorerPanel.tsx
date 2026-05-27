@@ -178,6 +178,39 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
 
   const cancelInlineEdit = useCallback(() => { setInlineEdit(null); setActionError(null); }, []);
 
+  // Streams the full project (minus node_modules / build dirs — see
+  // collectArchiveEntries on the daemon) and triggers a browser download.
+  // Surfaces errors via the existing actionError placeholder rather than
+  // falling back to a single-file zip — the explorer has no rendered
+  // artifact to pack as a fallback.
+  const downloadProject = useCallback(async () => {
+    setActionError(null);
+    try {
+      const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/archive`);
+      if (!resp.ok) throw new Error(`archive request failed (${resp.status})`);
+      const blob = await resp.blob();
+      const header = resp.headers.get('content-disposition') || '';
+      let filename = 'project.zip';
+      const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+      if (star && star[1]) {
+        try { filename = decodeURIComponent(star[1]); } catch { filename = star[1]; }
+      } else {
+        const plain = /filename="([^"]+)"/i.exec(header);
+        if (plain && plain[1]) filename = plain[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setActionError(`Could not download project: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [projectId]);
+
   // ── Render ──────────────────────────────────────────────────────────
   const handleRootContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -233,6 +266,15 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
             aria-label="Expand all folders"
           >
             <Icon name="chevron-right" size={14} />
+          </button>
+          <button
+            type="button"
+            className="explorer-panel__icon-btn"
+            onClick={() => void downloadProject()}
+            title="Download project as .zip"
+            aria-label="Download project as .zip"
+          >
+            <Icon name="download" size={14} />
           </button>
         </div>
       </header>
