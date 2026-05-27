@@ -27151,7 +27151,7 @@ body.desktop-pet-shell .pet-task-item {
 
 .insert-toolbar {
   position: fixed;
-  bottom: 24px;
+  bottom: 64px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
@@ -27159,19 +27159,15 @@ body.desktop-pet-shell .pet-task-item {
   animation: insert-toolbar-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.insert-toolbar[aria-hidden='true'] {
-  display: none;
-}
-
 .insert-toolbar-bar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 6px;
-  background: var(--surface-1, #ffffff);
-  border: 1px solid var(--border-1, rgba(0, 0, 0, 0.08));
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-md);
   pointer-events: auto;
 }
 
@@ -27185,13 +27181,13 @@ body.desktop-pet-shell .pet-task-item {
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--fg-1, #111);
+  color: var(--text);
   cursor: pointer;
   transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .insert-toolbar-tool:hover {
-  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+  background: var(--bg-subtle);
 }
 
 .insert-toolbar-tool.active {

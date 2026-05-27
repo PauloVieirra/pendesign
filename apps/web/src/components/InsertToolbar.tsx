@@ -35,7 +35,7 @@ interface InsertToolbarProps {
 
 export function InsertToolbar({ active, onSelectTool, disabled }: InsertToolbarProps) {
   return (
-    <div className="insert-toolbar" aria-hidden={disabled ? true : undefined}>
+    <div className="insert-toolbar">
       <div className="insert-toolbar-bar" role="toolbar" aria-label="Insert element">
         {TOOLS.map((tool) => {
           const isActive = active === tool.id;
