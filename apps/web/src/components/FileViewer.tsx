@@ -5207,7 +5207,9 @@ function HtmlViewer({
         patch.kind === 'move-element-down' ||
         patch.kind === 'delete-element' ||
         patch.kind === 'clone-element-after' ||
-        patch.kind === 'insert-sibling-after';
+        patch.kind === 'insert-sibling-after' ||
+        patch.kind === 'insert-html-as-child' ||
+        patch.kind === 'insert-html-before-ref';
       if (!result.ok && isStructural && /not found/i.test(result.error ?? '')) {
         const snapshot = await requestBridgeSnapshot();
         if (snapshot) {
@@ -5261,6 +5263,8 @@ function HtmlViewer({
         patch.kind === 'delete-element' ||
         patch.kind === 'clone-element-after' ||
         patch.kind === 'insert-sibling-after' ||
+        patch.kind === 'insert-html-as-child' ||
+        patch.kind === 'insert-html-before-ref' ||
         patch.kind === 'set-outer-html' ||
         patch.kind === 'set-full-source'
       ) {

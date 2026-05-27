@@ -210,4 +210,22 @@ describe('manual edit bridge insert flow', () => {
     const bridge = buildManualEditBridge(true);
     expect(bridge).toContain("clearInsertArm('escape')");
   });
+
+  it('does not disarm on a missed click (no findDropAnchor / no plan)', () => {
+    const bridge = buildManualEditBridge(true);
+    // The missed-click branches in onInsertClick must return early WITHOUT
+    // calling clearInsertArm — the user is fumbling, not signalling intent to
+    // cancel. Disarming on a missed click would desync the host's armedTool
+    // from the iframe and leave the toolbar button looking active while the
+    // iframe is no longer armed. Verify by string contract: the onInsertClick
+    // function body must NOT contain a bare `clearInsertArm()` call; only the
+    // commit branch's `clearInsertArm('commit')` is allowed.
+    const onClickStart = bridge.indexOf('function onInsertClick');
+    const onClickEnd = bridge.indexOf('function onInsertKey');
+    expect(onClickStart).toBeGreaterThan(-1);
+    expect(onClickEnd).toBeGreaterThan(onClickStart);
+    const onClickBody = bridge.slice(onClickStart, onClickEnd);
+    expect(onClickBody).not.toContain('clearInsertArm()');
+    expect(onClickBody).toContain("clearInsertArm('commit')");
+  });
 });

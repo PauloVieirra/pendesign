@@ -571,10 +571,14 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!armedTool) return;
     insertClickEv.preventDefault();
     insertClickEv.stopPropagation();
+    // Missed clicks (no drop anchor / no plan) MUST NOT disarm the tool. The
+    // user is fumbling, not signalling intent to cancel — disarming would
+    // desync the host's armedTool from the iframe and leave the toolbar button
+    // looking active while the iframe is no longer armed. Let them keep trying.
     var container = findDropAnchor(insertClickEv.clientX, insertClickEv.clientY, null);
-    if (!container) { clearInsertArm(); return; }
+    if (!container) return;
     var plan = planForContainer(container, insertClickEv.clientX, insertClickEv.clientY, null);
-    if (!plan) { clearInsertArm(); return; }
+    if (!plan) return;
     var containerId = plan.container === document.body ? '__body__' : stableId(plan.container);
     var insertBefore = (plan.kind === 'sibling' && plan.insertBefore) ? stableId(plan.insertBefore) : null;
     window.parent.postMessage({
