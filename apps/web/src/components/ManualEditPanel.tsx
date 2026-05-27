@@ -838,9 +838,9 @@ function StyleInspector({
   );
 }
 
-function Section({ title, children, inactive }: { title: string; children: React.ReactNode; inactive?: boolean }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`}>
+    <section className="cc-section">
       <header className="cc-section-head">{title}</header>
       <div className="cc-section-body">{children}</div>
     </section>
