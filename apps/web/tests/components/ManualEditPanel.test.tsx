@@ -420,7 +420,7 @@ describe('ManualEditPanel', () => {
     expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
   });
 
-  it('renders Width and Height 3-way toggles in the SIZE section', () => {
+  it('renders Width and Height as always-visible inputs + mode buttons', () => {
     renderPanel({
       selectedTarget: { ...target, isLayoutContainer: true },
       styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
@@ -430,15 +430,18 @@ describe('ManualEditPanel', () => {
     const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
     if (!widthGroup || !heightGroup) throw new Error('Width/Height groups not found');
 
-    const widthRadios = Array.from(widthGroup.querySelectorAll('input[type="radio"]'));
-    const widthModes = widthRadios.map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
-    expect(widthModes).toEqual(['Fixed', 'Fill', 'Hug']);
-    const heightModes = Array.from(heightGroup.querySelectorAll('input[type="radio"]'))
-      .map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
-    expect(heightModes).toEqual(['Fixed', 'Fill', 'Hug']);
+    const widthInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    const heightInput = heightGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(widthInput?.value).toBe('120');
+    expect(heightInput?.value).toBe('80');
+
+    const widthModeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    const heightModeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(widthModeBtn?.getAttribute('data-mode')).toBe('fixed');
+    expect(heightModeBtn?.getAttribute('data-mode')).toBe('fixed');
   });
 
-  it('switching Width to Fill emits onStyleChange with width: 100%', () => {
+  it('cycling the Width mode from Fixed lands on Fill (100%)', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
@@ -447,11 +450,11 @@ describe('ManualEditPanel', () => {
 
     const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
     if (!widthGroup) throw new Error('Width group not found');
-    const fillRadio = widthGroup.querySelector('input[aria-label="Fill"]') as HTMLInputElement | null;
-    if (!fillRadio) throw new Error('Width fill radio not found');
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn) throw new Error('Width mode button not found');
 
     act(() => {
-      fillRadio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      modeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
     expect(onStyleChange).toHaveBeenCalledWith(
@@ -461,7 +464,7 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('switching Height to Hug emits onStyleChange with height: fit-content', () => {
+  it('cycling the Height mode twice from Fixed lands on Hug (fit-content)', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
@@ -470,18 +473,33 @@ describe('ManualEditPanel', () => {
 
     const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
     if (!heightGroup) throw new Error('Height group not found');
-    const hugRadio = heightGroup.querySelector('input[aria-label="Hug"]') as HTMLInputElement | null;
-    if (!hugRadio) throw new Error('Height hug radio not found');
+    const modeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn) throw new Error('Height mode button not found');
 
+    // First click: Fixed → Fill
     act(() => {
-      hugRadio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      modeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    // Re-render with updated height to reflect fill state
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '100%' },
+    });
+    const heightGroup2 = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup2) throw new Error('Height group not found after re-render');
+    const modeBtn2 = heightGroup2.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn2) throw new Error('Height mode button not found after re-render');
+
+    // Second click: Fill → Hug
+    act(() => {
+      modeBtn2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith(
-      'hero-title',
+    const calls = onStyleChange.mock.calls.map((c) => c[1]);
+    expect(calls).toEqual([
+      expect.objectContaining({ height: '100%' }),
       expect.objectContaining({ height: 'fit-content' }),
-      'Style: Hero Title',
-    );
+    ]);
   });
 
   it('Fixed mode reveals a px input that emits onStyleChange on blur', () => {
@@ -526,9 +544,9 @@ describe('ManualEditPanel', () => {
     const tokenChip = widthGroup.querySelector('.manual-edit-size-token') as HTMLElement | null;
     if (!tokenChip) throw new Error('Width token chip not found');
     expect(tokenChip.textContent).toBe('var(--container-max)');
-    // Radios must NOT be rendered when the value is a token — that's the data-loss
+    // Mode button must NOT be rendered when the value is a token — that's the data-loss
     // surface this fix closes.
-    expect(widthGroup.querySelectorAll('input[type="radio"]').length).toBe(0);
+    expect(widthGroup.querySelector('button[data-mode]')).toBeNull();
     expect(widthGroup.querySelector('input[inputmode="decimal"]')).toBeNull();
 
     const clearButton = widthGroup.querySelector('button[aria-label="Clear token"]') as HTMLButtonElement | null;
@@ -545,7 +563,7 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('does not check any radio when width is unset (empty string)', () => {
+  it('shows empty input and Fixed mode button when width is unset', () => {
     renderPanel({
       styles: { ...emptyManualEditStyles(), width: '' },
     });
@@ -553,11 +571,38 @@ describe('ManualEditPanel', () => {
     const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
     if (!widthGroup) throw new Error('Width group not found');
 
-    const radios = Array.from(widthGroup.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
-    expect(radios.length).toBe(3);
-    expect(radios.every((r) => !r.checked)).toBe(true);
-    // No Fixed px input should be visible either — unset means no radio + no input.
-    expect(widthGroup.querySelector('input[inputmode="decimal"]')).toBeNull();
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('');
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('fixed');
+  });
+
+  it('shows 100% read-only in the input when width is Fill', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), width: '100%' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('100%');
+    expect(input?.readOnly).toBe(true);
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('fill');
+  });
+
+  it('shows auto read-only in the input when height is Hug', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), height: 'fit-content' },
+    });
+
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup) throw new Error('Height group not found');
+    const input = heightGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('auto');
+    expect(input?.readOnly).toBe(true);
+    const modeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('hug');
   });
 
   it('Fixed mode emits once on blur, not on every keystroke', () => {

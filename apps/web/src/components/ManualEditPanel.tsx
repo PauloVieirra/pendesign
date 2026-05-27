@@ -24,7 +24,10 @@ export function emptyManualEditDraft(source = ''): ManualEditDraft {
   };
 }
 
-type SizeMode = 'unset' | 'fixed' | 'fill' | 'hug';
+type SizeMode = 'fixed' | 'fill' | 'hug';
+
+const NEXT_MODE: Record<SizeMode, SizeMode> = { fixed: 'fill', fill: 'hug', hug: 'fixed' };
+const MODE_LABEL: Record<SizeMode, string> = { fixed: 'Fixed', fill: 'Fill', hug: 'Hug' };
 
 function isCssVarToken(value: string): boolean {
   return /^var\(\s*--/.test((value || '').trim());
@@ -35,44 +38,70 @@ const FIXED_PX_DRAFT = /^\d*(\.\d{0,4})?$/;
 /** Matches a complete positive decimal suitable for committing (e.g. "1", "1.23"). Rejects negatives. */
 const FIXED_PX_COMMIT = /^\d+(\.\d{0,4})?$/;
 
-function sizeModeFromValue(value: string): SizeMode {
+function modeFromValue(value: string): SizeMode {
   const trimmed = (value || '').trim();
-  if (trimmed === '') return 'unset';
   if (trimmed === '100%') return 'fill';
   if (trimmed === 'fit-content' || trimmed === 'auto') return 'hug';
   return 'fixed';
 }
 
-function sizeValueFromMode(mode: SizeMode, fixedPx: string): string {
+function valueForMode(mode: SizeMode, fixedPx: string): string {
   if (mode === 'fill') return '100%';
   if (mode === 'hug') return 'fit-content';
   return `${fixedPx || '0'}px`;
 }
 
+function readOnlyDisplay(mode: Exclude<SizeMode, 'fixed'>): string {
+  return mode === 'fill' ? '100%' : 'auto';
+}
+
 /**
- * Fill / Hug / Fixed 3-way toggle for width or height. Maps to inline-style
- * values: Fixed → `<n>px`, Fill → `100%`, Hug → `fit-content`. The Fixed mode
- * reveals a numeric px input so the user can dial in the value. When the
- * underlying source uses a `var(--token)` for the dimension, the row renders
- * a read-only chip with a clear button instead — this prevents user interaction
- * from silently overwriting the token with a px literal.
+ * Inline mode glyph. Three shapes:
+ *  - fixed: bordered square (locked size)
+ *  - fill:  arrows pointing outward (expand to fill)
+ *  - hug:   arrows pointing inward (shrink to content)
+ */
+function SizeModeIcon({ mode }: { mode: SizeMode }) {
+  if (mode === 'fixed') {
+    return (
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+  if (mode === 'fill') {
+    return (
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M2 5h6M2 5l1.5-1.5M2 5l1.5 1.5M8 5L6.5 3.5M8 5L6.5 6.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <path d="M0.5 5h3M9.5 5h-3M3.5 5L2 3.5M3.5 5L2 6.5M6.5 5L8 3.5M6.5 5L8 6.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * Width or Height row. The numeric value is always visible:
+ *   - Fixed: editable text input via FixedPxInput (decimal-aware).
+ *   - Fill:  read-only "100%".
+ *   - Hug:   read-only "auto".
+ * One icon button to the right cycles the mode (Fixed → Fill → Hug → Fixed).
+ * When the value is `var(--token)`, renders the existing token chip + clear
+ * button so token data isn't silently overwritten.
  */
 function SizeRow({
   label,
   ariaLabel,
   value,
   onChange,
-  fixedLabel,
-  fillLabel,
-  hugLabel,
 }: {
   label: string;
   ariaLabel: string;
   value: string;
   onChange: (next: string) => void;
-  fixedLabel: string;
-  fillLabel: string;
-  hugLabel: string;
 }) {
   if (isCssVarToken(value)) {
     return (
@@ -88,32 +117,41 @@ function SizeRow({
       </div>
     );
   }
-  const mode = sizeModeFromValue(value);
+  const mode = value.trim() === '' ? 'fixed' : modeFromValue(value);
   const fixedPx = (() => {
     const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
     return match ? match[1]! : '';
   })();
-  const modeLabels: Record<Exclude<SizeMode, 'unset'>, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
+  const next = NEXT_MODE[mode];
   return (
     <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
       <span className="manual-edit-size-label">{label}</span>
-      <div className="manual-edit-size-toggle">
-        {(['fixed', 'fill', 'hug'] as const).map((m) => (
-          <label key={m} className={`manual-edit-size-mode${mode === m ? ' active' : ''}`}>
-            <input
-              type="radio"
-              name={ariaLabel}
-              checked={mode === m}
-              onChange={() => onChange(sizeValueFromMode(m, fixedPx))}
-              aria-label={m === 'fixed' ? fixedLabel : m === 'fill' ? fillLabel : hugLabel}
-            />
-            <span>{modeLabels[m]}</span>
-          </label>
-        ))}
-      </div>
       {mode === 'fixed' ? (
-        <FixedPxInput value={fixedPx} onChange={(raw) => onChange(`${raw}px`)} ariaLabel={ariaLabel} />
-      ) : null}
+        <FixedPxInput
+          value={fixedPx}
+          onChange={(raw) => onChange(`${raw}px`)}
+          ariaLabel={ariaLabel}
+        />
+      ) : (
+        <input
+          type="text"
+          inputMode="decimal"
+          className="manual-edit-size-input"
+          value={readOnlyDisplay(mode)}
+          readOnly
+          aria-label={`${ariaLabel} ${mode}`}
+        />
+      )}
+      <button
+        type="button"
+        className="manual-edit-size-mode-btn"
+        data-mode={mode}
+        aria-label={`${label} mode: ${MODE_LABEL[mode]}`}
+        title={`Switch to ${MODE_LABEL[next]}`}
+        onClick={() => onChange(valueForMode(next, fixedPx || '120'))}
+      >
+        <SizeModeIcon mode={mode} />
+      </button>
     </div>
   );
 }
@@ -727,24 +765,8 @@ function StyleInspector({
       </Section>
 
       <Section title="SIZE">
-        <SizeRow
-          label="Width"
-          ariaLabel="width"
-          value={styles.width}
-          onChange={(v) => u('width', v)}
-          fixedLabel="Fixed"
-          fillLabel="Fill"
-          hugLabel="Hug"
-        />
-        <SizeRow
-          label="Height"
-          ariaLabel="height"
-          value={styles.height}
-          onChange={(v) => u('height', v)}
-          fixedLabel="Fixed"
-          fillLabel="Fill"
-          hugLabel="Hug"
-        />
+        <SizeRow label="Width" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} />
+        <SizeRow label="Height" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} />
       </Section>
 
       <Section title="LAYOUT" inactive={!layoutEnabled}>
