@@ -753,7 +753,40 @@ function StyleInspector({
           Page
         </button>
       </div>
-      <Section title="TYPOGRAPHY">
+
+      <Section title="Layout">
+        <SubSection title="Size">
+          <PairRow>
+            <SizeRow label="W" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} />
+            <SizeRow label="H" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} />
+          </PairRow>
+        </SubSection>
+
+        <SubSection title="Flex">
+          {!layoutEnabled ? (
+            <p className="cc-section-hint">Select a container or group to edit flex layout.</p>
+          ) : null}
+          <PairRow>
+            <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} />
+            <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} disabled={!layoutEnabled} />
+          </PairRow>
+          <PairRow>
+            <DropdownRow label="Justify" value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} disabled={!layoutEnabled} />
+            <DropdownRow label="Align" value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} disabled={!layoutEnabled} />
+          </PairRow>
+        </SubSection>
+
+        <SubSection title="Spacing">
+          <QuadRow label="Padding" values={{
+            t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
+          }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} />
+          <QuadRow label="Margin" values={{
+            t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
+          }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} />
+        </SubSection>
+      </Section>
+
+      <Section title="Typography">
         <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} variables={dsVariables} />
         <PairRow>
           <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit variables={dsVariables} />
@@ -769,64 +802,36 @@ function StyleInspector({
         </PairRow>
       </Section>
 
-      <Section title="SIZE">
-        <SizeRow label="Width" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} />
-        <SizeRow label="Height" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} />
+      <Section title="Appearance">
+        <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} />
       </Section>
 
-      <Section title="LAYOUT" inactive={!layoutEnabled}>
-        {!layoutEnabled ? (
-          <p className="cc-section-hint">Select a container or group to edit layout.</p>
-        ) : null}
-        <PairRow>
-          <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} />
-          <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} disabled={!layoutEnabled} />
-        </PairRow>
-        <PairRow>
-          <DropdownRow label="Justify" value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} disabled={!layoutEnabled} />
-          <DropdownRow label="Align" value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} disabled={!layoutEnabled} />
-        </PairRow>
+      <Section title="Fill">
+        <ColorRow
+          label="Fill"
+          value={isGradientValue(styles.backgroundImage) ? styles.backgroundImage : styles.backgroundColor}
+          onChange={(v) => {
+            if (isGradientValue(v)) {
+              u('backgroundImage', v);
+              u('backgroundColor', '');
+            } else {
+              u('backgroundColor', v);
+              u('backgroundImage', '');
+            }
+          }}
+          variables={dsVariables}
+          allowGradient
+        />
       </Section>
 
-      <Section title="BOX">
+      <Section title="Stroke">
         <PairRow>
-          <ColorRow
-            label="Fill"
-            // When backgroundImage holds a gradient, the Fill row is showing
-            // it; switching back to a solid color must clear backgroundImage
-            // and write to backgroundColor instead. The reverse holds too.
-            value={isGradientValue(styles.backgroundImage) ? styles.backgroundImage : styles.backgroundColor}
-            onChange={(v) => {
-              if (isGradientValue(v)) {
-                u('backgroundImage', v);
-                u('backgroundColor', '');
-              } else {
-                u('backgroundColor', v);
-                u('backgroundImage', '');
-              }
-            }}
-            variables={dsVariables}
-            allowGradient
-          />
-          <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} />
+          <ColorRow label="Color" value={styles.borderColor} onChange={(v) => u('borderColor', v)} variables={dsVariables} />
+          <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
         </PairRow>
-
-        <QuadRow label="Padding" values={{
-          t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
-        }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} />
-
-        <QuadRow label="Margin" values={{
-          t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
-        }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} />
-
-        <QuadRow label="Border" values={{
+        <QuadRow label="Width" values={{
           t: styles.borderTopWidth, r: styles.borderRightWidth, b: styles.borderBottomWidth, l: styles.borderLeftWidth,
         }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} variables={dsVariables} />
-
-        <PairRow>
-          <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
-          <ColorRow label="Border" value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact variables={dsVariables} />
-        </PairRow>
         <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit variables={dsVariables} />
       </Section>
     </div>
@@ -839,6 +844,15 @@ function Section({ title, children, inactive }: { title: string; children: React
       <header className="cc-section-head">{title}</header>
       <div className="cc-section-body">{children}</div>
     </section>
+  );
+}
+
+function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="cc-sub">
+      <header className="cc-section-sub">{title}</header>
+      <div className="cc-section-body">{children}</div>
+    </div>
   );
 }
 

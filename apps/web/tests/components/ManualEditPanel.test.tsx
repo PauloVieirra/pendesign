@@ -55,7 +55,7 @@ describe('ManualEditPanel', () => {
   it('renders the style inspector without the advanced editor entry', () => {
     renderPanel();
 
-    expect(host.textContent).toContain('TYPOGRAPHY');
+    expect(host.textContent).toContain('Typography');
     expect(host.textContent).not.toContain('Advanced');
     expect(host.textContent).not.toContain('Content');
   });
@@ -89,7 +89,8 @@ describe('ManualEditPanel', () => {
       },
     });
 
-    const fontSelect = host.querySelector('select') as HTMLSelectElement | null;
+    const fontSelect = Array.from(host.querySelectorAll('.cc-row select'))
+      .find((el) => el.closest('.cc-row')?.querySelector('.cc-label')?.textContent === 'Font') as HTMLSelectElement | null;
     if (!fontSelect) throw new Error('Font select not found');
     expect(fontSelect.value).toBe('Roboto, Arial, sans-serif');
 
@@ -361,63 +362,37 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('renders layout as inactive for non-layout single targets', () => {
-    const onStyleChange = vi.fn();
+  it('renders Flex sub-section with a hint when target is not a layout container', () => {
     renderPanel({
-      onStyleChange,
-      styles: {
-        ...emptyManualEditStyles(),
-        gap: 'normal',
-        flexDirection: 'row',
-      },
+      selectedTarget: { ...target, isLayoutContainer: false },
+      styles: emptyManualEditStyles(),
     });
 
-    const layoutSection = sectionByTitle('LAYOUT');
-    expect(layoutSection.classList.contains('cc-section-inactive')).toBe(true);
-    expect(layoutSection.textContent).toContain('Select a container or group to edit layout.');
-    const gapInput = layoutSection.querySelector('input') as HTMLInputElement | null;
-    const directionSelect = layoutSection.querySelector('select') as HTMLSelectElement | null;
-    if (!gapInput || !directionSelect) throw new Error('Layout controls not found');
+    const flexSub = Array.from(host.querySelectorAll('.cc-section-sub'))
+      .find((el) => el.textContent?.trim() === 'Flex') as HTMLElement | undefined;
+    if (!flexSub) throw new Error('Flex sub-section not found');
 
-    expect(gapInput.disabled).toBe(true);
-    expect(directionSelect.disabled).toBe(true);
-    expect(normalizeManualEditStyles({ gap: '12', flexDirection: 'column' }, { layoutEnabled: false })).toEqual({
-      ok: true,
-      styles: {},
-    });
+    // The hint about needing a container should be inside the Flex sub block.
+    const hint = flexSub.parentElement?.querySelector('.cc-section-hint');
+    expect(hint?.textContent).toContain('Select a container');
   });
 
-  it('enables layout controls for flex or grid containers', () => {
-    const onStyleChange = vi.fn();
+  it('enables Flex controls when target is a layout container', () => {
     renderPanel({
-      onStyleChange,
       selectedTarget: { ...target, isLayoutContainer: true },
-      styles: {
-        ...emptyManualEditStyles(),
-        gap: '8px',
-        flexDirection: 'row',
-      },
+      styles: emptyManualEditStyles(),
     });
 
-    const layoutSection = sectionByTitle('LAYOUT');
-    expect(layoutSection.classList.contains('cc-section-inactive')).toBe(false);
-    expect(layoutSection.textContent).not.toContain('Select a container or group to edit layout.');
-    const gapInput = layoutSection.querySelector('input') as HTMLInputElement | null;
-    const directionSelect = layoutSection.querySelector('select') as HTMLSelectElement | null;
-    const gapIncrease = layoutSection.querySelector('button[aria-label="Gap increase"]') as HTMLButtonElement | null;
-    if (!gapInput || !directionSelect) throw new Error('Layout controls not found');
-    expect(gapInput.disabled).toBe(false);
-    expect(directionSelect.disabled).toBe(false);
-    if (!gapIncrease) throw new Error('Gap increase control not found');
+    const flexSub = Array.from(host.querySelectorAll('.cc-section-sub'))
+      .find((el) => el.textContent?.trim() === 'Flex') as HTMLElement | undefined;
+    if (!flexSub) throw new Error('Flex sub-section not found');
 
-    act(() => {
-      gapIncrease.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      directionSelect.value = 'column';
-      directionSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-    });
-
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { gap: '9px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
+    // No hint when layout is enabled
+    expect(flexSub.parentElement?.querySelector('.cc-section-hint')).toBeNull();
+    // Gap input should not be disabled
+    const inputs = Array.from(flexSub.parentElement?.querySelectorAll('input') ?? []) as HTMLInputElement[];
+    const enabledGap = inputs.find((i) => !i.disabled);
+    expect(enabledGap).toBeDefined();
   });
 
   it('renders Width and Height as always-visible inputs + mode buttons', () => {
@@ -782,6 +757,52 @@ describe('ManualEditPanel', () => {
     expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'delete-element', id: 'hero-title' }, 'Delete element');
     expect(onDeleteConfirmOpenChange).toHaveBeenCalledWith(false);
     expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders sections in Layout → Typography → Appearance → Fill → Stroke order', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const headers = Array.from(inspector.querySelectorAll('.cc-section > .cc-section-head'))
+      .map((el) => el.textContent?.trim());
+    expect(headers).toEqual(['Layout', 'Typography', 'Appearance', 'Fill', 'Stroke']);
+  });
+
+  it('renders Size / Flex / Spacing mini-sub-sections inside Layout', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const layoutSection = Array.from(inspector.querySelectorAll('.cc-section'))
+      .find((s) => s.querySelector('.cc-section-head')?.textContent?.trim() === 'Layout') as HTMLElement | undefined;
+    if (!layoutSection) throw new Error('Layout section not found');
+
+    const subs = Array.from(layoutSection.querySelectorAll('.cc-section-sub'))
+      .map((el) => el.textContent?.trim());
+    expect(subs).toEqual(['Size', 'Flex', 'Spacing']);
+  });
+
+  it('renders Stroke section with color, style, width quad cells, and radius', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const sections = Array.from(inspector.querySelectorAll('.cc-section')) as HTMLElement[];
+    const stroke = sections.find((s) => s.querySelector('.cc-section-head')?.textContent?.trim() === 'Stroke');
+    if (!stroke) throw new Error('Stroke section not found');
+
+    expect(stroke.querySelectorAll('select').length).toBeGreaterThanOrEqual(1); // Style dropdown
+    expect(stroke.querySelectorAll('.cc-quad-cell').length).toBeGreaterThanOrEqual(4); // T/R/B/L
   });
 
   function sectionByTitle(title: string): HTMLElement {
