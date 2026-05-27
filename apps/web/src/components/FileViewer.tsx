@@ -7113,7 +7113,6 @@ function HtmlViewer({
                       setShareMenuOpen(false);
                       fireShareExport('zip', () => exportProjectAsZip({
                         projectId,
-                        filePath: file.name,
                         fallbackHtml: source ?? '',
                         fallbackTitle: exportTitle,
                       }));
