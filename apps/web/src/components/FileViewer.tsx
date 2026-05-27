@@ -103,6 +103,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { InsertToolbar, buildInsertedElement, type InsertToolId } from './InsertToolbar';
 import { fetchVariables, type VariablesFile } from '../providers/design-system-variables';
 import { EditModeMediaPopover, emptyEditModeMediaPopoverState, type EditModeMediaPopoverState } from './EditModeMediaPopover';
 import { EditModeLinkBubble, emptyEditModeLinkBubbleState, type EditModeLinkBubbleState } from './EditModeLinkBubble';
@@ -3768,12 +3769,29 @@ function HtmlViewer({
     scale: 1,
   });
   const dcViewportRestoreAtRef = useRef(0);
+  // Insert-mode arming for the bottom-centre InsertToolbar. The host owns the
+  // state so the toolbar's active highlight survives iframe srcDoc swaps;
+  // the bridge inside the iframe receives `od-edit-insert-arm` /
+  // `od-edit-insert-disarm` and paints the drop indicator + cursor while
+  // armed. `null` means no tool is selected (default Edit-mode cursor).
+  const [armedTool, setArmedTool] = useState<InsertToolId | null>(null);
+  const postArm = useCallback((tool: InsertToolId | null) => {
+    setArmedTool(tool);
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    if (tool == null) {
+      iframe.contentWindow.postMessage({ type: 'od-edit-insert-disarm' }, '*');
+    } else {
+      iframe.contentWindow.postMessage({ type: 'od-edit-insert-arm', tool }, '*');
+    }
+  }, []);
   const setManualEditMode = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setManualEditModeRaw((prev) => {
       const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next;
       if (value !== prev && !value) {
         setManualEditFrozenSource(null);
         setManualEditViewportWidth(null);
+        setArmedTool(null);
       }
       return value;
     });
@@ -6301,6 +6319,7 @@ function HtmlViewer({
               onClose={closeManualEditColorPicker}
               onApply={(hex) => { void applyManualEditColorSwap(hex); }}
             />
+            <InsertToolbar active={armedTool} onSelectTool={postArm} />
           </>
         ) : null}
         <div className={manualEditMode ? 'manual-edit-canvas' : 'comment-frame-clip'}>
