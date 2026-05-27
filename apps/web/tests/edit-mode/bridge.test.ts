@@ -144,3 +144,44 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0");
   });
 });
+
+describe('manual edit bridge insert flow', () => {
+  it('handles od-edit-insert-arm and stores the armed tool', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.data.type === 'od-edit-insert-arm'");
+    expect(bridge).toContain('armedTool = ev.data.tool');
+  });
+
+  it('handles od-edit-insert-disarm and clears the armed tool', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.data.type === 'od-edit-insert-disarm'");
+    expect(bridge).toContain('clearInsertArm()');
+  });
+
+  it('reuses the drop-plan engine for the insert preview', () => {
+    const bridge = buildManualEditBridge(true);
+    // The mousemove branch when armed must call the same hit-test + plan
+    // helpers as the drag flow.
+    expect(bridge).toContain('findDropAnchor(insertMoveEv.clientX, insertMoveEv.clientY, null)');
+    expect(bridge).toContain('planForContainer(');
+  });
+
+  it('emits od-edit-insert-commit on click while armed', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-insert-commit'");
+    expect(bridge).toContain("containerId:");
+    expect(bridge).toContain("insertBefore:");
+  });
+
+  it('treats body as the __body__ sentinel container id', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("plan.container === document.body ? '__body__'");
+  });
+
+  it('cancels arm on Escape', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.key === 'Escape'");
+    // The insert arm Escape handler clears via the shared helper.
+    expect(bridge).toContain('clearInsertArm');
+  });
+});

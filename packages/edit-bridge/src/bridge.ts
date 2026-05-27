@@ -541,6 +541,58 @@ export function buildManualEditBridge(enabled: boolean): string {
     return Math.round(value);
   }
   // ──────────────────────────────────────────────────────────────────
+  // Insert-from-toolbar. The host arms a tool (text or shape) via
+  // od-edit-insert-arm; while armed we paint the same drop indicator
+  // the drag flow uses, with draggedEl === null (we are CREATING a
+  // new element, not moving one). A click inside the canvas emits
+  // od-edit-insert-commit and disarms. Escape / arming a different
+  // tool / disarm message all reset state.
+  // ──────────────────────────────────────────────────────────────────
+  var armedTool = null;
+  function clearInsertArm(){
+    armedTool = null;
+    hideDropIndicator();
+    document.documentElement.style.cursor = '';
+  }
+  function onInsertMove(insertMoveEv){
+    if (!armedTool) return;
+    var container = findDropAnchor(insertMoveEv.clientX, insertMoveEv.clientY, null);
+    if (!container) { hideDropIndicator(); return; }
+    var plan = planForContainer(container, insertMoveEv.clientX, insertMoveEv.clientY, null);
+    if (!plan) { hideDropIndicator(); return; }
+    if (plan.kind === 'inside') paintInsidePlan(plan);
+    else paintSiblingPlan(plan);
+  }
+  function onInsertClick(insertClickEv){
+    if (!armedTool) return;
+    insertClickEv.preventDefault();
+    insertClickEv.stopPropagation();
+    var container = findDropAnchor(insertClickEv.clientX, insertClickEv.clientY, null);
+    if (!container) { clearInsertArm(); return; }
+    var plan = planForContainer(container, insertClickEv.clientX, insertClickEv.clientY, null);
+    if (!plan) { clearInsertArm(); return; }
+    var containerId = plan.container === document.body ? '__body__' : stableId(plan.container);
+    var insertBefore = (plan.kind === 'sibling' && plan.insertBefore) ? stableId(plan.insertBefore) : null;
+    window.parent.postMessage({
+      type: 'od-edit-insert-commit',
+      tool: armedTool,
+      containerId: containerId,
+      insertBefore: insertBefore,
+    }, '*');
+    clearInsertArm();
+  }
+  function onInsertKey(insertKeyEv){
+    if (!armedTool) return;
+    if (insertKeyEv.key === 'Escape' || insertKeyEv.keyCode === 27) {
+      insertKeyEv.preventDefault();
+      insertKeyEv.stopPropagation();
+      clearInsertArm();
+    }
+  }
+  document.addEventListener('mousemove', onInsertMove, true);
+  document.addEventListener('click', onInsertClick, true);
+  document.addEventListener('keydown', onInsertKey, true);
+  // ──────────────────────────────────────────────────────────────────
   // Cross-parent drag-and-drop. mousedown on a selected, source-mappable
   // element starts a custom drag. The bridge computes a "drop plan" each
   // mousemove by hit-testing under the cursor, walking up to find a
@@ -1501,8 +1553,19 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (ev.data.type === 'od-edit-mode') {
       enabled = !!ev.data.enabled;
       document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
-      if (!enabled) { finishInlineEdit(false); clearSelectedTarget(); teardownResizeHandles(); teardownPaddingHandles(); }
+      if (!enabled) { finishInlineEdit(false); clearSelectedTarget(); teardownResizeHandles(); teardownPaddingHandles(); clearInsertArm(); }
       if (enabled) setTimeout(postTargets, 0);
+      return;
+    }
+    if (ev.data.type === 'od-edit-insert-arm') {
+      // Arming a new tool overrides any previously-armed one.
+      armedTool = ev.data.tool;
+      hideDropIndicator();
+      document.documentElement.style.cursor = 'crosshair';
+      return;
+    }
+    if (ev.data.type === 'od-edit-insert-disarm') {
+      clearInsertArm();
       return;
     }
     // Snapshot the live DOM so the host can recover when a structural
