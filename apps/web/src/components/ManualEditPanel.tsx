@@ -90,7 +90,7 @@ function SizeRow({
   }
   const mode = sizeModeFromValue(value);
   const fixedPx = (() => {
-    const match = /^(-?\d+(?:\.\d+)?)px$/.exec((value || '').trim());
+    const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
     return match ? match[1]! : '';
   })();
   const modeLabels: Record<Exclude<SizeMode, 'unset'>, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
@@ -146,7 +146,7 @@ function FixedPxInput({ value, onChange, ariaLabel }: {
       aria-label={`${ariaLabel} size in pixels`}
       onChange={(e) => {
         const next = e.target.value;
-        if (next === '' || FIXED_PX_DRAFT.test(next)) setDraft(next);
+        if (FIXED_PX_DRAFT.test(next)) setDraft(next);
       }}
       onBlur={() => {
         if (FIXED_PX_COMMIT.test(draft)) onChange(draft);
