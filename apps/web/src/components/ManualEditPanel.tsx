@@ -23,6 +23,80 @@ export function emptyManualEditDraft(source = ''): ManualEditDraft {
   };
 }
 
+type SizeMode = 'fixed' | 'fill' | 'hug';
+
+function sizeModeFromValue(value: string): SizeMode {
+  const trimmed = (value || '').trim();
+  if (trimmed === '100%') return 'fill';
+  if (trimmed === 'fit-content' || trimmed === 'auto') return 'hug';
+  return 'fixed';
+}
+
+function sizeValueFromMode(mode: SizeMode, fixedPx: number): string {
+  if (mode === 'fill') return '100%';
+  if (mode === 'hug') return 'fit-content';
+  return `${fixedPx}px`;
+}
+
+/**
+ * Fill / Hug / Fixed 3-way toggle for width or height. Maps to inline-style
+ * values: Fixed → `<n>px`, Fill → `100%`, Hug → `fit-content`. The Fixed mode
+ * reveals a numeric px input so the user can dial in the value.
+ */
+function SizeRow({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  fixedLabel,
+  fillLabel,
+  hugLabel,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (next: string) => void;
+  fixedLabel: string;
+  fillLabel: string;
+  hugLabel: string;
+}) {
+  const mode = sizeModeFromValue(value);
+  const fixedPx = (() => {
+    const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
+    return match ? Number(match[1]) : 120;
+  })();
+  const modeLabels: Record<SizeMode, string> = { fixed: fixedLabel, fill: fillLabel, hug: hugLabel };
+  return (
+    <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
+      <span className="manual-edit-size-label">{label}</span>
+      <div className="manual-edit-size-toggle">
+        {(['fixed', 'fill', 'hug'] as const).map((m) => (
+          <label key={m} className={`manual-edit-size-mode${mode === m ? ' active' : ''}`}>
+            <input
+              type="radio"
+              name={ariaLabel}
+              checked={mode === m}
+              onChange={() => onChange(sizeValueFromMode(m, fixedPx))}
+              aria-label={m}
+            />
+            <span>{modeLabels[m]}</span>
+          </label>
+        ))}
+      </div>
+      {mode === 'fixed' ? (
+        <input
+          type="number"
+          value={fixedPx}
+          min={0}
+          aria-label={`${ariaLabel} pixels`}
+          onChange={(e) => onChange(`${Number(e.currentTarget.value) || 0}px`)}
+          className="manual-edit-size-input"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function ManualEditPanel({
   selectedTarget,
   draft,
@@ -402,6 +476,13 @@ export function normalizeManualEditStyles(
       normalized[rawKey] = value;
       continue;
     }
+    // Width / Height also accept the Fill (`100%`) and Hug (`fit-content` /
+    // `auto`) sentinels emitted by the SizeRow 3-way toggle. Other px props
+    // stay numeric-only.
+    if ((rawKey === 'width' || rawKey === 'height') && (value === '100%' || value === 'fit-content' || value === 'auto')) {
+      normalized[rawKey] = value;
+      continue;
+    }
     if (PX_STYLE_PROPS.has(rawKey)) {
       const px = normalizePxValue(value);
       if (!px) return { ok: false, error: `${styleLabel(rawKey)} must be a number, px value, or var(--token).` };
@@ -549,10 +630,24 @@ function StyleInspector({
       </Section>
 
       <Section title="SIZE">
-        <PairRow>
-          <UnitRow label="Width" value={styles.width} onChange={(v) => u('width', v)} unit="px" autoUnit variables={dsVariables} />
-          <UnitRow label="Height" value={styles.height} onChange={(v) => u('height', v)} unit="px" autoUnit variables={dsVariables} />
-        </PairRow>
+        <SizeRow
+          label="Width"
+          ariaLabel="width"
+          value={styles.width}
+          onChange={(v) => u('width', v)}
+          fixedLabel="Fixed"
+          fillLabel="Fill"
+          hugLabel="Hug"
+        />
+        <SizeRow
+          label="Height"
+          ariaLabel="height"
+          value={styles.height}
+          onChange={(v) => u('height', v)}
+          fixedLabel="Fixed"
+          fillLabel="Fill"
+          hugLabel="Hug"
+        />
       </Section>
 
       <Section title="LAYOUT" inactive={!layoutEnabled}>

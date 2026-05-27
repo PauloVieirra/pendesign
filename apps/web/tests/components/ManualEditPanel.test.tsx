@@ -420,6 +420,96 @@ describe('ManualEditPanel', () => {
     expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
   });
 
+  it('renders Width and Height 3-way toggles in the SIZE section', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!widthGroup || !heightGroup) throw new Error('Width/Height groups not found');
+
+    const widthRadios = Array.from(widthGroup.querySelectorAll('input[type="radio"]'));
+    const widthModes = widthRadios.map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
+    expect(widthModes).toEqual(['fixed', 'fill', 'hug']);
+    const heightModes = Array.from(heightGroup.querySelectorAll('input[type="radio"]'))
+      .map((r) => (r as HTMLInputElement).getAttribute('aria-label'));
+    expect(heightModes).toEqual(['fixed', 'fill', 'hug']);
+  });
+
+  it('switching Width to Fill emits onStyleChange with width: 100%', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const fillRadio = widthGroup.querySelector('input[aria-label="fill"]') as HTMLInputElement | null;
+    if (!fillRadio) throw new Error('Width fill radio not found');
+
+    act(() => {
+      fillRadio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '100%' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('switching Height to Hug emits onStyleChange with height: fit-content', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup) throw new Error('Height group not found');
+    const hugRadio = heightGroup.querySelector('input[aria-label="hug"]') as HTMLInputElement | null;
+    if (!hugRadio) throw new Error('Height hug radio not found');
+
+    act(() => {
+      hugRadio.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ height: 'fit-content' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('Fixed mode reveals a px input that emits onStyleChange on change', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    // Fixed is the default for "120px"; the number input should be present.
+    const numberInput = widthGroup.querySelector('input[type="number"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width fixed px input not found');
+    expect(numberInput.value).toBe('120');
+
+    act(() => {
+      numberInput.value = '240';
+      Simulate.change(numberInput);
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '240px' }),
+      'Style: Hero Title',
+    );
+  });
+
   it('summarizes full-source history entries without rendering the full file', () => {
     const source = '<html><body>' + 'x'.repeat(10_000) + '</body></html>';
 
