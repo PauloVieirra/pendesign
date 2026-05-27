@@ -5051,10 +5051,21 @@ function HtmlViewer({
         setArmedTool(null);
         return;
       }
+      if (data.type === 'od-edit-delete-request') {
+        // The bridge forwarded a Delete/Backspace press while a target was
+        // selected. We open the confirm modal here — the host keydown
+        // listener at ~line 4505 is the equivalent for the "focus is on the
+        // sidebar/host" path. Both paths are deduplicated by the modal-open
+        // guard: if it's already open we ignore the duplicate intent.
+        if (!selectedManualEditTarget) return;
+        if (deleteConfirmOpen) return;
+        setDeleteConfirmOpen(true);
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [isOurPreviewIframeSource, manualEditMode, source]);
+  }, [isOurPreviewIframeSource, manualEditMode, source, selectedManualEditTarget, deleteConfirmOpen]);
 
   function nextManualEditPreviewVersion(): number {
     manualEditPreviewVersionRef.current += 1;

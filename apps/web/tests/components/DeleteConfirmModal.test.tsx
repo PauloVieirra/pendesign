@@ -33,4 +33,21 @@ describe('DeleteConfirmModal', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
+
+  it('focuses the cancel button when opened', () => {
+    render(<DeleteConfirmModal open onCancel={() => {}} onConfirm={() => {}} />);
+    // Cancel button should be focused.
+    const cancel = screen.getByRole('button', { name: /cancel/i });
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it('has aria-labelledby pointing to the title id', () => {
+    render(<DeleteConfirmModal open onCancel={() => {}} onConfirm={() => {}} />);
+    const dialog = screen.getByRole('dialog');
+    const ariaLabelledBy = dialog.getAttribute('aria-labelledby');
+    expect(ariaLabelledBy).toBeTruthy();
+    // The element with that id should exist and be the title.
+    const title = dialog.querySelector(`#${CSS.escape(ariaLabelledBy!)}`);
+    expect(title?.textContent).toContain('Delete');
+  });
 });

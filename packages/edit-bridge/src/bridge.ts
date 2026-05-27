@@ -1756,6 +1756,33 @@ export function buildManualEditBridge(enabled: boolean): string {
   // gestures the user explicitly asked for are click→select and
   // dblclick→inline-edit; everything else was disabled to keep the canvas
   // focused on those interactions.
+  //
+  // Narrow exception: Delete/Backspace forwarding. When the user clicks a
+  // canvas element to select it, focus moves into the iframe's content
+  // window — so a host-side window keydown listener never sees subsequent
+  // key presses. To make the delete shortcut work in the natural flow, we
+  // listen here, filter out form-field contexts (the keys still mean
+  // "delete a character" inside inputs/textareas/contenteditable), and
+  // forward the intent to the host as od-edit-delete-request. The host
+  // opens the confirm modal; actual deletion still requires the user to
+  // click Delete in that modal. We use capture (true) to match the
+  // existing inline-edit / drag / insert keydown handlers in this file.
+  document.addEventListener('keydown', function(ev){
+    if (!enabled) return;
+    if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+    var tgt = ev.target;
+    if (tgt && tgt.nodeType === 1) {
+      var tag = tgt.tagName ? tgt.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea') return;
+      if (tgt.isContentEditable) return;
+    }
+    var selEl = document.querySelector('[data-od-edit-selected="true"]');
+    if (!selEl) return;
+    var id = stableId(selEl);
+    if (!id) return;
+    ev.preventDefault();
+    window.parent.postMessage({ type: 'od-edit-delete-request', id: id }, '*');
+  }, true);
   var postTargetsResizeTimer = null;
   window.addEventListener('resize', function(){
     if (postTargetsResizeTimer) clearTimeout(postTargetsResizeTimer);

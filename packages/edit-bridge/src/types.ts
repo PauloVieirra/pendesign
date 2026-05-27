@@ -243,6 +243,18 @@ export interface ManualEditInsertDisarmedMessage {
   reason: 'commit' | 'escape';
 }
 
+// Bridge → host. The bridge forwards Delete/Backspace presses that originate
+// inside the iframe (where focus normally lives after the user clicks to
+// select a target) so the host can open the central confirm modal. The host
+// also keeps a window-level listener as a fallback for the case where focus
+// is on the sidebar/host (e.g. user selected via the layer list). The two
+// paths are deduplicated by the host's `if (deleteConfirmOpen) return;` guard.
+export interface ManualEditDeleteRequestMessage {
+  type: 'od-edit-delete-request';
+  /** data-od-id of the currently selected element. */
+  id: string;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -258,7 +270,8 @@ export type ManualEditBridgeMessage =
   | ManualEditResizeCommitMessage
   | ManualEditSnapshotResponseMessage
   | ManualEditInsertCommitMessage
-  | ManualEditInsertDisarmedMessage;
+  | ManualEditInsertDisarmedMessage
+  | ManualEditDeleteRequestMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'lineHeight', 'letterSpacing',

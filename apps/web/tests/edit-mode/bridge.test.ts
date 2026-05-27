@@ -228,4 +228,11 @@ describe('manual edit bridge insert flow', () => {
     expect(onClickBody).not.toContain('clearInsertArm()');
     expect(onClickBody).toContain("clearInsertArm('commit')");
   });
+
+  it('forwards Delete/Backspace to host as od-edit-delete-request when a target is selected', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-delete-request'");
+    expect(bridge).toContain("ev.key !== 'Delete' && ev.key !== 'Backspace'");
+    expect(bridge).toContain("data-od-edit-selected");
+  });
 });
