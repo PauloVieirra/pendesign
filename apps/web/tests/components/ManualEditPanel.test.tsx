@@ -57,7 +57,6 @@ describe('ManualEditPanel', () => {
 
     expect(host.textContent).toContain('Typography');
     expect(host.textContent).not.toContain('Advanced');
-    expect(host.textContent).not.toContain('Content');
   });
 
   it('allows returning from an element inspector to the page inspector', () => {

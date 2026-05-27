@@ -186,6 +186,7 @@ function FixedPxInput({ value, onChange, ariaLabel }: {
       type="text"
       inputMode="decimal"
       value={draft}
+      placeholder="auto"
       aria-label={`${ariaLabel} size in pixels`}
       onChange={(e) => {
         const next = e.target.value;
@@ -369,7 +370,7 @@ function ContentInspector({
   };
   if (target.kind === 'image') {
     return (
-      <Section title="CONTENT">
+      <Section title="Content">
         <label className="cc-row cc-row-stacked">
           <span className="cc-label">Image URL</span>
           <input
@@ -408,7 +409,7 @@ function ContentInspector({
   }
   if (target.kind === 'link') {
     return (
-      <Section title="CONTENT">
+      <Section title="Content">
         <label className="cc-row cc-row-stacked">
           <span className="cc-label">Text</span>
           <textarea
@@ -456,7 +457,7 @@ function ContentInspector({
   // don't have a single textContent worth editing safely).
   const isTextLeaf = !target.text.trim() || target.kind === 'text' || target.kind === 'token';
   return (
-    <Section title="CONTENT">
+    <Section title="Content">
       {isTextLeaf ? (
         <>
           <label className="cc-row cc-row-stacked">
@@ -527,7 +528,7 @@ function PageInspector({
 
   return (
     <div className="cc-inspector">
-      <Section title="PAGE">
+      <Section title="Page">
         {enabled ? (
           <>
             <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} />
