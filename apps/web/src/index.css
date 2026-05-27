@@ -27148,3 +27148,63 @@ body.desktop-pet-shell .pet-task-item {
   text-align: left;
   white-space: pre;
 }
+
+.insert-toolbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+  animation: insert-toolbar-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.insert-toolbar[aria-hidden='true'] {
+  display: none;
+}
+
+.insert-toolbar-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--surface-1, #ffffff);
+  border: 1px solid var(--border-1, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+
+.insert-toolbar-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-1, #111);
+  cursor: pointer;
+  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.insert-toolbar-tool:hover {
+  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+}
+
+.insert-toolbar-tool.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.insert-toolbar-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@keyframes insert-toolbar-enter {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
