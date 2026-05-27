@@ -379,5 +379,33 @@ describe('manual edit source patches', () => {
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/does-not-exist/);
     });
+
+    it('insert-html-before-ref inserts before the referenced sibling', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-before-ref',
+        id: 'new-shape',
+        referenceId: 'card-b',
+        html: '<div data-od-id="new-shape"></div>',
+      });
+      expect(result.ok).toBe(true);
+      // new-shape lands between card-a and card-b.
+      const a = result.source.indexOf('card-a');
+      const n = result.source.indexOf('new-shape');
+      const b = result.source.indexOf('card-b');
+      expect(a).toBeGreaterThan(-1);
+      expect(n).toBeGreaterThan(a);
+      expect(n).toBeLessThan(b);
+    });
+
+    it('insert-html-before-ref reports a clear error when reference id is missing', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-before-ref',
+        id: 'new-shape',
+        referenceId: 'does-not-exist',
+        html: '<div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/does-not-exist/);
+    });
   });
 });
