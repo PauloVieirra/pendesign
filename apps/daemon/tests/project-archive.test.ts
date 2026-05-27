@@ -5,7 +5,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildProjectArchive } from '../src/projects.js';
+import { buildProjectArchive, listFiles } from '../src/projects.js';
 
 describe('buildProjectArchive', () => {
   let projectsRoot = '';
@@ -235,5 +235,19 @@ describe('buildProjectArchive', () => {
 
     expect(fileEntries.some((n) => /^node_modules\//i.test(n))).toBe(false);
     expect(fileEntries.some((n) => /^dist\//i.test(n))).toBe(false);
+  });
+
+  it('listFiles excludes Node_Modules case-insensitively when baseDir metadata is set', async () => {
+    // Symmetric with collectArchiveEntries: a case-variant build dir like
+    // "Node_Modules" on macOS APFS / Windows would otherwise show up in the
+    // file panel while being hidden from the archive — exactly the
+    // divergence the case-insensitive match is meant to prevent.
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'Node_Modules'), { recursive: true });
+    await writeFile(path.join(dir, 'Node_Modules', 'a.js'), '');
+    // listFiles only honors SKIP_DIRS when metadata.baseDir is set (linked
+    // projects); pass a synthetic baseDir metadata to exercise the skip.
+    const files = await listFiles(projectsRoot, projectId, { metadata: { baseDir: dir } });
+    expect(files.some((f) => /^Node_Modules\//i.test(f.path ?? f.name ?? ''))).toBe(false);
   });
 });

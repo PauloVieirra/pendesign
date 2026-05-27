@@ -230,7 +230,11 @@ async function collectFiles(dir, relDir, out, skipDirs?: Set<string>, projectRoo
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (skipDirs && skipDirs.has(e.name)) continue;
+      // Case-insensitive match — macOS APFS and Windows are case-insensitive
+      // by default, so a folder named "Node_Modules" is the same on-disk
+      // as "node_modules" and should be skipped too. Mirrors the symmetric
+      // check in collectArchiveEntries so the file panel and archive agree.
+      if (skipDirs && skipDirs.has(e.name.toLowerCase())) continue;
       await collectFiles(full, rel, out, skipDirs, projectRoot);
       continue;
     }
