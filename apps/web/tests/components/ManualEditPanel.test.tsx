@@ -616,6 +616,48 @@ describe('ManualEditPanel', () => {
     expect(manualEditPatchSummary({ kind: 'set-full-source', source })).not.toContain('x'.repeat(100));
   });
 
+  it('does not render Delete button when no element is selected', () => {
+    renderPanel({ selectedTarget: null });
+    const deleteButton = host.querySelector('.manual-edit-delete');
+    expect(deleteButton).toBeNull();
+  });
+
+  it('renders Delete button when an element is selected and click opens modal', () => {
+    const onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>();
+    renderPanel({ onDeleteConfirmOpenChange });
+    const deleteButton = host.querySelector('.manual-edit-delete') as HTMLButtonElement | null;
+    if (!deleteButton) throw new Error('Delete button not found');
+
+    act(() => {
+      deleteButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onDeleteConfirmOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('confirming delete emits delete-element patch and clears selection', () => {
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    const onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>();
+    const onClearSelection = vi.fn<OnClearSelection>();
+    renderPanel({
+      onApplyPatch,
+      onDeleteConfirmOpenChange,
+      onClearSelection,
+      deleteConfirmOpen: true,
+    });
+
+    const confirmButton = dom.window.document.querySelector('.delete-confirm-confirm') as HTMLButtonElement | null;
+    if (!confirmButton) throw new Error('Confirm button not found');
+
+    act(() => {
+      confirmButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'delete-element', id: 'hero-title' }, 'Delete element');
+    expect(onDeleteConfirmOpenChange).toHaveBeenCalledWith(false);
+    expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
   function sectionByTitle(title: string): HTMLElement {
     const section = Array.from(host.querySelectorAll('.cc-section'))
       .find((candidate) => candidate.querySelector('.cc-section-head')?.textContent === title) as HTMLElement | undefined;
@@ -630,10 +672,12 @@ describe('ManualEditPanel', () => {
     onStyleChange = vi.fn<OnStyleChange>(),
     onInvalidStyle = vi.fn<OnInvalidStyle>(),
     onClearSelection = vi.fn<OnClearSelection>(),
+    onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>(),
     attributesText = '{}',
     selectedTarget = target,
     styles = emptyManualEditStyles(),
     pageStylesEnabled = true,
+    deleteConfirmOpen = false,
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
@@ -641,10 +685,12 @@ describe('ManualEditPanel', () => {
     onStyleChange?: OnStyleChange;
     onInvalidStyle?: OnInvalidStyle;
     onClearSelection?: OnClearSelection;
+    onDeleteConfirmOpenChange?: (open: boolean) => void;
     attributesText?: string;
     selectedTarget?: ManualEditTarget | null;
     styles?: ReturnType<typeof emptyManualEditStyles>;
     pageStylesEnabled?: boolean;
+    deleteConfirmOpen?: boolean;
   } = {}) {
     const draft = {
       ...emptyManualEditDraft('<html></html>'),
@@ -674,6 +720,8 @@ describe('ManualEditPanel', () => {
           onCancelDraft={vi.fn<() => void>()}
           onUndo={vi.fn<() => void>()}
           onRedo={vi.fn<() => void>()}
+          deleteConfirmOpen={deleteConfirmOpen}
+          onDeleteConfirmOpenChange={onDeleteConfirmOpenChange}
         />,
       );
     });

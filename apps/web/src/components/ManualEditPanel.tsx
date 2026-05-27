@@ -3,6 +3,7 @@ import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatc
 import type { VariablesFile } from '../providers/design-system-variables';
 import { VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';
+import { DeleteConfirmModal, type DeleteConfirmModalLabels } from './DeleteConfirmModal';
 
 export interface ManualEditDraft {
   text: string;
@@ -164,6 +165,10 @@ export function ManualEditPanel({
   onClearSelection,
   pageStylesEnabled = true,
   dsVariables = null,
+  deleteConfirmOpen = false,
+  onDeleteConfirmOpenChange,
+  deleteConfirmLabels,
+  deleteButtonLabel,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -191,6 +196,13 @@ export function ManualEditPanel({
   onCancelDraft: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  /** Delete-confirm modal state lifted to the host (FileViewer) so the
+   * Delete/Backspace keyboard shortcut can open it. Optional so existing
+   * tests and any non-FileViewer mounts keep working with a no-op default. */
+  deleteConfirmOpen?: boolean;
+  onDeleteConfirmOpenChange?: (open: boolean) => void;
+  deleteConfirmLabels?: Partial<DeleteConfirmModalLabels>;
+  deleteButtonLabel?: string;
 }) {
   const targetForInspector = selectedTarget;
   const changeTargetStyle = (key: keyof ManualEditStyles, value: string) => {
@@ -247,7 +259,30 @@ export function ManualEditPanel({
         ) : null}
 
         {error ? <div className="manual-edit-error">{error}</div> : null}
+        {selectedTarget ? (
+          <div className="manual-edit-panel-footer">
+            <button
+              type="button"
+              className="manual-edit-delete"
+              onClick={() => onDeleteConfirmOpenChange?.(true)}
+            >
+              {deleteButtonLabel ?? 'Delete'}
+            </button>
+          </div>
+        ) : null}
       </section>
+      <DeleteConfirmModal
+        open={deleteConfirmOpen}
+        onCancel={() => onDeleteConfirmOpenChange?.(false)}
+        onConfirm={() => {
+          if (selectedTarget) {
+            onApplyPatch({ kind: 'delete-element', id: selectedTarget.id }, 'Delete element');
+          }
+          onDeleteConfirmOpenChange?.(false);
+          onClearSelection();
+        }}
+        labels={deleteConfirmLabels}
+      />
     </aside>
   );
 }

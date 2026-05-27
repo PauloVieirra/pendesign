@@ -3775,6 +3775,9 @@ function HtmlViewer({
   // `od-edit-insert-disarm` and paints the drop indicator + cursor while
   // armed. `null` means no tool is selected (default Edit-mode cursor).
   const [armedTool, setArmedTool] = useState<InsertToolId | null>(null);
+  // Delete-confirm modal state is lifted to FileViewer so the Delete/Backspace
+  // keyboard shortcut can trigger it without going through the sidebar panel.
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const postArm = useCallback((tool: InsertToolId | null) => {
     setArmedTool(tool);
     const iframe = iframeRef.current;
@@ -4493,6 +4496,26 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({ type: 'od-edit-insert-arm', tool: armedTool }, '*');
   }, [armedTool, srcDoc]);
+
+  // Delete / Backspace shortcut for the currently selected manual-edit target.
+  // Opens the central confirm modal instead of deleting directly. The form-field
+  // guard prevents the shortcut from firing when the user is editing text in an
+  // input/textarea/contenteditable surface (sidebar fields, the iframe's own
+  // editable inline text, etc.) — there, the key means "delete a character".
+  useEffect(() => {
+    if (!manualEditMode) return;
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+      if (!selectedManualEditTarget) return;
+      const tgt = ev.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      if (deleteConfirmOpen) return;
+      ev.preventDefault();
+      setDeleteConfirmOpen(true);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, selectedManualEditTarget, deleteConfirmOpen]);
 
   // Post the project's DS tokens.css into the iframe so `var(--<token>)`
   // references the user just bound via the property panel actually
@@ -6309,6 +6332,8 @@ function HtmlViewer({
             onRedo={() => {
               void redoManualEdit();
             }}
+            deleteConfirmOpen={deleteConfirmOpen}
+            onDeleteConfirmOpenChange={setDeleteConfirmOpen}
           />
         ) : null}
         {manualEditMode ? (
