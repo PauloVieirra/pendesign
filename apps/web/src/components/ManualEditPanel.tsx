@@ -38,6 +38,11 @@ const FIXED_PX_DRAFT = /^\d*(\.\d{0,4})?$/;
 /** Matches a complete positive decimal suitable for committing (e.g. "1", "1.23"). Rejects negatives. */
 const FIXED_PX_COMMIT = /^\d+(\.\d{0,4})?$/;
 
+// Anything not matching the Fill (`100%`) or Hug (`fit-content` / `auto`)
+// sentinels falls through to Fixed. Non-standard inline values (e.g. `50vh`)
+// also map to Fixed; the Fixed input then renders empty because the px regex
+// in SizeRow does not match — the user can overwrite without seeing the old
+// literal value. Track this in a future task if it becomes a problem.
 function modeFromValue(value: string): SizeMode {
   const trimmed = (value || '').trim();
   if (trimmed === '100%') return 'fill';
@@ -139,7 +144,7 @@ function SizeRow({
           className="manual-edit-size-input"
           value={readOnlyDisplay(mode)}
           readOnly
-          aria-label={`${ariaLabel} ${mode}`}
+          aria-label={`${ariaLabel} value, ${MODE_LABEL[mode]} mode (read-only)`}
         />
       )}
       <button
