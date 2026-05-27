@@ -161,7 +161,7 @@ async function collectTreeNodes(
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      const isBuildDir = SKIP_DIRS.has(e.name);
+      const isBuildDir = SKIP_DIRS.has(e.name.toLowerCase());
       if (isBuildDir && !ctx.showBuildDirs) {
         // Surface the directory but elide its content; the UI shows it
         // greyed-out with a hint, and callers can re-fetch with
