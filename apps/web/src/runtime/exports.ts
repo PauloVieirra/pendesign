@@ -577,41 +577,27 @@ export function exportReactComponentAsZip(
   triggerDownload(blob, `${slug}.zip`);
 }
 
-// Project ZIP export — asks the daemon to bundle the on-disk project tree.
-// Used by FileViewer's share menu so the user gets the full uploaded
-// project (e.g. the `ui-design/` folder with its subdirs and assets) rather
-// than just a srcdoc snapshot of the rendered HTML. `filePath` is the
-// active file's project-relative path; if it lives inside a top-level
-// directory we scope the archive to that directory, otherwise we ask the
-// daemon for the whole project. Falls back to the in-memory single-file
-// ZIP on any failure so the action never silently no-ops.
+// Streams the full project tree as a ZIP via the daemon's archive
+// endpoint. Build/install directories (node_modules, dist, .next, …)
+// are excluded server-side so the download stays lean — the user can
+// regenerate them with `npm install`. Falls back to the in-memory
+// single-file ZIP only if the daemon request fails so the action
+// never silently no-ops.
 export async function exportProjectAsZip(opts: {
   projectId: string;
-  filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
-  const root = archiveRootFromFilePath(opts.filePath);
-  const url = `/api/projects/${encodeURIComponent(opts.projectId)}/archive${
-    root ? `?root=${encodeURIComponent(root)}` : ''
-  }`;
+  const url = `/api/projects/${encodeURIComponent(opts.projectId)}/archive`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`archive request failed (${resp.status})`);
     const blob = await resp.blob();
-    triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
+    triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, ''));
   } catch (err) {
     console.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
     exportAsZip(opts.fallbackHtml, opts.fallbackTitle);
   }
-}
-
-// Exported for unit tests. Pure string transform with no DOM dependency.
-export function archiveRootFromFilePath(filePath: string): string {
-  const trimmed = (filePath || '').replace(/^\/+/, '');
-  const slash = trimmed.indexOf('/');
-  if (slash <= 0) return '';
-  return trimmed.slice(0, slash);
 }
 
 // Exported for unit tests so the Content-Disposition fallback chain
