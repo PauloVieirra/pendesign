@@ -455,6 +455,11 @@ async function collectArchiveEntries(dir, relDir, out) {
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
+      // Skip install/build dirs that npm/yarn/etc. regenerate locally.
+      // Case-insensitive match — macOS APFS and Windows are case-insensitive
+      // by default, so a folder named "Node_Modules" is the same on-disk
+      // as "node_modules" and should be skipped too.
+      if (SKIP_DIRS.has(e.name.toLowerCase())) continue;
       await collectArchiveEntries(full, rel, out);
       continue;
     }

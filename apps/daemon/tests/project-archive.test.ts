@@ -195,4 +195,45 @@ describe('buildProjectArchive', () => {
     // but still present in sourceFiles.html
     expect(manifest.sourceFiles.html).toContain('frames/device-shell.html');
   });
+
+  it('excludes node_modules and other build dirs from the whole-project archive', async () => {
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'node_modules', 'left-pad'), { recursive: true });
+    await writeFile(
+      path.join(dir, 'node_modules', 'left-pad', 'index.js'),
+      'module.exports = (s) => s;',
+    );
+    await mkdir(path.join(dir, 'dist'), { recursive: true });
+    await writeFile(path.join(dir, 'dist', 'bundle.js'), '/* compiled */');
+    await mkdir(path.join(dir, '.next'), { recursive: true });
+    await writeFile(path.join(dir, '.next', 'build-manifest.json'), '{}');
+
+    const { buffer } = await buildProjectArchive(projectsRoot, projectId, '');
+    const zip = await JSZip.loadAsync(buffer);
+    const fileEntries = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .map((entry) => entry.name);
+
+    expect(fileEntries).toContain('README.md');
+    expect(fileEntries.some((n) => n.startsWith('node_modules/'))).toBe(false);
+    expect(fileEntries.some((n) => n.startsWith('dist/'))).toBe(false);
+    expect(fileEntries.some((n) => n.startsWith('.next/'))).toBe(false);
+  });
+
+  it('excludes build dirs case-insensitively (Node_Modules, DIST)', async () => {
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'Node_Modules'), { recursive: true });
+    await writeFile(path.join(dir, 'Node_Modules', 'a.js'), '');
+    await mkdir(path.join(dir, 'DIST'), { recursive: true });
+    await writeFile(path.join(dir, 'DIST', 'b.js'), '');
+
+    const { buffer } = await buildProjectArchive(projectsRoot, projectId, '');
+    const zip = await JSZip.loadAsync(buffer);
+    const fileEntries = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .map((entry) => entry.name);
+
+    expect(fileEntries.some((n) => /^node_modules\//i.test(n))).toBe(false);
+    expect(fileEntries.some((n) => /^dist\//i.test(n))).toBe(false);
+  });
 });
