@@ -19,6 +19,26 @@ export function applyManualEditPatch(source: string, patch: ManualEditPatch): Ma
       : { ok: false, source, error: `Token not found: ${patch.token}` };
   }
 
+  if (patch.kind === 'insert-html-as-child') {
+    const parent = patch.parentId === '__body__'
+      ? doc.body
+      : findEditableElement(doc, patch.parentId);
+    if (!parent) return { ok: false, source, error: `Parent target not found: ${patch.parentId}` };
+    const inserted = parseSingleRoot(doc, patch.html);
+    if (!inserted.ok) return { ok: false, source, error: inserted.error };
+    parent.appendChild(inserted.el);
+    return { ok: true, source: serializeSource(doc, source) };
+  }
+
+  if (patch.kind === 'insert-html-before-ref') {
+    const ref = findEditableElement(doc, patch.referenceId);
+    if (!ref) return { ok: false, source, error: `Reference target not found: ${patch.referenceId}` };
+    const inserted = parseSingleRoot(doc, patch.html);
+    if (!inserted.ok) return { ok: false, source, error: inserted.error };
+    ref.parentElement?.insertBefore(inserted.el, ref);
+    return { ok: true, source: serializeSource(doc, source) };
+  }
+
   const el = findEditableElement(doc, patch.id);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
@@ -95,6 +115,19 @@ export function applyManualEditPatch(source: string, patch: ManualEditPatch): Ma
   }
 
   return { ok: true, source: serializeSource(doc, source) };
+}
+
+function parseSingleRoot(
+  doc: Document,
+  html: string,
+): { ok: true; el: Element } | { ok: false; error: string } {
+  const template = doc.createElement('template');
+  template.innerHTML = html.trim();
+  const roots = Array.from(template.content.children);
+  if (roots.length !== 1) {
+    return { ok: false, error: 'Insertion HTML must contain exactly one root element.' };
+  }
+  return { ok: true, el: roots[0]! };
 }
 
 function stripRuntimeMarkers(el: Element): void {

@@ -324,4 +324,60 @@ describe('manual edit source patches', () => {
       expect(result.error).toMatch(/descendant/i);
     });
   });
+
+  describe('insert-html patches', () => {
+    const insertSource = `<!doctype html>
+<html><body>
+  <main data-od-id="root">
+    <section data-od-id="card-a">A</section>
+    <section data-od-id="card-b">B</section>
+  </main>
+</body></html>`;
+
+    it('insert-html-as-child appends a new element as the last child of parentId', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'root',
+        html: '<div data-od-id="new-shape" style="width: 120px; height: 120px;"></div>',
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source).toContain('data-od-id="new-shape"');
+      // Last sibling after card-b.
+      expect(result.source.indexOf('new-shape')).toBeGreaterThan(result.source.indexOf('card-b'));
+    });
+
+    it('insert-html-as-child treats __body__ as document body', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: '__body__',
+        html: '<div data-od-id="new-shape"></div>',
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source).toContain('data-od-id="new-shape"');
+    });
+
+    it('insert-html-as-child rejects html with multiple roots', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'root',
+        html: '<div></div><div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/exactly one root/);
+    });
+
+    it('insert-html-as-child reports a clear error when the parent id is missing', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'does-not-exist',
+        html: '<div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/does-not-exist/);
+    });
+  });
 });
