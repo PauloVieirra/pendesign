@@ -82,6 +82,8 @@ export type ManualEditPatch =
   | { id: string; kind: 'move-element-down' }
   | { id: string; kind: 'move-before-ref'; referenceId: string }
   | { id: string; kind: 'append-to-parent'; parentId: string }
+  | { id: string; kind: 'insert-html-as-child'; parentId: string; html: string }
+  | { id: string; kind: 'insert-html-before-ref'; referenceId: string; html: string }
   | { kind: 'set-full-source'; source: string };
 
 export interface ManualEditHistoryEntry {
@@ -212,6 +214,28 @@ export interface ManualEditSnapshotResponseMessage {
   bodyHtml: string;
 }
 
+export type InsertToolKind = 'text' | 'shape';
+
+export interface ManualEditInsertArmMessage {
+  type: 'od-edit-insert-arm';
+  tool: InsertToolKind;
+}
+
+export interface ManualEditInsertDisarmMessage {
+  type: 'od-edit-insert-disarm';
+}
+
+export interface ManualEditInsertCommitMessage {
+  type: 'od-edit-insert-commit';
+  tool: InsertToolKind;
+  /** `data-od-id` of the container, or `'__body__'` for the document body
+   * (matches the drag-and-drop containerId convention in the bridge). */
+  containerId: string;
+  /** `data-od-id` of the sibling to insert before; `null` means append as
+   * the last child of `containerId`. */
+  insertBefore: string | null;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -225,7 +249,8 @@ export type ManualEditBridgeMessage =
   | ManualEditStructuralActionMessage
   | ManualEditFormatColorRequestMessage
   | ManualEditResizeCommitMessage
-  | ManualEditSnapshotResponseMessage;
+  | ManualEditSnapshotResponseMessage
+  | ManualEditInsertCommitMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'lineHeight', 'letterSpacing',
