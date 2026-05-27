@@ -4479,6 +4479,21 @@ function HtmlViewer({
     win.postMessage({ type: 'od-static-preview', enabled: staticPreview }, '*');
   }, [manualEditMode, viewMode, srcDoc]);
 
+  // Re-post the armed-tool to the iframe whenever:
+  //  - the user picks a tool in the InsertToolbar (armedTool changes), OR
+  //  - the iframe rebuilds with a new srcDoc while a tool is still armed
+  //    (the bridge inside the new document boots with armedTool = null and
+  //    needs a fresh od-edit-insert-arm to repaint the crosshair cursor and
+  //    drop indicator).
+  // We mirror the `od-edit-mode` effect's deps shape so srcDoc swaps and
+  // tool-toggle clicks both trigger this.
+  useEffect(() => {
+    if (!armedTool) return;
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-insert-arm', tool: armedTool }, '*');
+  }, [armedTool, srcDoc]);
+
   // Post the project's DS tokens.css into the iframe so `var(--<token>)`
   // references the user just bound via the property panel actually
   // resolve at runtime — even in projects whose source HTML never
@@ -4985,6 +5000,32 @@ function HtmlViewer({
           colorTarget: 'color',
           currentColor: data.currentColor,
         });
+        return;
+      }
+      if (data.type === 'od-edit-insert-commit') {
+        // The bridge committed a drop while a tool was armed. Translate the
+        // toolbar's tool kind into a concrete element via buildInsertedElement
+        // and apply either an insert-before-ref (sibling drop) or
+        // insert-html-as-child (append-to-container drop).
+        const tool = data.tool;
+        const containerId = data.containerId;
+        const insertBefore = data.insertBefore;
+        if (tool !== 'text' && tool !== 'shape') return;
+        if (typeof containerId !== 'string') return;
+        const built = buildInsertedElement(tool);
+        const patch: ManualEditPatch = insertBefore && typeof insertBefore === 'string'
+          ? { kind: 'insert-html-before-ref', id: built.id, referenceId: insertBefore, html: built.html }
+          : { kind: 'insert-html-as-child', id: built.id, parentId: containerId, html: built.html };
+        const label = tool === 'text' ? 'Insert text' : 'Insert shape';
+        void applyManualEdit(patch, label);
+        setArmedTool(null);
+        return;
+      }
+      if (data.type === 'od-edit-insert-disarmed') {
+        // Bridge auto-disarmed (Escape inside the iframe, or after a commit
+        // — the commit branch above already cleared armedTool, but a fresh
+        // disarmed event from a future code path should still no-op safely).
+        setArmedTool(null);
         return;
       }
     }

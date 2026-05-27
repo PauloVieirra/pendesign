@@ -549,10 +549,14 @@ export function buildManualEditBridge(enabled: boolean): string {
   // tool / disarm message all reset state.
   // ──────────────────────────────────────────────────────────────────
   var armedTool = null;
-  function clearInsertArm(){
+  function clearInsertArm(reason){
+    var wasArmed = armedTool != null;
     armedTool = null;
     hideDropIndicator();
     document.documentElement.style.cursor = '';
+    if (wasArmed && reason) {
+      window.parent.postMessage({ type: 'od-edit-insert-disarmed', reason: reason }, '*');
+    }
   }
   function onInsertMove(insertMoveEv){
     if (!armedTool) return;
@@ -579,14 +583,14 @@ export function buildManualEditBridge(enabled: boolean): string {
       containerId: containerId,
       insertBefore: insertBefore,
     }, '*');
-    clearInsertArm();
+    clearInsertArm('commit');
   }
   function onInsertKey(insertKeyEv){
     if (!armedTool) return;
     if (insertKeyEv.key === 'Escape' || insertKeyEv.keyCode === 27) {
       insertKeyEv.preventDefault();
       insertKeyEv.stopPropagation();
-      clearInsertArm();
+      clearInsertArm('escape');
     }
   }
   document.addEventListener('mousemove', onInsertMove, true);

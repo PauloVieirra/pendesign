@@ -236,6 +236,13 @@ export interface ManualEditInsertCommitMessage {
   insertBefore: string | null;
 }
 
+export interface ManualEditInsertDisarmedMessage {
+  type: 'od-edit-insert-disarmed';
+  /** Why the bridge auto-disarmed: `'commit'` after a successful insert,
+   * `'escape'` after the user pressed Esc inside the iframe. */
+  reason: 'commit' | 'escape';
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -250,7 +257,8 @@ export type ManualEditBridgeMessage =
   | ManualEditFormatColorRequestMessage
   | ManualEditResizeCommitMessage
   | ManualEditSnapshotResponseMessage
-  | ManualEditInsertCommitMessage;
+  | ManualEditInsertCommitMessage
+  | ManualEditInsertDisarmedMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'lineHeight', 'letterSpacing',

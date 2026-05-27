@@ -197,4 +197,17 @@ describe('manual edit bridge insert flow', () => {
     // The arm branch must early-return when edit-mode is off.
     expect(bridge).toMatch(/od-edit-insert-arm[\s\S]{0,200}if \(!enabled\) return;/);
   });
+
+  it('emits od-edit-insert-disarmed after a commit click', () => {
+    const bridge = buildManualEditBridge(true);
+    // The bridge wraps disarm postMessage in clearInsertArm(reason) and the
+    // commit-path caller passes the literal 'commit'.
+    expect(bridge).toContain("type: 'od-edit-insert-disarmed'");
+    expect(bridge).toContain("clearInsertArm('commit')");
+  });
+
+  it('emits od-edit-insert-disarmed after Escape', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("clearInsertArm('escape')");
+  });
 });
