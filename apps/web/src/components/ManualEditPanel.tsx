@@ -107,45 +107,47 @@ function SizeRow({
         ))}
       </div>
       {mode === 'fixed' ? (
-        <FixedPxInput value={fixedPx} onChange={(n) => onChange(`${n}px`)} ariaLabel={ariaLabel} />
+        <FixedPxInput value={fixedPx} onChange={(raw) => onChange(`${raw}px`)} ariaLabel={ariaLabel} />
       ) : null}
     </div>
   );
 }
 
 /**
- * Numeric px input for Fixed mode. Holds a local draft string and commits via
- * `onChange` only on blur (or Enter), so a 4-digit edit emits one update
- * instead of one per keystroke. The draft re-syncs from the prop when the
- * external value changes (e.g. mode switch reset).
+ * Numeric input for Fixed-mode Width/Height. Uses `type="text"
+ * inputMode="decimal"` instead of `type="number"` so the browser does not
+ * round to integers, strip trailing zeros via `Number()`, or eat pasted
+ * values that exceed an HTML max. Local draft commits on blur (or Enter),
+ * matching the original behavior of emitting once per edit rather than
+ * once per keystroke.
  */
 function FixedPxInput({ value, onChange, ariaLabel }: {
   value: number;
-  onChange: (n: number) => void;
+  onChange: (raw: string) => void;
   ariaLabel: string;
 }) {
   const [draft, setDraft] = useState<string>(String(value));
   useEffect(() => {
     setDraft(String(value));
   }, [value]);
+  const acceptDraft = /^-?\d*(\.\d{0,4})?$/;
+  const validCommit = /^-?\d+(\.\d{0,4})?$/;
   return (
     <input
-      type="number"
-      role="spinbutton"
+      type="text"
+      inputMode="decimal"
       value={draft}
-      min={0}
-      max={10000}
       aria-label={`${ariaLabel} size in pixels`}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (next === '' || acceptDraft.test(next)) setDraft(next);
+      }}
       onBlur={() => {
-        const n = Number(draft);
-        if (Number.isFinite(n) && n >= 0) onChange(n);
+        if (validCommit.test(draft)) onChange(draft);
         else setDraft(String(value));
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          (e.target as HTMLInputElement).blur();
-        }
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
       className="manual-edit-size-input"
     />

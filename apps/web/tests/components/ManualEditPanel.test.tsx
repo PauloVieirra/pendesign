@@ -493,8 +493,8 @@ describe('ManualEditPanel', () => {
 
     const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
     if (!widthGroup) throw new Error('Width group not found');
-    // Fixed is the default for "120px"; the number input should be present.
-    const numberInput = widthGroup.querySelector('input[type="number"]') as HTMLInputElement | null;
+    // Fixed is the default for "120px"; the decimal input should be present.
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
     if (!numberInput) throw new Error('Width fixed px input not found');
     expect(numberInput.value).toBe('120');
 
@@ -529,7 +529,7 @@ describe('ManualEditPanel', () => {
     // Radios must NOT be rendered when the value is a token — that's the data-loss
     // surface this fix closes.
     expect(widthGroup.querySelectorAll('input[type="radio"]').length).toBe(0);
-    expect(widthGroup.querySelector('input[type="number"]')).toBeNull();
+    expect(widthGroup.querySelector('input[inputmode="decimal"]')).toBeNull();
 
     const clearButton = widthGroup.querySelector('button[aria-label="Clear token"]') as HTMLButtonElement | null;
     if (!clearButton) throw new Error('Clear token button not found');
@@ -557,7 +557,7 @@ describe('ManualEditPanel', () => {
     expect(radios.length).toBe(3);
     expect(radios.every((r) => !r.checked)).toBe(true);
     // No Fixed px input should be visible either — unset means no radio + no input.
-    expect(widthGroup.querySelector('input[type="number"]')).toBeNull();
+    expect(widthGroup.querySelector('input[inputmode="decimal"]')).toBeNull();
   });
 
   it('Fixed mode emits once on blur, not on every keystroke', () => {
@@ -569,7 +569,7 @@ describe('ManualEditPanel', () => {
 
     const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
     if (!widthGroup) throw new Error('Width group not found');
-    const numberInput = widthGroup.querySelector('input[type="number"]') as HTMLInputElement | null;
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
     if (!numberInput) throw new Error('Width fixed px input not found');
 
     // Simulate the three keystrokes of typing "240" — each change event should
@@ -605,6 +605,33 @@ describe('ManualEditPanel', () => {
       expect.objectContaining({ width: '240px' }),
       'Style: Hero Title',
     ]);
+  });
+
+  it('Fixed mode preserves up to 4 decimal places on blur', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width decimal input not found');
+
+    act(() => {
+      numberInput.value = '120.5050';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      Simulate.blur(numberInput);
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '120.5050px' }),
+      'Style: Hero Title',
+    );
   });
 
   it('summarizes full-source history entries without rendering the full file', () => {
