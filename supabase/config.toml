@@ -1,0 +1,15 @@
+# Supabase CLI config for the visiondesign project.
+# Apply migrations with: `supabase link --project-ref ikhoiuytcrnrpjmnsfek && supabase db push`
+# Deploy edge functions with: `supabase functions deploy <name>`
+
+project_id = "ikhoiuytcrnrpjmnsfek"
+
+[functions.approve-proposal]
+verify_jwt = true
+
+[functions.send-invitation-email]
+# Triggered by Postgres via pg_net; doesn't accept a user JWT.
+verify_jwt = false
+
+[functions.accept-by-token]
+verify_jwt = true
