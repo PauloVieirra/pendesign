@@ -99,11 +99,200 @@ CREATE POLICY "proposals_storage_write" ON storage.objects
   );
 
 -- ============================================================================
--- Helper: detect stale proposals on insert.
+-- RPC: approve_proposal_commit — atomic DB side of approve.
+--
+-- The Edge Function downloads + merges + uploads the new zip first, then calls
+-- this function to commit the DB changes (insert new version, advance
+-- current_version, mark proposal approved, mark other pendings stale). All in
+-- one transaction.
 -- ============================================================================
 
--- When inserting a proposal, the daemon should pass current base_version.
--- If the value diverges from the project's current_version, the proposal is
--- still inserted (with status='pending') but a trigger can mark it stale
--- right away — saving a round-trip. For simplicity, the Edge Function /
--- daemon will check before INSERT instead.
+CREATE OR REPLACE FUNCTION public.approve_proposal_commit(
+  p_proposal_id      UUID,
+  p_reviewer_message TEXT,
+  p_storage_path     TEXT,
+  p_size_bytes       BIGINT
+)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  proposal_row public.change_proposals%ROWTYPE;
+  current_ver  INT;
+  new_ver      INT;
+  caller_id    UUID := auth.uid();
+BEGIN
+  IF caller_id IS NULL THEN
+    RAISE EXCEPTION 'unauthenticated';
+  END IF;
+
+  SELECT * INTO proposal_row
+    FROM public.change_proposals
+   WHERE id = p_proposal_id
+   FOR UPDATE;
+
+  IF proposal_row.id IS NULL THEN
+    RAISE EXCEPTION 'proposal_not_found';
+  END IF;
+  IF proposal_row.status <> 'pending' THEN
+    RAISE EXCEPTION 'proposal_not_pending (status=%)', proposal_row.status;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.projects p
+    WHERE p.id = proposal_row.project_id AND p.owner_id = caller_id
+  ) THEN
+    RAISE EXCEPTION 'forbidden_not_owner';
+  END IF;
+
+  SELECT current_version INTO current_ver
+    FROM public.projects
+   WHERE id = proposal_row.project_id
+   FOR UPDATE;
+
+  IF proposal_row.base_version <> current_ver THEN
+    UPDATE public.change_proposals
+       SET status = 'stale',
+           reviewed_at = NOW(),
+           reviewed_by = caller_id,
+           reviewer_message = COALESCE(p_reviewer_message, 'Base version stale')
+     WHERE id = p_proposal_id;
+    RAISE EXCEPTION 'stale_base_version (proposal=%, current=%)',
+      proposal_row.base_version, current_ver;
+  END IF;
+
+  new_ver := current_ver + 1;
+
+  INSERT INTO public.project_versions
+    (project_id, version_num, storage_path, message, size_bytes, author_id, proposed_by)
+  VALUES
+    (proposal_row.project_id,
+     new_ver,
+     p_storage_path,
+     COALESCE(p_reviewer_message, proposal_row.message),
+     COALESCE(p_size_bytes, 0),
+     caller_id,
+     proposal_row.submitter_id);
+
+  UPDATE public.projects
+     SET current_version = new_ver
+   WHERE id = proposal_row.project_id;
+
+  UPDATE public.change_proposals
+     SET status = 'approved',
+         reviewed_at = NOW(),
+         reviewed_by = caller_id,
+         reviewer_message = p_reviewer_message
+   WHERE id = p_proposal_id;
+
+  -- Any other pending proposals on this project are now behind the new
+  -- current_version → mark them stale so submitters know to rebase.
+  UPDATE public.change_proposals
+     SET status = 'stale'
+   WHERE project_id = proposal_row.project_id
+     AND status = 'pending'
+     AND id <> p_proposal_id;
+
+  RETURN new_ver;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.approve_proposal_commit(UUID, TEXT, TEXT, BIGINT) TO authenticated;
+
+-- ============================================================================
+-- RPC: reject_proposal — simple UPDATE.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.reject_proposal(
+  p_proposal_id      UUID,
+  p_reviewer_message TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  proposal_row public.change_proposals%ROWTYPE;
+  caller_id    UUID := auth.uid();
+BEGIN
+  IF caller_id IS NULL THEN RAISE EXCEPTION 'unauthenticated'; END IF;
+
+  SELECT * INTO proposal_row FROM public.change_proposals WHERE id = p_proposal_id;
+  IF proposal_row.id IS NULL THEN RAISE EXCEPTION 'proposal_not_found'; END IF;
+  IF proposal_row.status <> 'pending' THEN
+    RAISE EXCEPTION 'proposal_not_pending (status=%)', proposal_row.status;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.projects p
+    WHERE p.id = proposal_row.project_id AND p.owner_id = caller_id
+  ) THEN
+    RAISE EXCEPTION 'forbidden_not_owner';
+  END IF;
+
+  UPDATE public.change_proposals
+     SET status = 'rejected',
+         reviewed_at = NOW(),
+         reviewed_by = caller_id,
+         reviewer_message = p_reviewer_message
+   WHERE id = p_proposal_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.reject_proposal(UUID, TEXT) TO authenticated;
+
+-- ============================================================================
+-- RPC: submit_proposal_prepare — pre-flight validation before upload.
+--
+-- The daemon calls this BEFORE uploading the payload zip. It checks the
+-- editor's base_version matches current_version. If it doesn't, the daemon
+-- can warn the user without wasting an upload.
+--
+-- This returns the proposal id that the daemon will use as the storage path
+-- prefix. The actual INSERT happens after upload via the normal RLS-checked
+-- INSERT policy (so the daemon can use anon key + JWT, no service role).
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.submit_proposal_prepare(p_project_id UUID, p_base_version INT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  caller_id   UUID := auth.uid();
+  current_ver INT;
+  role_check  TEXT;
+BEGIN
+  IF caller_id IS NULL THEN RAISE EXCEPTION 'unauthenticated'; END IF;
+
+  SELECT m.role INTO role_check
+    FROM public.project_members m
+   WHERE m.project_id = p_project_id AND m.user_id = caller_id;
+
+  IF role_check IS NULL THEN RAISE EXCEPTION 'forbidden_not_member'; END IF;
+  IF role_check NOT IN ('owner', 'editor') THEN
+    RAISE EXCEPTION 'forbidden_viewer_cannot_propose';
+  END IF;
+
+  SELECT current_version INTO current_ver FROM public.projects WHERE id = p_project_id;
+  IF current_ver IS NULL THEN RAISE EXCEPTION 'project_not_found'; END IF;
+
+  IF p_base_version <> current_ver THEN
+    RETURN jsonb_build_object(
+      'stale', TRUE,
+      'current_version', current_ver,
+      'your_base_version', p_base_version
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'stale', FALSE,
+    'current_version', current_ver
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.submit_proposal_prepare(UUID, INT) TO authenticated;
