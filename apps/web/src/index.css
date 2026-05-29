@@ -27549,19 +27549,21 @@ body.desktop-pet-shell .pet-task-item {
   gap: 12px;
   margin-bottom: 4px;
 }
-.cloud-gate-logo {
-  display: inline-flex;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  background: var(--accent, #c96442);
-  color: #fff;
-  border-radius: 8px;
-  font-size: 20px;
+.cloud-gate-brand {
+  flex-direction: column;
+  text-align: center;
+  gap: 14px;
+}
+.cloud-gate-logo,
+.cloud-gate-logo-img {
+  display: inline-block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 14px;
 }
 .cloud-gate-brand h1 {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;

@@ -87,19 +87,13 @@ export function CloudLoginGate({ children }: { children: ReactNode }) {
     return (
       <div className="cloud-gate cloud-gate-signin">
         <div className="cloud-gate-brand">
-          <span className="cloud-gate-logo">◆</span>
-          <h1>Open Design</h1>
+          <img src="/vision-logo.svg" alt="Vision Design" className="cloud-gate-logo-img" />
+          <h1>Vision Design</h1>
         </div>
         <p className="cloud-gate-tagline">
-          Sign in to your cloud account to load projects and collaborate.
+          Sign in to access your projects.
         </p>
         <CloudAuthCard onSignedIn={() => dispatchCloudAuthChanged()} />
-        <footer className="cloud-gate-footer">
-          <small>
-            Cloud collaboration is opt-in. To work fully local without an account,
-            unset <code>OD_CLOUD_URL</code> in the daemon environment and restart.
-          </small>
-        </footer>
       </div>
     );
   }

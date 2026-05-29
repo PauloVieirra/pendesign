@@ -43,10 +43,9 @@ export function CloudAuthCard({ onSignedIn }: { onSignedIn?: (email: string) => 
   if (!status.configured) {
     return (
       <div className="cloud-auth-card cloud-auth-card-disabled">
-        <header className="cloud-auth-card-head">Cloud collaboration is disabled</header>
+        <header className="cloud-auth-card-head">Account not configured</header>
         <p className="cloud-auth-card-hint">
-          Set <code>OD_CLOUD_URL</code> and <code>OD_CLOUD_ANON_KEY</code> in the daemon environment,
-          then restart the daemon to enable sign-in.
+          The system is running in local-only mode. Contact your administrator to enable accounts.
         </p>
       </div>
     );
@@ -112,7 +111,7 @@ export function CloudAuthCard({ onSignedIn }: { onSignedIn?: (email: string) => 
   return (
     <div className="cloud-auth-card">
       <header className="cloud-auth-card-head">
-        <h3>Cloud account</h3>
+        <h3>Account</h3>
         <div className="cloud-auth-card-tabs">
           <button
             type="button"
@@ -191,8 +190,8 @@ function friendlyError(code: string | undefined, details: string): string {
     case 'email_already_exists': return 'An account with this email already exists. Sign in instead.';
     case 'weak_password':     return 'Password is too weak. Use at least 8 characters.';
     case 'rate_limited':      return 'Too many attempts. Try again in a minute.';
-    case 'network_error':     return 'The daemon could not reach the cloud backend. Check your internet.';
-    case 'cloud_not_configured': return 'Cloud backend is not configured on this machine.';
+    case 'network_error':     return 'Could not reach the server. Check your internet.';
+    case 'cloud_not_configured': return 'Accounts are not enabled on this machine.';
     default: return details || 'Something went wrong. Try again.';
   }
 }
