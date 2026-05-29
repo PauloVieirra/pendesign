@@ -42,7 +42,9 @@ import {
   type ResearchOptions,
 } from '@open-design/contracts';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
-import { navigate } from '../router';
+import { navigate, useRoute } from '../router';
+import { DesignSystemModal } from './design-system-manager/DesignSystemModal';
+import { createEmptyDesignSystemForProject } from '../providers/design-system-variables';
 import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
@@ -458,6 +460,7 @@ export function ProjectView({
   onProjectsRefresh,
 }: Props) {
   const t = useT();
+  const route = useRoute();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
@@ -3215,6 +3218,17 @@ export function ProjectView({
       <CritiqueTheaterMount
         projectId={project.id}
         enabled={critiqueTheaterEnabled}
+      />
+      <DesignSystemModal
+        open={route.kind === 'project' && route.ds === 'open'}
+        projectId={project.id}
+        designSystemId={project.designSystemId ?? null}
+        projectName={project.name}
+        onCreateEmpty={async () => {
+          const result = await createEmptyDesignSystemForProject(project.id);
+          if (!('error' in result)) onProjectsRefresh();
+        }}
+        onAttachDsRequested={() => { /* defer to existing create flow */ }}
       />
       <AppChromeHeader
         showTrafficSpace={false}
