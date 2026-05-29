@@ -38,7 +38,9 @@ import { createEmptyDesignSystemForProject } from '../providers/design-system-va
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
-import { GithubStarBadge } from './GithubStarBadge';
+// GithubStarBadge intentionally removed from the entry topbar (the Star and
+// "Use everywhere" chips were stripped — Vision Design hides those CLI-focused
+// affordances on the home screen).
 import { HomeView } from './HomeView';
 import {
   createPluginAuthoringHandoff,
@@ -504,7 +506,6 @@ export function EntryShell({
         <main className="entry-main entry-main--scroll">
           <div className="entry-main__topbar">
             <div className="entry-main__topbar-chips">
-              <GithubStarBadge />
               <InlineModelSwitcher
                 config={config}
                 agents={agents}
@@ -516,21 +517,6 @@ export function EntryShell({
                 onApiModelChange={onApiModelChange}
                 onOpenSettings={onOpenSettings}
               />
-              <button
-                type="button"
-                className="use-everywhere-chip"
-                onClick={() => openIntegrationTab('use-everywhere')}
-                title={t('entry.useEverywhereTitle')}
-                aria-label={t('entry.useEverywhereAria')}
-                data-testid="entry-use-everywhere-button"
-              >
-                <span className="use-everywhere-chip__icon" aria-hidden>
-                  <Icon name="hammer" size={13} />
-                </span>
-                <span className="use-everywhere-chip__label">
-                  {t('entry.useEverywhereTitle')}
-                </span>
-              </button>
             </div>
             {avatarMenu}
           </div>

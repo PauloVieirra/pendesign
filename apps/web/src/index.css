@@ -27592,3 +27592,58 @@ body.desktop-pet-shell .pet-task-item {
   border-radius: 3px;
   font-size: 10.5px;
 }
+
+/* ============================================================================
+   WelcomeBanner — greeting + avatar at the top of HomeView.
+   ============================================================================ */
+.welcome-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-width: 100%;
+}
+.welcome-banner__avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent, #c96442), color-mix(in oklab, var(--accent, #c96442) 60%, #fff));
+  color: #fff;
+}
+.welcome-banner__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.welcome-banner__avatar-placeholder {
+  font-size: 18px;
+  font-weight: 600;
+  user-select: none;
+}
+.welcome-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.welcome-banner__hello {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.welcome-banner__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
