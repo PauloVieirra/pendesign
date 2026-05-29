@@ -16,7 +16,7 @@ import {
   type InstalledPluginRecord,
 } from '@open-design/contracts';
 import { useT } from '../i18n';
-import { navigate, useRoute } from '../router';
+import { navigate, useRoute, type Route } from '../router';
 import type {
   AgentInfo,
   ApiProtocol,
@@ -33,7 +33,6 @@ import type {
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { CenteredLoader } from './Loading';
 import { DesignsTab } from './DesignsTab';
-import { DesignSystemManagerView } from './design-system-manager/DesignSystemManagerView';
 import { createEmptyDesignSystemForProject } from '../providers/design-system-variables';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
@@ -587,52 +586,7 @@ export function EntryShell({
               />
             ) : null}
             {view === 'design-systems' ? (
-              route.kind === 'home' && route.projectContext ? (
-                <DesignSystemManagerView
-                  projectId={route.projectContext}
-                  designSystemId={designSystemIdForProject(route.projectContext, projects)}
-                  projectName={
-                    projects.find((p) => p.id === route.projectContext)?.name ?? 'this project'
-                  }
-                  onAttachDsRequested={() => onCreateDesignSystem?.()}
-                  onCreateEmpty={async () => {
-                    const projectId = route.projectContext;
-                    if (!projectId) return;
-                    const result = await createEmptyDesignSystemForProject(projectId);
-                    if ('error' in result) return;
-                    // Refresh DS catalog + project list so the new
-                    // designSystemId flows into the Manager's props on the
-                    // next render. If the parent didn't supply a project
-                    // refresher, fall back to the navigate-to-self trick.
-                    if (typeof onDesignSystemsRefresh === 'function') {
-                      await onDesignSystemsRefresh();
-                    }
-                    if (typeof onProjectsRefresh === 'function') {
-                      await onProjectsRefresh();
-                    } else {
-                      navigate({ kind: 'home', view: 'design-systems', projectContext: projectId });
-                    }
-                  }}
-                />
-              ) : designSystemsLoading ? (
-                <CenteredLoader label={t('common.loading')} />
-              ) : (
-                <div className="entry-section">
-                  <header className="entry-section__head">
-                    <h1 className="entry-section__title">{t('entry.navDesignSystems')}</h1>
-                  </header>
-                  <DesignSystemsTab
-                    systems={designSystems}
-                    selectedId={defaultDesignSystemId}
-                    onSelect={onChangeDefaultDesignSystem}
-                    onCreate={onCreateDesignSystem}
-                    onOpenSystem={onOpenDesignSystem}
-                    onSystemsRefresh={onDesignSystemsRefresh}
-                    onPreview={(id) => setPreviewSystemId(id)}
-                    projectContext={route.kind === 'home' ? route.projectContext : undefined}
-                  />
-                </div>
-              )
+              <DesignSystemsEntryRedirect route={route} />
             ) : null}
             {view === 'integrations' ? (
               <IntegrationsView
@@ -682,4 +636,16 @@ export function EntryShell({
       ) : null}
     </div>
   );
+}
+
+function DesignSystemsEntryRedirect({ route }: { route: Route }) {
+  const projectContext = route.kind === 'home' ? route.projectContext : null;
+  useEffect(() => {
+    if (!projectContext) {
+      navigate({ kind: 'home', view: 'projects' });
+      return;
+    }
+    navigate({ kind: 'project', projectId: projectContext, conversationId: null, fileName: null, ds: 'open' });
+  }, [projectContext]);
+  return null;
 }
