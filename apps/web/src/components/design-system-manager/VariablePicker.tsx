@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Variable, VariableType, VariablesFile } from '../../providers/design-system-variables';
+import { pickPrimaryValue, type Variable, type VariableType, type VariablesFile } from '../../providers/design-system-variables';
 import { Icon } from '../Icon';
 
 interface Props {
@@ -130,7 +130,7 @@ export function VariablePicker({ variables, filterType, onPick, ariaLabel }: Pro
                       }}
                     >
                       {m.variable.type === 'color' ? (
-                        <span className="ds-var-picker__swatch" style={{ background: String(m.variable.value) }} />
+                        <span className="ds-var-picker__swatch" style={{ background: String(pickPrimaryValue(m.variable) ?? '') }} />
                       ) : (
                         <span className="ds-var-picker__type">{m.variable.type}</span>
                       )}

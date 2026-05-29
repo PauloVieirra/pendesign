@@ -133,6 +133,11 @@ export const deleteMode = (dsId: string, collectionId: string, modeId: string) =
     { method: 'DELETE' },
   );
 
+/** Returns the first-mode value of a variable as the canonical legacy single value. */
+export function pickPrimaryValue(variable: Variable): string | number | boolean | undefined {
+  return Object.values(variable.valuesByMode)[0];
+}
+
 export const createEmptyDesignSystemForProject = (
   projectId: string,
   body: { seed?: 'empty' | 'defaults' } = {},

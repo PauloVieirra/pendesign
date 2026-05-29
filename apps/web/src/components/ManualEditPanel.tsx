@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
-import type { VariablesFile } from '../providers/design-system-variables';
+import { pickPrimaryValue, type VariablesFile } from '../providers/design-system-variables';
 import { VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';
 import { DeleteConfirmModal, type DeleteConfirmModalLabels } from './DeleteConfirmModal';
@@ -725,7 +725,7 @@ function resolveVarColor(value: string, variables: VariablesFile | null): string
       for (const variable of group.variables) {
         if (variable.type !== 'color') continue;
         const slug = `--${slugifyToken(collection.name)}-${slugifyToken(group.name)}-${slugifyToken(variable.name)}`;
-        if (slug === target) return String(variable.value);
+        if (slug === target) return String(pickPrimaryValue(variable) ?? '');
       }
     }
   }
