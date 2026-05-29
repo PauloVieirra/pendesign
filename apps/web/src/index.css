@@ -3240,6 +3240,21 @@ a.avatar-item:visited {
 .settings-nav-item small {
   display: none;
 }
+/* Sign-out variant: separated from the section list with a hairline and
+   tinted to read as a destructive action without screaming. */
+.settings-nav-item--danger {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: #dc2626;
+}
+.settings-nav-item--danger svg {
+  opacity: 0.85;
+}
+.settings-nav-item--danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
 .settings-content {
   min-width: 0;
   min-height: 0;
