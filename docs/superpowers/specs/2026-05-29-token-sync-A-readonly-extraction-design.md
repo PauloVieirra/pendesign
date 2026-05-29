@@ -1,73 +1,215 @@
-# Token Sync — Sub-feature A: Read-only extraction from project source
+# Token Sync — Sub-feature A: AI-prompt enforcement + read-only DS extraction
 
 **Status:** Draft (awaiting user review)
 **Date:** 2026-05-29
 **Owner:** Paulo
-**Scope:** Single PR — sub-feature A of the Token Sync roadmap (A→B→C→D→E)
+**Scope:** Single PR — sub-feature A of the Token Sync roadmap (A→B→C→E; D dropped, see Roadmap section)
 
 ## Summary
 
-Make the Design System Variables modal reflect the colors, fonts, and sizes actually present in the project's generated source code. Each time the AI writes a file in a project workspace, a daemon-side extractor walks the project's source files (CSS, HTML, JSX/TSX), identifies design literals — including Tailwind utility class references resolved through a bundled static map — and registers them as variables in the project's attached Design System. **Read-only**: the source code is not modified in this sub-feature (rewrite to `var(--*)` references is sub-feature B).
+Make the Design System the canonical source of truth for project styling — from two angles:
+
+1. **Prompt enforcement (push)**: Strengthen the AI agent's system prompt so it generates **pure CSS only** (no Tailwind, no Bootstrap, no utility-class frameworks), using a fixed, DS-aligned scale system for spacing, sizes, radii, and colors. The AI is told to declare every value in `:root { ... }` and reference via `var(--*)` everywhere else.
+2. **Read-only extraction (pull)**: A daemon-side extractor walks the project's CSS and HTML files after each AI write, identifies design literals that slipped through (or pre-existed), and registers them as variables in the attached Design System.
+
+**Read-only:** the source is not modified in this sub-feature (rewrite is sub-feature B).
+
+The combination guarantees that **what's in the code is what's in the DS, and vice versa** — without parsing utility classes, without static lookup maps, without AST work. The AI produces token-friendly CSS by construction; the extractor catches the rest.
 
 ## Motivation
 
-- Today the DS modal shows a fixed seed (Container Size / Grid / Typography defaults). It tells the user nothing about what's actually in the project.
-- The Edit mode property panel already accepts `var(--token)` bindings and surfaces a `VariablePicker` from `ColorPickerPopover`. But without DS values that match the code, the picker has nothing relevant to offer.
-- This sub-feature closes the smallest possible gap: DS becomes observational of the code. Users see colors and fonts from the live project. Editing those values does NOT yet propagate back (sub-feature B). But the picker becomes useful immediately.
+- The previous spec draft proposed parsing Tailwind/Bootstrap utility classes back into tokens via static lookup maps. That direction inverted the problem: it tried to translate framework dialects into DS tokens after the fact, with edge cases, customizations, and CSS-in-JS unhandled.
+- Inverting the architecture: **constrain the generator instead of decoding the output**. The agent's prompt is the only place we control the entire output shape. By forbidding utility frameworks at generation time and enumerating DS-aligned scales, the output becomes trivially extractable from pure CSS.
+- This also unifies UX: the Edit-mode property panel already binds to `var(--*)` references. If the AI always emits `var(--*)`, the picker always has tokens to offer. No translation gap.
 
 ## Non-goals
 
-- **Source rewrite** (literals → `var(--*)`): sub-feature B.
-- **JSX/TSX `style={{...}}` AST-aware extraction**: sub-feature C. A still extracts `className=` via regex, but `style={{ color: '#fff' }}` JSX expressions are NOT parsed here (regex on JS literals is too brittle).
-- **Tailwind config-aware extraction** (project-specific theme overrides via `tailwind.config.js`): sub-feature D. A uses Tailwind's default theme map only.
+- **Source rewrite** (literals → `var(--*)`): sub-feature B. Even with the prompt constraint, the AI may occasionally emit a raw hex; B's rewriter normalizes those.
+- **JSX/TSX `style={{...}}` extraction**: sub-feature C — only relevant if/when projects start using inline JSX styles. With pure-CSS prompting, this should be rare.
+- **Tailwind / Bootstrap class extraction**: **dropped from roadmap**. The prompt forbids these frameworks, so parsing their classes is unnecessary. If a user manually pastes Tailwind into a project, the values won't make it to the DS — documented as a power-user constraint.
 - **Semantic naming** (HSL clustering, "primary"/"secondary" aliases): sub-feature E.
 - **UI badge** for extracted variables in the modal: deferred (current modal works unchanged).
-- **Auto-prune** of variables whose literal no longer appears in source: deferred (don't surprise the user by deleting state they may have renamed).
-- **CSS-in-JS** (styled-components, emotion, vanilla-extract): out of roadmap. Requires runtime resolution.
-- **CDN-loaded stylesheets** (`<link href="https://cdn.jsdelivr.net/.../bootstrap.css">`): out of scope. The extractor only reads files inside the project workspace. Bootstrap works only if `bootstrap.css` is checked into the project.
+- **Auto-prune** of variables whose literal no longer appears in source: deferred.
+- **CSS-in-JS** (styled-components, emotion): out of roadmap. The prompt forbids it.
+- **CDN-loaded stylesheets**: out of scope. Project must have its CSS materialized in the workspace.
 
 ## Architecture
 
-Extraction is daemon-side only. The web modal already reads `/api/design-systems/:dsId/variables` — no UI changes for A.
-
 ```
-artifact-create.ts: createProjectArtifactFile()
-  └─→ on success: scheduleTokenSync(projectId)
-       └─→ debounced 500ms, per-project lock
-            └─→ syncProjectNow(projectId)
-                 ├─ resolve project → designSystemId → ds directory
-                 ├─ list source files (*.css, *.html, *.htm, *.jsx, *.tsx, *.js, *.ts)
-                 ├─ extract literals via:
-                 │   ├─ extract-css.ts        (.css files)
-                 │   ├─ extract-html.ts       (.html, .htm — inline style="" AND class="" via Tailwind)
-                 │   └─ extract-jsx.ts        (.jsx, .tsx, .js, .ts — className="" via Tailwind)
-                 ├─ tailwind-map.ts           (shared utility-class → token-value lookup)
-                 ├─ dedupe by canonical value
-                 ├─ load existing DS variables file
-                 ├─ merge: preserve existing variable ids/names, append new
-                 └─ save variables.json (regenerates tokens.css through the existing afterDesignSystemSave hook)
+┌─ AI generation pipeline (prompts/system.ts) ──────────────────┐
+│ composeSystemPrompt() ──→ system prompt sent to AI            │
+│   ├─ existing: Active design system + tokens.css contract     │
+│   └─ NEW: CSS Architecture Charter                            │  ← change 1
+│        ├─ "Pure CSS only. No Tailwind. No Bootstrap."         │
+│        ├─ Spacing scale: 4, 8, 12, 16, 20, 24, 32, ...        │
+│        ├─ Font-size scale: 12, 14, 16, 18, 20, 24, ...        │
+│        ├─ Radius scale: 4, 6, 8, 12, 16, 24, 9999             │
+│        ├─ Color organization: :root { --color-* }             │
+│        └─ Breakpoints: 412 / 834 / 1440 (matches DS seed)     │
+└──────────────────────┬────────────────────────────────────────┘
+                       ↓ AI emits CSS/HTML
+┌─ artifact-create.ts ─────────────────────────────────────────┐
+│ createProjectArtifactFile()                                  │
+│ └─→ on success: scheduleTokenSync(projectId)                 │
+└──────────────────────┬───────────────────────────────────────┘
+                       ↓
+┌─ token-sync (new module) ────────────────────────────────────┐  ← change 2
+│ scheduleTokenSync (debounced 500ms, per-project lock)        │
+│   └─→ syncProjectNow(projectId)                              │
+│        ├─ resolve project → designSystemId → ds dir          │
+│        ├─ list source files (*.css, *.html, *.htm)           │
+│        ├─ extract literals via extract-css.ts / extract-html │
+│        ├─ dedupe by canonical value                          │
+│        ├─ load existing DS variables file                    │
+│        ├─ merge: preserve user-renamed vars, append new      │
+│        └─ saveVariables → triggers afterDesignSystemSave     │
+└──────────────────────────────────────────────────────────────┘
+                       ↓
+┌─ /api/design-systems/:id/tokens.css ─────────────────────────┐
+│ Auto-regenerated; project's <link> picks it up live          │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## Hook placement
+## Change 1: CSS Architecture Charter in the system prompt
+
+A new section appended to `composeSystemPrompt()` in `apps/daemon/src/prompts/system.ts`, after the "Active design system tokens" block (around line 391). The new section is a **hard constraint** on CSS output, regardless of whether an active DS exists.
+
+The literal text to add (verbatim — this is the prompt the AI will read):
+
+```markdown
+## CSS architecture — pure CSS, DS-friendly scales
+
+Generate **pure CSS only**. **Do not** use Tailwind, Bootstrap, Tachyons,
+or any other utility-class CSS framework. Do not import their stylesheets,
+do not use their utility class names (`bg-blue-500`, `text-xl`, `p-4`,
+`btn-primary`, `text-center`, `flex`, etc.).
+
+The DS Variables panel of this app extracts tokens from your generated CSS.
+Utility classes cannot be extracted. **Every styling decision must be
+expressed as a CSS property with a value, in a `<style>` block or external
+`.css` file.** If you need a layout idiom that a framework provides, write
+the equivalent CSS by hand.
+
+### Token-aligned scales
+
+Use these scales for new values. Snap to the nearest value when in doubt.
+
+- **Spacing** (`margin`, `padding`, `gap`, `inset`, etc., in px):
+  4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 160, 192, 224, 256
+- **Font-size** (px): 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96
+- **Line-height** (unitless): 1, 1.25, 1.5, 1.75, 2
+- **Border-radius** (px): 4, 6, 8, 12, 16, 24, 9999 (full pill)
+- **Border-width** (px): 1, 2, 4, 8
+
+### Color organization
+
+- Declare every color in `:root { --color-<name>: <value>; }` and reference
+  it everywhere via `var(--color-<name>)`. Do not write raw hex / rgb /
+  hsl values outside the `:root` block.
+- Naming guidelines:
+  - Brand colors: `--color-primary`, `--color-primary-hover`,
+    `--color-primary-active`, `--color-on-primary` (foreground over primary)
+  - Neutrals: `--color-gray-50` through `--color-gray-900` (Tailwind-style)
+  - Semantic: `--color-success`, `--color-warning`, `--color-danger`,
+    `--color-info`, plus `--color-on-<name>` for foreground variants
+  - Surfaces: `--color-background`, `--color-surface`,
+    `--color-surface-elevated`, `--color-border`
+- Use `oklch(...)` if you can; otherwise `#rrggbb`. Avoid `rgb()`/`hsl()`
+  unless they're the natural expression (e.g., alpha overlays).
+
+### Font family
+
+Define in `:root { --font-sans: <stack>; --font-mono: <stack>; --font-display: <stack>; }`
+and reference via `var(--font-sans)`. Do not declare `font-family` stacks
+outside `:root`.
+
+### Responsive breakpoints
+
+Mirror the DS Container Size collection:
+
+```css
+@media (min-width: 412px) { /* mobile */ }
+@media (min-width: 834px) { /* tablet */ }
+@media (min-width: 1440px) { /* desktop */ }
+```
+
+### Combined examples
+
+✅ Allowed:
+
+```css
+:root {
+  --color-primary: #3b82f6;
+  --color-on-primary: #ffffff;
+  --color-gray-100: #f3f4f6;
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+.button {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  padding: 12px 24px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  border-radius: 8px;
+}
+```
+
+❌ Forbidden:
+
+```html
+<button class="bg-blue-500 text-white px-6 py-3 rounded-lg font-semibold">
+  Click me
+</button>
+```
+
+❌ Forbidden:
+
+```html
+<link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/.../tailwind.min.css">
+```
+```
+
+The exact wording belongs in a new exported constant `CSS_ARCHITECTURE_CHARTER` (string) inside `apps/daemon/src/prompts/system.ts`, appended to the prompt unconditionally — applies to every artifact generation, not only when a DS is attached.
+
+The existing "Active design system tokens" section (line 391) takes precedence when present — its `tokens.css` block is the authoritative source. The charter complements it by enforcing the *form* of the generated CSS.
+
+### Tail integration with active DS
+
+When an active DS exists, its `tokens.css` already lists the project's :root variables (existing behavior). The charter then says: "use these scale ranges as starting points if no token exists in the active DS for that property". This avoids contradicting the active DS while also seeding good defaults for new projects.
+
+## Change 2: token-sync module (read-only extraction)
+
+Daemon-side only. The web modal already reads `/api/design-systems/:dsId/variables` — no UI changes for A.
+
+### Hook placement
 
 `apps/daemon/src/artifact-create.ts` already exports `createProjectArtifactFile(options)`. Add `void scheduleTokenSync(options.projectId)` after the `writeProjectFile` call resolves. Fire-and-forget — token sync is background work and must never block AI generation.
 
-## Token sync module
+### Public surface
 
-### `apps/daemon/src/token-sync/index.ts`
-
-Public surface:
+`apps/daemon/src/token-sync/index.ts`:
 
 ```typescript
 export function scheduleTokenSync(projectId: string): void;
 export async function syncProjectNow(projectId: string): Promise<void>;
 ```
 
-`scheduleTokenSync` debounces 500ms per project; multiple file writes in rapid succession coalesce to one extraction. Implementation: per-process `Map<projectId, NodeJS.Timeout>`. Reset on each call. When the timer fires, the callback acquires a per-project async mutex (via the existing `withDsLock` keyed on the DS id) and runs `syncProjectNow`. Errors are logged and swallowed so a parse failure on one file doesn't crash the daemon.
+`scheduleTokenSync` debounces 500ms per project; multiple file writes coalesce. Implementation: per-process `Map<projectId, NodeJS.Timeout>`. Reset on each call. When the timer fires, the callback acquires the per-DS lock and runs `syncProjectNow`. Errors are logged and swallowed.
 
-`syncProjectNow` is exported for tests and CLI use. It runs the full sync once, deterministically.
+`syncProjectNow` is exported for tests and CLI use. Runs the full sync once, deterministically.
 
-### `apps/daemon/src/token-sync/types.ts`
+### Module structure
+
+- `apps/daemon/src/token-sync/index.ts` — orchestrator (debounce + lock + hook)
+- `apps/daemon/src/token-sync/types.ts` — shared `ExtractedTokens` type
+- `apps/daemon/src/token-sync/extract-css.ts` — `extractFromCss(text, sourcePath): ExtractedTokens`
+- `apps/daemon/src/token-sync/extract-html.ts` — `extractFromHtml(text, sourcePath): ExtractedTokens`
+- `apps/daemon/src/token-sync/extract-declarations.ts` — shared per-declaration logic
+- `apps/daemon/src/token-sync/merge.ts` — `mergeExtractedIntoDs(file, tokens): VariablesFile`
+- `apps/daemon/src/token-sync/listing.ts` — `listProjectSourceFiles(projectId): Promise<Array<{path, kind}>>`
+
+### Data shape
 
 ```typescript
 export interface ExtractedToken<V> {
@@ -77,181 +219,82 @@ export interface ExtractedToken<V> {
 }
 
 export interface ExtractedTokens {
-  colors: ExtractedToken<string>[];   // canonical hex like '#0066ff' (lowercase, no alpha for v1)
-  fonts: ExtractedToken<string>[];    // canonical family name like 'Inter' (first family in stack)
+  colors: ExtractedToken<string>[];   // canonical '#rrggbb' or '#rrggbbaa'
+  fonts: ExtractedToken<string>[];    // canonical family name (first in stack)
   sizes: ExtractedToken<number>[];    // px integer
   spacing: ExtractedToken<number>[];  // px integer
 }
 ```
 
-### `apps/daemon/src/token-sync/extract-css.ts`
+### extract-css.ts
 
-`extractFromCss(cssText: string, sourcePath: string): ExtractedTokens`
+Hand-rolled scanner. No postcss dependency.
 
-Implementation: hand-rolled scanner (no postcss dependency).
-
-1. Strip CSS comments (`/* ... */`).
-2. For each declaration block `{ ... }`, split by `;`, then for each `prop: value` pair:
-   - Trim and normalize.
-   - Skip if value contains `var(`, equals `inherit`, `initial`, `unset`, `currentColor`, `transparent`, `none`, `auto`, `0`, `0px`, or `0%`.
+1. Strip `/* ... */` comments.
+2. For each declaration block `{ ... }`, split by `;`. For each `prop: value`:
+   - Skip if value contains `var(`, equals `inherit`/`initial`/`unset`/`currentColor`/`transparent`/`none`/`auto`/`0`/`0px`/`0%`.
    - Bucket by property:
-     - **Color properties**: `color`, `background-color`, `background`, `border-color`, `border-top-color`, `border-right-color`, `border-bottom-color`, `border-left-color`, `outline-color`, `caret-color`, `fill`, `stroke`, `text-decoration-color` → extract color literal (see below).
-     - **Font-family**: `font-family` → extract first family token (the part before first `,`), stripped of quotes.
-     - **Sizes**: `font-size`, `line-height` → if `Npx`, extract `N`. If `Nrem`, extract `N*16`. Else skip.
-     - **Spacing**: `margin`, `padding`, `gap`, `row-gap`, `column-gap`, `top`, `right`, `bottom`, `left`, `inset`, `width`, `height`, `min-width`, `min-height`, `max-width`, `max-height` → for each `Npx` token in the value, extract `N`.
+     - Colors: `color`, `background-color`, `background`, `border-color` (+ side variants), `outline-color`, `caret-color`, `fill`, `stroke`, `text-decoration-color`
+     - Font-family: extract first family token, strip quotes
+     - Sizes: `font-size`, `line-height` (px or rem; rem × 16)
+     - Spacing: `margin`, `padding`, `gap`, `row-gap`, `column-gap`, `top`, `right`, `bottom`, `left`, `inset`, `width`, `height`, `min/max-width/height` (px only)
+3. Color extractor supports `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, named (50 most common), `hsl()`, `hsla()`. Canonical form: lowercase `#rrggbb` (alpha stripped if ff). Other color functions (`oklch`, `color-mix`) skipped.
+4. Background shorthand: extract first color-like token only.
 
-3. Color literal extraction supports:
-   - Hex `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`. Canonical form: lowercase `#rrggbb`, alpha stripped if `ff`, kept as `#rrggbbaa` otherwise. (For v1, alpha values are kept verbatim — sub-feature E may treat alpha variants as the same token.)
-   - `rgb(r, g, b)` and `rgba(r, g, b, a)`: convert to canonical hex.
-   - Named CSS colors (`red`, `blue`, etc.): convert to canonical hex via a small built-in lookup table (50 most common).
-   - `hsl(...)`, `hsla(...)`: convert to canonical hex.
-   - Anything else (color functions like `color-mix`, `oklch`, etc.): skip.
+### extract-html.ts
 
-4. Background shorthand: only extract the color portion; the rest (image/position/repeat) is ignored. Use a simple "first token that looks like a color" rule.
+1. Regex `style="(...)"` and `style='(...)'` and `STYLE=` (case-insensitive). Treat captured string as declaration block; reuse `extractFromDeclarations` helper.
+2. **No** `class="..."` lookup. Utility-class frameworks (Tailwind, Bootstrap, Tachyons) are forbidden by the prompt; the extractor does not attempt to translate class names back to values.
 
-5. Result accumulates `ExtractedToken` records keyed by canonical value, incrementing `usageCount` for each hit and pushing `sourcePath` into `sourceFiles` (deduplicated).
-
-### `apps/daemon/src/token-sync/extract-html.ts`
-
-`extractFromHtml(htmlText: string, sourcePath: string): ExtractedTokens`
-
-Implementation:
-
-1. Regex over `style="([^"]*)"` and `style='([^']*)'` attributes. Treat each captured string as a CSS declaration block (without braces). Reuse the same per-declaration logic as `extract-css.ts`. Factor the shared logic into a helper `extractFromDeclarations(declarations: string, sourcePath: string): ExtractedTokens` and call it from both extractors.
-2. Regex over `class="([^"]*)"` and `class='([^']*)'` attributes. Tokenize the captured class list by whitespace. For each token, call `tailwindClassToTokens(token)` (from `tailwind-map.ts`). Accumulate the result into the same ExtractedTokens record.
-
-Bootstrap utility classes (`btn`, `btn-primary`, etc.) are NOT looked up here — they reference CSS in `bootstrap.css`, which the CSS extractor picks up if `bootstrap.css` is in the workspace. Tailwind classes ARE looked up because they often have no corresponding CSS file in the workspace.
-
-### `apps/daemon/src/token-sync/extract-jsx.ts`
-
-`extractFromJsx(jsxText: string, sourcePath: string): ExtractedTokens`
-
-Implementation:
-
-1. Regex over `className="([^"]*)"` and `className='([^']*)'` and `className={\`([^\`]*)\`}` (template literal with no interpolation). Treat the captured string as a space-separated class list.
-2. For each class token, call `tailwindClassToTokens(token)` and accumulate.
-3. **Do NOT** parse `style={{...}}` JSX expressions in A — regex-based parsing of JS object literals is fragile (escaped quotes, nested objects, ternaries). Sub-feature C adds AST-based extraction.
-4. **Do NOT** resolve `className={cn(...)}` / `className={clsx(...)}` / conditional class helpers — A only sees plain string literals. Common utility helpers (`cn`, `clsx`, `classNames`) are documented limitations.
-
-### `apps/daemon/src/token-sync/tailwind-map.ts`
-
-`tailwindClassMap`: a `Record<string, TailwindEntry>` covering Tailwind v3/v4 default theme utility classes. `TailwindEntry` is:
-
-```typescript
-interface TailwindEntry {
-  color?: string;        // canonical hex, e.g. '#3b82f6'
-  size?: number;         // px, for text-* utilities
-  spacing?: number;      // px, for p-*, m-*, gap-*
-  fontFamily?: string;   // for font-*
-}
-```
-
-Coverage (Tailwind default theme):
-
-- **Colors** — every `<utility>-<color>-<shade>` combination, where:
-  - utilities: `bg`, `text`, `border`, `ring`, `divide`, `placeholder`, `outline`, `from`, `to`, `via`, `fill`, `stroke`, `decoration`, `caret`, `accent`
-  - colors: `slate`, `gray`, `zinc`, `neutral`, `stone`, `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `emerald`, `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `fuchsia`, `pink`, `rose` (22 hues)
-  - shades: `50`, `100`, `200`, `300`, `400`, `500`, `600`, `700`, `800`, `900`, `950` (11 shades)
-  - plus literals: `white`, `black`, `transparent` (skipped), `current` (skipped)
-  - Total color entries: ~22 hues × 11 shades × 15 utility prefixes = ~3,600 entries. Generated once via a build helper from Tailwind's default theme, then committed as a static TS object.
-
-- **Sizes** — `text-xs` (12), `text-sm` (14), `text-base` (16), `text-lg` (18), `text-xl` (20), `text-2xl` (24), `text-3xl` (30), `text-4xl` (36), `text-5xl` (48), `text-6xl` (60), `text-7xl` (72), `text-8xl` (96), `text-9xl` (128).
-
-- **Spacing** — `p`, `m`, `px`, `py`, `pt`, `pr`, `pb`, `pl`, `mx`, `my`, `mt`, `mr`, `mb`, `ml`, `gap`, `gap-x`, `gap-y`, `space-x`, `space-y` with Tailwind scale `0` (0), `0.5` (2), `1` (4), `1.5` (6), `2` (8), `2.5` (10), `3` (12), `3.5` (14), `4` (16), `5` (20), `6` (24), `7` (28), `8` (32), `9` (36), `10` (40), `11` (44), `12` (48), `14` (56), `16` (64), `20` (80), `24` (96), `28` (112), `32` (128), `36` (144), `40` (160), `44` (176), `48` (192), `52` (208), `56` (224), `60` (240), `64` (256), `72` (288), `80` (320), `96` (384). ~600 entries.
-
-- **Font families** — `font-sans`, `font-mono`, `font-serif`. The default values are stacks (`ui-sans-serif, system-ui, ...`) — we record the first family in the stack.
-
-Total map size: ~4,200 entries. Encoded as a flat TypeScript object literal. Final file ~250 lines (most entries are one-line records).
-
-The map is generated once via a one-time `scripts/build-tailwind-map.ts` script that reads `tailwindcss/defaultTheme` from the Tailwind npm package. The generated file is committed as `apps/daemon/src/token-sync/tailwind-map.generated.ts` to avoid adding `tailwindcss` as a daemon runtime dependency.
-
-Helper:
-
-```typescript
-export function tailwindClassToTokens(
-  cls: string,
-  sourcePath: string,
-): Partial<ExtractedTokens>;
-```
-
-- Strips Tailwind variants (`md:`, `hover:`, `dark:`, etc.) — the variants are sliced off at the colon; the base class is looked up.
-- Strips arbitrary-value syntax (`bg-[#0066ff]`) for v1 — these are rare and the literal value is recoverable; sub-feature C/D handles them precisely.
-- Returns the matched bucket entry or `{}` if the class is not in the map.
-
-### Bootstrap
-
-Bootstrap utility classes reference CSS that Bootstrap provides — when the project has Bootstrap CSS in the workspace (typical for non-CDN setups), the existing `extract-css.ts` already extracts the underlying values from selectors like `.btn-primary { background-color: #0d6efd }`. No Bootstrap-specific lookup table is needed.
-
-### `apps/daemon/src/token-sync/merge.ts`
+### merge.ts
 
 `mergeExtractedIntoDs(file: VariablesFile, tokens: ExtractedTokens): VariablesFile`
 
-For each extracted bucket, determine the target collection. Collection names match the existing seed:
-
-| Bucket | Collection | Group |
+| Bucket | Target collection | Target group |
 |---|---|---|
 | colors | Cores | Extracted |
 | fonts | Typography | Font Family |
 | sizes | Typography | Detected sizes |
 | spacing | Spacing | Detected spacing |
 
-For each missing collection/group, create it (single Default mode for Cores/Spacing; Desktop/Tablet/Mobile already on Typography from the seed).
+For each token:
+1. Canonical name:
+   - Color: `color-<hex-without-#>`
+   - Font: `font-<family-slug>` (lowercase, spaces→`-`, alphanum-dash only)
+   - Size: `size-<px>`
+   - Spacing: `space-<px>`
+2. Search for matching value across the **entire DS** (any collection, any group, any mode). If found, no-op — preserves user organization and renames.
+3. Otherwise: ensure target collection+group exist (create with single Default mode if missing), append new variable with the canonical name and the value applied to every mode in the target collection.
 
-For each token in the bucket:
-1. Compute the canonical variable name:
-   - Color: `color-<hex-without-#>` (e.g., `color-0066ff`).
-   - Font: `font-<family-slug>` (slug: lowercase, spaces → `-`, drop non-alphanum-dash).
-   - Size: `size-<px>` (e.g., `size-16`).
-   - Spacing: `space-<px>`.
-2. Search the target group's variables for a match by value (across all modes). If found, **do nothing** — the variable already exists. This preserves any user-renamed variables.
-3. Otherwise, search the same value across the entire DS (in case the user moved it to a different collection). If found, do nothing — respect user organization.
-4. Otherwise, append a new variable to the target group with:
-   - id: `newVariableId()`
-   - name: the canonical name from step 1
-   - type: `color` for colors; `string` for fonts; `number` for sizes/spacing
-   - valuesByMode: same value across every mode in the target collection
-
-The merge is **append-only**. Variables no longer referenced are not removed (deferred to a future "prune" sub-feature).
+Append-only. Never deletes or renames existing variables.
 
 ### Project source file discovery
 
-`listProjectSourceFiles(projectId: string): Promise<Array<{ path: string; kind: 'css' | 'html' | 'jsx' }>>` — returns absolute paths with their parser kind.
+`listProjectSourceFiles(projectId): Promise<Array<{ path: string; kind: 'css' | 'html' }>>`
 
-Implementation:
-1. Resolve project directory: typically `<dataDir>/projects/<projectId>/` (see existing `apps/daemon/src/projects.ts` for the canonical resolver). Use the same.
-2. Walk the directory recursively. Include extensions:
-   - `.css` → kind `'css'`
-   - `.html`, `.htm` → kind `'html'`
-   - `.jsx`, `.tsx`, `.js`, `.ts` → kind `'jsx'` (this extractor only looks for `className=` Tailwind-style references in v1, regardless of whether the file is React or plain JS; we don't try to detect framework)
-3. Skip `node_modules/`, hidden directories (`.*`), build outputs (`dist/`, `build/`, `.next/`, `out/`), binary files.
-4. Cap at 200 files per sync to bound work. If exceeded, log and proceed with the first 200.
+1. Resolve project directory using existing `apps/daemon/src/projects.ts` resolver.
+2. Walk recursively. Include `.css` (kind `'css'`), `.html`/`.htm` (kind `'html'`).
+3. Skip `node_modules/`, hidden dirs (`.*`), build outputs (`dist/`, `build/`, `.next/`, `out/`), binary files.
+4. Cap at 200 files per sync.
 
 ### Per-project lock
 
-The sync runs under the DS-level lock (`withDsLock(dsKey, fn)`) that already exists in `design-system-variables.ts`. This serializes sync with manual variable edits.
+Sync runs under `withDsLock(dsKey(designSystemId), fn)` — already exists.
 
 ## Edge cases
 
 - **No DS attached** — `project.designSystemId` is null. `syncProjectNow` returns immediately.
-- **DS locked/missing** — `resolveDsDir` returns null. Log and return.
-- **Empty source directory** — extraction completes with zero tokens. No-op.
-- **Single file > 1 MB** — parsed normally. The regex/scanner is linear.
-- **Malformed CSS** — best-effort. Errors swallowed; what's parseable is extracted, the rest skipped.
-- **User has already renamed a variable** — preserved. Merge matches by value across all variables, not by name.
-- **Token value with alpha (e.g., `#0066ff80`)** — recorded as a distinct variable from its opaque variant. Sub-feature E can unify.
-- **Background shorthand with multiple colors** (e.g., `background: linear-gradient(red, blue)`) — extract both. Each occurrence increments usage.
-- **Concurrent AI writes during sync** — the next `scheduleTokenSync` debounces while in flight; once the current sync releases the lock, the next runs.
-- **Tokens.css regeneration** — the existing `afterDesignSystemSave` hook handles it; nothing new needed.
+- **AI emits a raw hex despite the charter** — extractor catches it. The variable is added with the canonical value-slug name. Sub-feature B then rewrites the literal to a `var()` reference.
+- **AI emits Tailwind despite the prompt** — utility classes (`class="bg-blue-500"`) are ignored by the extractor. The value never lands in DS. This is an intentional consequence: the prompt is the contract, the extractor enforces a "pure CSS only" world.
+- **Existing user-edited variable** — preserved by name. Merge matches by value across the DS.
+- **Token with alpha** — recorded as a distinct color (`#0066ff80` ≠ `#0066ff`). Sub-feature E may unify.
+- **Background shorthand with multiple colors** — extract all color-like tokens.
+- **Concurrent AI writes during sync** — next `scheduleTokenSync` debounces while in flight; once the lock releases, the next runs.
+- **Tokens.css regeneration** — existing `afterDesignSystemSave` hook handles it.
 
 ## API surface
 
-No new HTTP endpoints. The sync is internal to the daemon. Optional CLI helper:
-
-```bash
-od ds resync <projectId>     # forces sync now (calls syncProjectNow)
-```
-
-Defer if it complicates the PR; can be a follow-up.
+No new HTTP endpoints. Sync is internal to the daemon.
 
 ## Files
 
@@ -260,51 +303,56 @@ Defer if it complicates the PR; can be a follow-up.
 - `apps/daemon/src/token-sync/types.ts`
 - `apps/daemon/src/token-sync/extract-css.ts`
 - `apps/daemon/src/token-sync/extract-html.ts`
-- `apps/daemon/src/token-sync/extract-jsx.ts`
-- `apps/daemon/src/token-sync/tailwind-map.generated.ts` — static map of Tailwind default-theme utility classes → token values
-- `apps/daemon/src/token-sync/tailwind-lookup.ts` — `tailwindClassToTokens` helper (strips variants, looks up map)
+- `apps/daemon/src/token-sync/extract-declarations.ts`
 - `apps/daemon/src/token-sync/merge.ts`
-- `apps/daemon/src/token-sync/listing.ts` — `listProjectSourceFiles`
-- `apps/daemon/scripts/build-tailwind-map.ts` — one-time generator that reads `tailwindcss/defaultTheme` and writes `tailwind-map.generated.ts`. Not run on every build; checked into the repo as committed output.
+- `apps/daemon/src/token-sync/listing.ts`
 - `apps/daemon/tests/token-sync/extract-css.test.ts`
 - `apps/daemon/tests/token-sync/extract-html.test.ts`
-- `apps/daemon/tests/token-sync/extract-jsx.test.ts`
-- `apps/daemon/tests/token-sync/tailwind-lookup.test.ts`
 - `apps/daemon/tests/token-sync/merge.test.ts`
-- `apps/daemon/tests/token-sync/sync.test.ts` — integration: write a project file, wait, assert variables.json updated
+- `apps/daemon/tests/token-sync/sync.test.ts`
 
 ### Modified (daemon)
-- `apps/daemon/src/artifact-create.ts` — schedule sync after each write
+- `apps/daemon/src/prompts/system.ts` — adds `CSS_ARCHITECTURE_CHARTER` constant and appends it in `composeSystemPrompt`
+- `apps/daemon/src/artifact-create.ts` — calls `scheduleTokenSync` after writes
 
 ### Web
-- No changes. The DS modal already renders variables.json as-is.
+- No changes.
+
+### Tests
+- `apps/daemon/tests/prompts/system.test.ts` — verify `composeSystemPrompt` includes the charter text and references the spacing/font-size scales.
 
 ## Testing
 
 ### Unit
-- `extract-css.test.ts` — CSS fixture with colors (hex, rgb, named), font-families, font-sizes (px, rem), padding/margin → assert ExtractedTokens shape. Counts and source-file tracking verified.
-- `extract-css.test.ts` — invalid CSS: missing `;`, broken brace, comment in middle → no crash, partial extraction.
-- `extract-css.test.ts` — skips: `var()`, `inherit`, `0`, `0px`, `transparent`.
-- `extract-html.test.ts` — HTML fixtures with `style="..."` and `style='...'` and `STYLE="..."` (uppercase) and no style at all. Counts.
-- `extract-html.test.ts` — HTML fixture with `class="btn bg-blue-500 text-white p-4"` → asserts the Tailwind classes are looked up; assert `bg-*` becomes a color in `colors[]`, `text-white` becomes a color, `p-4` becomes a spacing entry of 16. `btn` is ignored (no entry in the map; Bootstrap classes pass through harmlessly).
-- `extract-jsx.test.ts` — JSX fixture with `className="bg-blue-500 text-xl"`, `className='text-red-700'`, `className={\`bg-${dynamic}\`}` (template literal with interpolation — skipped), `className={cn('p-4', flag && 'p-8')}` (utility helper — skipped) → asserts only the static literal classes are extracted.
-- `tailwind-lookup.test.ts` — `tailwindClassToTokens('bg-blue-500')` returns `{ color: '#3b82f6' }`. Strips variants (`md:bg-blue-500` works). `hover:bg-blue-500` works. `bg-[#fff]` (arbitrary value) returns `{}` (deferred).
-- `merge.test.ts` — start with seed DS, merge extracted tokens, assert new variables appended to Cores/Typography/Spacing. Re-merge same extraction → idempotent (no duplicates).
-- `merge.test.ts` — when user has renamed a variable (id same, name changed) and value matches, merge leaves the name alone.
+- `extract-css.test.ts` — fixtures: hex/rgb/named colors; font-family; font-size px and rem; padding/margin scale values. Invalid CSS (missing `;`, broken brace, mid-comment) → partial extraction, no crash. Skips: `var()`, `inherit`, `0`, `transparent`.
+- `extract-html.test.ts` — fixtures: `style=""`, `style=''`, `STYLE=""` (uppercase); no style; multiple elements with different inline styles.
+- `merge.test.ts` — seed DS + extracted tokens → new vars appended. Re-merge → idempotent. User-renamed variable preserved.
+- `prompts/system.test.ts` — `composeSystemPrompt(input)` contains the literal phrases: "pure CSS only", "Do not use Tailwind", "Spacing", "12, 14, 16, 18, 20, 24", "@media (min-width: 412px)".
 
 ### Integration
-- `sync.test.ts` — set up a project workspace under temp dir, write a CSS file with `color: #0066ff;`, call `syncProjectNow(projectId)`, assert the DS's variables.json now has a `color-0066ff` variable.
-- `sync.test.ts` — write a `.tsx` file with `className="bg-blue-500 p-4"`, call `syncProjectNow`, assert DS gains a `color-3b82f6` and a `space-16`.
-- `sync.test.ts` — write a `.html` file with `class="btn bg-emerald-600"` + a `style.css` with `.btn { background: #fff }`. Assert both `#10b981` (from Tailwind lookup) and `#ffffff` (from CSS) appear.
-- `sync.test.ts` — call `scheduleTokenSync` twice in quick succession, wait 600ms, assert only one sync ran (verifies debounce).
+- `sync.test.ts` — write a CSS file to project workspace with `color: #0066ff; padding: 16px`; call `syncProjectNow`; assert variables.json has `color-0066ff` in Cores/Extracted and `space-16` in Spacing/Detected spacing.
+- `sync.test.ts` — write an HTML file with `<div style="color: #ff0000">`; assert `color-ff0000` appears.
+- `sync.test.ts` — call `scheduleTokenSync` twice rapidly; assert one sync runs total.
 
 ## Rollout
 
-- Single PR.
-- No feature flag. Token sync runs by default for every project that has a DS attached.
-- Risk: extraction parsing bug could write garbage variable names to DS files. Mitigation: extensive unit tests on the extractors with fixtures covering edge cases. The merge is append-only and preserves existing user data, so worst case is some extra junk variables — easy to delete from the modal.
+Single PR.
+
+No feature flag. The CSS charter applies to all generations going forward; old projects already on disk are not affected until the next AI write. The extractor runs only when a project has a DS attached.
+
+Risk:
+- **Prompt change semantics**: the AI may push back on the constraint or under-comply. Mitigation: the charter is repeated in two places (charter section + the existing "do not invent tokens outside this palette" line), and the system prompt is sent on every turn.
+- **Extractor parsing bug**: could write garbage variable names. Mitigation: extensive unit tests; merge is append-only and preserves existing data.
+
+## Roadmap impact
+
+After A:
+
+- **B** (source rewrite) — unchanged. Still needed: AI may emit raw hex; B rewrites it to `var()`.
+- **C** (JSX `style={{...}}` AST extraction) — lower priority. With pure-CSS prompting, JSX inline styles should be rare. Keep on roadmap but not next.
+- **D** (Tailwind config-aware extraction) — **dropped**. The prompt forbids Tailwind; no need to translate it.
+- **E** (semantic naming) — unchanged. Still needed to turn `color-3b82f6` into `primary`, etc.
 
 ## Open questions
 
-- **CLI `od ds resync`** — include in v1 or defer? Decision: **defer**. Power users can edit and save any DS variable via the modal to force `afterDesignSystemSave` to fire (which already regenerates tokens.css). A manual resync endpoint comes with B/C/D when the rewrite is involved.
-- **Auto-prune** — when a user removes a literal from source, should the extracted variable disappear? Decision: **no, defer**. Sub-feature B (rewrite) will replace the literal with a `var()` reference, so the variable is still "referenced". For A, we err on the side of preserving state.
+None blocking. The charter wording can be refined after seeing real AI output.
