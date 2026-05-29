@@ -10,6 +10,7 @@ import {
   fetchCloudStatus,
   type CloudStatus,
 } from '../providers/cloud';
+import { CLOUD_AUTH_CHANGED_EVENT } from './CloudLoginGate';
 
 interface ErrorState { code: string; message: string }
 
@@ -68,6 +69,9 @@ export function CloudAuthCard({ onSignedIn }: { onSignedIn?: (email: string) => 
             try {
               await cloudSignOut();
               await refreshStatus();
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent(CLOUD_AUTH_CHANGED_EVENT));
+              }
             } finally {
               setBusy(false);
             }

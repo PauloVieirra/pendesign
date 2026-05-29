@@ -27510,3 +27510,83 @@ body.desktop-pet-shell .pet-task-item {
 .cloud-auth-card-email {
   color: var(--text-muted);
 }
+
+/* ============================================================================
+   CloudLoginGate — full-screen sign-in gate shown before the workspace shell.
+   ============================================================================ */
+.cloud-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 32px;
+  background: var(--bg, #1a1a1a);
+  color: var(--text, #f0f0f0);
+  z-index: 10000;
+}
+.cloud-gate-loading {
+  gap: 12px;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+}
+.cloud-gate-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border, #333);
+  border-top-color: var(--accent, #c96442);
+  border-radius: 50%;
+  animation: cloud-gate-spin 700ms linear infinite;
+}
+@keyframes cloud-gate-spin {
+  to { transform: rotate(360deg); }
+}
+.cloud-gate-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.cloud-gate-logo {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent, #c96442);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 20px;
+}
+.cloud-gate-brand h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.cloud-gate-tagline {
+  margin: 0;
+  max-width: 360px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cloud-gate-footer {
+  margin-top: 24px;
+  max-width: 360px;
+  text-align: center;
+}
+.cloud-gate-footer small {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+}
+.cloud-gate-footer code {
+  background: var(--bg-subtle, #2a2a2a);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10.5px;
+}

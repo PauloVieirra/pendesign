@@ -8,6 +8,7 @@ import {
 } from '@open-design/contracts/analytics';
 import { EntryView } from './components/EntryView';
 import { ProjectSetupLoadingOverlay } from './components/ProjectSetupLoadingOverlay';
+import { CloudLoginGate } from './components/CloudLoginGate';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -1376,7 +1377,7 @@ export function App() {
     );
   }
   return (
-    <>
+    <CloudLoginGate>
       <div
         className={`workspace-shell workspace-shell--${clientType}`}
         data-client-type={clientType}
@@ -1474,7 +1475,7 @@ export function App() {
           }}
         />
       ) : null}
-    </>
+    </CloudLoginGate>
   );
 }
 
