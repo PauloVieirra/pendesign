@@ -55,6 +55,8 @@ import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { readAppConfig } from './app-config.js';
 import { installFromTarget, uninstallById } from './library-install.js';
 import type { RouteDeps } from './server-context.js';
+import { setDefaultTokenSyncConfig } from './token-sync/index.js';
+import { resolveProjectDir } from './projects.js';
 
 export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'paths' | 'resources' | 'db' | 'events'> {}
 
@@ -1605,6 +1607,29 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       res.status(500).json({ error: String(err) });
     }
   });
+
+  // Register the production TokenSyncConfig so that scheduleTokenSync (fired
+  // from createProjectArtifactFile after every AI write) can resolve the
+  // project directory and DS directory without needing extra arguments.
+  const PROJECTS_DIR = ctx.paths.PROJECTS_DIR;
+  if (db && PROJECTS_DIR) {
+    setDefaultTokenSyncConfig({
+      resolveProjectDir: async (projectId: string) => {
+        const { getProject } = await import('./db.js');
+        const project = getProject(db, projectId);
+        return resolveProjectDir(PROJECTS_DIR, projectId, project?.metadata);
+      },
+      resolveDsDir: async (designSystemId: string) => {
+        const resolved = await resolveDsDir(designSystemId);
+        return resolved?.dir ?? null;
+      },
+      getDesignSystemId: async (projectId: string) => {
+        const { getProject } = await import('./db.js');
+        const project = getProject(db, projectId);
+        return project?.designSystemId ?? null;
+      },
+    });
+  }
 
 }
 

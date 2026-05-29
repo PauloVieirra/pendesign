@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { inferLegacyManifest, validateArtifactManifestInput } from './artifact-manifest.js';
+import { scheduleTokenSync } from './token-sync/index.js';
 
 type JsonObject = Record<string, unknown>;
 
@@ -71,7 +72,7 @@ export async function createProjectArtifactFile(options: CreateProjectArtifactOp
   const body = input.encoding === 'base64'
     ? Buffer.from(input.content, 'base64')
     : Buffer.from(input.content, 'utf8');
-  return await options.writeProjectFile(
+  const result = await options.writeProjectFile(
     options.projectsRoot,
     options.projectId,
     input.name,
@@ -82,6 +83,10 @@ export async function createProjectArtifactFile(options: CreateProjectArtifactOp
     },
     options.metadata,
   );
+  // Background extraction: pure-CSS values become DS variables.
+  // Fire-and-forget; errors are swallowed inside scheduleTokenSync.
+  scheduleTokenSync(options.projectId);
+  return result;
 }
 
 export async function postCreateArtifactRequest(args: {
