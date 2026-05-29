@@ -11,6 +11,7 @@ import {
 import {
   newCollectionId,
   newGroupId,
+  newModeId,
   newVariableId,
   saveVariables,
   type Variable,
@@ -467,7 +468,7 @@ export async function importFigmaDesignSystem(
   await mkdir(outDir, { recursive: true });
 
   const variablesFile: VariablesFile = {
-    version: 1,
+    version: 2,
     collections: buildVariablesCollectionsFromFigma(colors, fonts, shadows, spacings, radii),
   };
   const designMd = renderDesignMd(id, displayName, figmaUrl, colors, fonts, shadows, spacings, radii);
@@ -830,61 +831,71 @@ function buildVariablesCollectionsFromFigma(
 ): VariableCollection[] {
   const out: VariableCollection[] = [];
   if (colors.length > 0) {
+    const defaultModeId = newModeId();
     const groupsMap = new Map<string, Variable[]>();
     for (const c of colors) {
       const parts = c.name.split('/');
       const group = parts.length > 1 ? parts[0]! : 'Default';
       const varName = parts.length > 1 ? parts.slice(1).join('/') : (parts[0] ?? 'unnamed');
       const list = groupsMap.get(group) ?? [];
-      list.push({ id: newVariableId(), name: varName, type: 'color', value: c.hex });
+      list.push({ id: newVariableId(), name: varName, type: 'color', valuesByMode: { [defaultModeId]: c.hex } });
       groupsMap.set(group, list);
     }
     out.push({
       id: newCollectionId(),
       name: 'Colors',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: Array.from(groupsMap.entries()).map(([name, variables]) => ({
         id: newGroupId(), name, variables,
       })),
     });
   }
   if (fonts.length > 0) {
+    const defaultModeId = newModeId();
     const variables: Variable[] = [];
     for (const f of fonts) {
       const slug = f.name.replace(/[^A-Za-z0-9]+/g, '_');
-      variables.push({ id: newVariableId(), name: `${slug}_family`, type: 'string', value: f.family });
-      variables.push({ id: newVariableId(), name: `${slug}_size`, type: 'number', value: f.size });
-      variables.push({ id: newVariableId(), name: `${slug}_weight`, type: 'number', value: f.weight });
-      if (f.lineHeight != null) variables.push({ id: newVariableId(), name: `${slug}_line_height`, type: 'string', value: f.lineHeight });
+      variables.push({ id: newVariableId(), name: `${slug}_family`, type: 'string', valuesByMode: { [defaultModeId]: f.family } });
+      variables.push({ id: newVariableId(), name: `${slug}_size`, type: 'number', valuesByMode: { [defaultModeId]: f.size } });
+      variables.push({ id: newVariableId(), name: `${slug}_weight`, type: 'number', valuesByMode: { [defaultModeId]: f.weight } });
+      if (f.lineHeight != null) variables.push({ id: newVariableId(), name: `${slug}_line_height`, type: 'string', valuesByMode: { [defaultModeId]: f.lineHeight } });
     }
     out.push({
       id: newCollectionId(), name: 'Typography',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: [{ id: newGroupId(), name: 'Default', variables }],
     });
   }
   if (shadows.length > 0) {
+    const defaultModeId = newModeId();
     out.push({
       id: newCollectionId(), name: 'Effects',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: [{
         id: newGroupId(), name: 'Default',
-        variables: shadows.map((s) => ({ id: newVariableId(), name: s.name, type: 'string' as const, value: s.value })),
+        variables: shadows.map((s) => ({ id: newVariableId(), name: s.name, type: 'string' as const, valuesByMode: { [defaultModeId]: s.value } })),
       }],
     });
   }
   if (spacings.length > 0) {
+    const defaultModeId = newModeId();
     out.push({
       id: newCollectionId(), name: 'Spacing',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: [{
         id: newGroupId(), name: 'Default',
-        variables: spacings.map((s) => ({ id: newVariableId(), name: s.name, type: 'number' as const, value: s.value })),
+        variables: spacings.map((s) => ({ id: newVariableId(), name: s.name, type: 'number' as const, valuesByMode: { [defaultModeId]: s.value } })),
       }],
     });
   }
   if (radii.length > 0) {
+    const defaultModeId = newModeId();
     out.push({
       id: newCollectionId(), name: 'Radii',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: [{
         id: newGroupId(), name: 'Default',
-        variables: radii.map((r) => ({ id: newVariableId(), name: r.name, type: 'number' as const, value: r.value })),
+        variables: radii.map((r) => ({ id: newVariableId(), name: r.name, type: 'number' as const, valuesByMode: { [defaultModeId]: r.value } })),
       }],
     });
   }
