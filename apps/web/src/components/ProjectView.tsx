@@ -3198,6 +3198,18 @@ export function ProjectView({
   // resulting SSE stream.
   const critiqueTheaterEnabled = useCritiqueTheaterEnabled();
 
+  useEffect(() => {
+    function onKey(ev: KeyboardEvent) {
+      const isMod = ev.metaKey || ev.ctrlKey;
+      if (isMod && ev.shiftKey && ev.key.toLowerCase() === 'd') {
+        ev.preventDefault();
+        navigate({ kind: 'project', projectId: project.id, conversationId: null, fileName: null, ds: 'open' });
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [project.id]);
+
   return (
     <div className="app">
       <CritiqueTheaterMount
@@ -3209,17 +3221,29 @@ export function ProjectView({
         onBack={onBack}
         backLabel={t('project.backToProjects')}
         actions={(
-          <AvatarMenu
-            config={config}
-            agents={agents}
-            daemonLive={daemonLive}
-            onModeChange={onModeChange}
-            onAgentChange={onAgentChange}
-            onAgentModelChange={onAgentModelChange}
-            onOpenSettings={onOpenSettings}
-            onRefreshAgents={onRefreshAgents}
-            onBack={onBack}
-          />
+          <>
+            <button
+              type="button"
+              className="settings-icon-btn"
+              onClick={() => navigate({ kind: 'project', projectId: project.id, conversationId: null, fileName: null, ds: 'open' })}
+              title="Design System"
+              aria-label="Design System"
+              data-testid="project-open-ds"
+            >
+              <Icon name="palette" size={17} />
+            </button>
+            <AvatarMenu
+              config={config}
+              agents={agents}
+              daemonLive={daemonLive}
+              onModeChange={onModeChange}
+              onAgentChange={onAgentChange}
+              onAgentModelChange={onAgentModelChange}
+              onOpenSettings={onOpenSettings}
+              onRefreshAgents={onRefreshAgents}
+              onBack={onBack}
+            />
+          </>
         )}
       >
         <div className="app-project-title">
