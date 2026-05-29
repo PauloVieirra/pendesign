@@ -45,6 +45,7 @@ import {
   type VariableType,
   type VariablesFile,
 } from './design-system-variables.js';
+import { buildSeededVariablesFile } from './design-system-seed.js';
 import { importGitHubDesignSystemProject } from './design-system-github-import.js';
 import { FigmaImportError, importFigmaDesignSystem } from './design-system-figma.js';
 import { getFigmaPat, readMcpConfig, writeMcpConfig } from './mcp-config.js';
@@ -1507,21 +1508,16 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       };
       await fsp.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 
-      // Seed an empty variables.json so the Manager's fetch hits the
-      // already-migrated fast path (no tokens.css to parse). saveVariables
-      // also regenerates tokens.css to keep the two derived artifacts in
-      // lock-step.
-      await saveVariables(outDir, {
-        version: 2,
-        collections: [
-          {
-            id: newCollectionId(),
-            name: 'Default',
-            modes: [{ id: newModeId(), name: 'Default' }],
-            groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
-          },
-        ],
-      });
+      // Seed variables.json. By default the design system is pre-populated
+      // with a Container Size + Grid + Typography starter kit (seed=defaults).
+      // Pass { seed: 'empty' } in the request body to skip seeding.
+      // saveVariables also regenerates tokens.css to keep the two derived
+      // artifacts in lock-step.
+      const seedParam = (req.body as { seed?: 'empty' | 'defaults' } | undefined)?.seed ?? 'defaults';
+      const initial: VariablesFile = seedParam === 'empty'
+        ? { version: 2, collections: [] }
+        : buildSeededVariablesFile();
+      await saveVariables(outDir, initial);
 
       // Attach the new DS to the project.
       const fullDsId = `user:${id}`;

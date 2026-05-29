@@ -88,7 +88,7 @@ export function buildSeededVariablesFile(): VariablesFile {
         name: g.groupName,
         variables: g.variables.map((v) => {
           const valuesByMode: Record<string, string | number | boolean> = {};
-          modes.forEach((mode, i) => { valuesByMode[mode.id] = v.values[i] ?? v.values[v.values.length - 1]; });
+          modes.forEach((mode, i) => { valuesByMode[mode.id] = v.values[i] ?? v.values[v.values.length - 1] as string | number | boolean; });
           return { id: newVariableId(), name: v.name, type: v.type, valuesByMode };
         }),
       })),
