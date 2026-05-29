@@ -9,7 +9,7 @@
 // RLS-checked inserts/selects. The daemon stays the only client-side
 // perimeter that holds the session.
 
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import type { Database } from 'better-sqlite3';
@@ -100,6 +100,14 @@ export function registerCloudProjectsRoutes(app: Express, deps: CloudProjectsRou
   }
   function projectLocalDir(cloudProjectId: string): string {
     return path.join(cloudProjectsDir(), cloudProjectId);
+  }
+  /** Persist the current canonical snapshot zip alongside the working tree.
+   * Phase 3 diffing compares against this. Hidden filename (.od-baseline.zip)
+   * keeps it out of normal file walks. */
+  async function persistBaselineZip(cloudProjectId: string, zipBytes: Uint8Array): Promise<void> {
+    const dir = projectLocalDir(cloudProjectId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, '.od-baseline.zip'), zipBytes);
   }
 
   // -----------------------------------------------------------------------
@@ -212,6 +220,7 @@ export function registerCloudProjectsRoutes(app: Express, deps: CloudProjectsRou
       const destDir = projectLocalDir(project.id);
       await mkdir(destDir, { recursive: true });
       await unzipToDirectory(zipResult.bytes, destDir, { wipeExisting: true });
+      await persistBaselineZip(project.id, zipResult.bytes);
       upsertCloudProject(db, {
         projectId: project.id,
         name: projectName,
@@ -331,6 +340,7 @@ export function registerCloudProjectsRoutes(app: Express, deps: CloudProjectsRou
       const destDir = projectLocalDir(id);
       await mkdir(destDir, { recursive: true });
       await unzipToDirectory(buf, destDir, { wipeExisting: true });
+      await persistBaselineZip(id, buf);
 
       const role: CloudProjectRow['role'] = proj.owner_id === session.userId ? 'owner' : 'editor';
       upsertCloudProject(db, {
@@ -389,6 +399,7 @@ export function registerCloudProjectsRoutes(app: Express, deps: CloudProjectsRou
       const destDir = projectLocalDir(id);
       await mkdir(destDir, { recursive: true });
       await unzipToDirectory(buf, destDir, { wipeExisting: true });
+      await persistBaselineZip(id, buf);
 
       const projObj = proj as ProjectRowFromBackend;
       const role: CloudProjectRow['role'] = projObj.owner_id === session.userId ? 'owner' : 'editor';

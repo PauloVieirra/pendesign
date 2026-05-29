@@ -361,6 +361,7 @@ import { registerActiveContextRoutes } from './active-context-routes.js';
 import { registerCloudAuthRoutes } from './cloud/cloud-auth-routes.js';
 import { registerCloudProjectsRoutes } from './cloud/cloud-projects-routes.js';
 import { registerCloudShareRoutes } from './cloud/cloud-share-routes.js';
+import { registerCloudProposalsRoutes } from './cloud/cloud-proposals-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerXaiRoutes } from './xai-routes.js';
 import { registerLiveArtifactRoutes } from './live-artifact-routes.js';
@@ -4185,6 +4186,11 @@ export async function startServer({
   registerCloudShareRoutes(app, {
     db,
     http: httpDeps,
+  });
+  registerCloudProposalsRoutes(app, {
+    db,
+    http: httpDeps,
+    paths: { RUNTIME_DATA_DIR: pathDeps.RUNTIME_DATA_DIR },
   });
   registerProjectRoutes(app, {
     db,
