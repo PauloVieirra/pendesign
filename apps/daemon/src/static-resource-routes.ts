@@ -25,18 +25,24 @@ import {
 import {
   applyCreateCollection,
   applyCreateGroup,
+  applyCreateMode,
   applyCreateVariable,
   applyDeleteCollection,
   applyDeleteGroup,
+  applyDeleteMode,
   applyDeleteVariable,
+  applyUpdateMode,
   applyUpdateVariable,
+  defaultForType,
   migrateFromTokensCss,
   newCollectionId,
   newGroupId,
+  newModeId,
   readVariables,
   saveVariables,
   VariablesError,
   withDsLock,
+  type VariableType,
   type VariablesFile,
 } from './design-system-variables.js';
 import { importGitHubDesignSystemProject } from './design-system-github-import.js';
@@ -655,8 +661,8 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
         return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found or not editable: ${req.params.id}`);
       }
       const body = req.body as VariablesFile | undefined;
-      if (!body || body.version !== 1 || !Array.isArray(body.collections)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 1, collections: [...] }');
+      if (!body || body.version !== 2 || !Array.isArray(body.collections)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 2, collections: [...] }');
       }
       await withDsLock(resolved.key, () => saveVariables(resolved.dir, body));
       await afterDesignSystemSave(req.params.id, resolved.dir);
@@ -678,7 +684,11 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
 
   function variablesErrorToStatus(err: unknown): { status: number; code: string; message: string } | null {
     if (err instanceof VariablesError) {
-      return { status: err.code === 'NOT_FOUND' ? 404 : 400, code: err.code, message: err.message };
+      const status =
+        err.code === 'NOT_FOUND' ? 404 :
+        err.code === 'CONFLICT' ? 409 :
+        400;
+      return { status, code: err.code, message: err.message };
     }
     return null;
   }
@@ -829,6 +839,79 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     } catch (err) {
       const mapped = variablesErrorToStatus(err);
       if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.post('/api/design-systems/:id/variables/collections/:collectionId/modes', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const body = req.body as { name?: string; width?: number } | undefined;
+      if (!body || typeof body.name !== 'string') {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'body { name: string, width?: number } required');
+      }
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyCreateMode(current, {
+          collectionId: req.params.collectionId,
+          name: body.name as string,
+          ...(typeof body.width === 'number' ? { width: body.width } : {}),
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.put('/api/design-systems/:id/variables/collections/:collectionId/modes/:modeId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const patch = req.body as { name?: string; width?: number | null };
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyUpdateMode(current, {
+          collectionId: req.params.collectionId,
+          modeId: req.params.modeId,
+          patch: patch as any,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.delete('/api/design-systems/:id/variables/collections/:collectionId/modes/:modeId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyDeleteMode(current, {
+          collectionId: req.params.collectionId,
+          modeId: req.params.modeId,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
       sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
     }
   });
@@ -1421,11 +1504,12 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       // also regenerates tokens.css to keep the two derived artifacts in
       // lock-step.
       await saveVariables(outDir, {
-        version: 1,
+        version: 2,
         collections: [
           {
             id: newCollectionId(),
             name: 'Default',
+            modes: [{ id: newModeId(), name: 'Default' }],
             groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
           },
         ],
