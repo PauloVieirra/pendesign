@@ -827,19 +827,18 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     try {
       const resolved = await resolveDsDir(req.params.id);
       if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
-      const { name, type, value } = req.body ?? {};
-      if (typeof name !== 'string' || !name.trim()) return sendApiError(res, 400, 'BAD_REQUEST', 'variable name required');
-      if (!['color', 'number', 'string', 'boolean'].includes(type)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'type must be color | number | string | boolean');
+      const body = req.body as { name?: string; type?: VariableType; value?: string | number | boolean };
+      if (!body || typeof body.name !== 'string' || !body.type) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'body { name: string, type: VariableType, value?: any } required');
       }
       await withDsLock(resolved.key, async () => {
         const current = await loadOrMigrate(resolved.dir, resolved.key);
         const next = applyCreateVariable(current, {
           collectionId: req.params.collectionId,
           groupId: req.params.groupId,
-          name: name.trim(),
-          type,
-          value,
+          name: body.name as string,
+          type: body.type as VariableType,
+          valueByDefault: body.value ?? defaultForType(body.type as VariableType),
         });
         await saveVariables(resolved.dir, next);
       });
