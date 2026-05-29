@@ -72,7 +72,7 @@ importers:
         specifier: 1.9.1
         version: 1.9.1
       '@supabase/supabase-js':
-        specifier: ^2.106.2
+        specifier: 2.106.2
         version: 2.106.2
       better-sqlite3:
         specifier: 12.10.0
