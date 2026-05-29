@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { CSS_ARCHITECTURE_CHARTER } from '../../src/prompts/css-architecture-charter.js';
+import { composeSystemPrompt } from '../../src/prompts/system.js';
 
 test('charter forbids utility-class frameworks by name', () => {
   for (const name of ['Tailwind', 'Bootstrap', 'Tachyons']) {
@@ -41,4 +42,24 @@ test('charter declares the three responsive breakpoints', () => {
   assert.ok(CSS_ARCHITECTURE_CHARTER.includes('412'));
   assert.ok(CSS_ARCHITECTURE_CHARTER.includes('834'));
   assert.ok(CSS_ARCHITECTURE_CHARTER.includes('1440'));
+});
+
+test('composeSystemPrompt includes the CSS Architecture Charter unconditionally', () => {
+  // Minimal input — no design system, no memory, no skills.
+  const prompt = composeSystemPrompt({});
+  assert.ok(
+    prompt.includes('pure CSS only'),
+    'charter should be present even when no design system is attached',
+  );
+  assert.ok(prompt.includes('Tailwind'));
+});
+
+test('composeSystemPrompt still includes charter when a design system is attached', () => {
+  const prompt = composeSystemPrompt({
+    designSystemTitle: 'Vision Test',
+    activeDesignSystemBody: '# DS prose',
+    designSystemTokensCss: ':root { --color-primary: #abc; }',
+  });
+  assert.ok(prompt.includes('pure CSS only'));
+  assert.ok(prompt.includes('--color-primary'));
 });
