@@ -359,6 +359,7 @@ import { LiveArtifactRefreshAbortError } from './live-artifacts/refresh.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { registerActiveContextRoutes } from './active-context-routes.js';
 import { registerCloudAuthRoutes } from './cloud/cloud-auth-routes.js';
+import { registerCloudProjectsRoutes } from './cloud/cloud-projects-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerXaiRoutes } from './xai-routes.js';
 import { registerLiveArtifactRoutes } from './live-artifact-routes.js';
@@ -4171,6 +4172,14 @@ export async function startServer({
   registerCloudAuthRoutes(app, {
     db,
     http: httpDeps,
+  });
+  registerCloudProjectsRoutes(app, {
+    db,
+    http: httpDeps,
+    paths: {
+      PROJECTS_DIR: pathDeps.PROJECTS_DIR,
+      RUNTIME_DATA_DIR: pathDeps.RUNTIME_DATA_DIR,
+    },
   });
   registerProjectRoutes(app, {
     db,

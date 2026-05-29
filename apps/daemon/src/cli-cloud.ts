@@ -36,6 +36,18 @@ export async function runCloud(args: string[]): Promise<void> {
     case 'whoami':
     case 'status':
       return runCloudWhoami(rest, sub === 'status');
+    case 'projects':
+      return runCloudProjectsSubcmd(rest);
+    case 'publish':
+      return runCloudPublish(rest);
+    case 'open':
+      return runCloudOpen(rest);
+    case 'delete':
+      return runCloudDelete(rest);
+    case 'refresh':
+      return runCloudRefresh(rest);
+    case 'versions':
+      return runCloudVersions(rest);
     default:
       console.error(`unknown subcommand: od cloud ${sub}`);
       printCloudHelp();
@@ -46,12 +58,21 @@ export async function runCloud(args: string[]): Promise<void> {
 function printCloudHelp(): void {
   console.log(`Usage: od cloud <subcommand> [options]
 
-Subcommands:
-  login     Sign in to the cloud backend. Prompts for password if --password absent.
-            Flags: --email <e>  --password <p>  --json
-  logout    Clear the local session. Flags: --json
-  whoami    Print the currently signed-in user. Flags: --json
-  status    Print backend configuration status. Flags: --json
+Auth (Phase 0):
+  login          Sign in. Flags: --email <e>  --password <p>  --json
+  logout         Clear local session. Flags: --json
+  whoami         Print current user. Flags: --json
+  status         Print backend configuration + signed-in status. Flags: --json
+
+Projects (Phase 1):
+  projects list                          List my cloud projects. Flags: --json
+  publish <local-project-id>             Publish a local project to cloud.
+                                          Flags: --name <n>  --message <m>  --json
+  open <cloud-project-id>                Download + extract to .od/cloud-projects/.
+                                          Flags: --json
+  refresh <cloud-project-id>             Pull latest if local is behind. Flags: --json
+  versions <cloud-project-id>            List version history. Flags: --json
+  delete <cloud-project-id>              Owner-only delete. Flags: --json
 
 Common flags:
   --daemon-url <url>   Override the local daemon URL.
@@ -262,5 +283,187 @@ async function safeJson(resp: Response): Promise<any> {
     return JSON.parse(text);
   } catch {
     return {};
+  }
+}
+
+// =============================================================================
+// Phase 1 — Project lifecycle CLI subcommands.
+// =============================================================================
+
+async function runCloudProjectsSubcmd(args: string[]): Promise<void> {
+  const sub = args.find((a) => !a.startsWith('-')) || 'list';
+  const idx = args.indexOf(sub);
+  const rest = sub === 'list' ? args : [...args.slice(0, idx), ...args.slice(idx + 1)];
+  if (sub !== 'list') {
+    console.error(`unknown subcommand: od cloud projects ${sub}`);
+    process.exit(1);
+  }
+  return runCloudProjectsList(rest);
+}
+
+async function runCloudProjectsList(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects`);
+  const body = await safeJson(resp);
+  if (!resp.ok) {
+    handleErrorOutput(flags.json, resp.status, body, 'list_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify(body));
+    return;
+  }
+  const projects = body.projects ?? [];
+  if (projects.length === 0) {
+    console.log('(no cloud projects)');
+    return;
+  }
+  for (const p of projects) {
+    console.log(`${p.id}  v${p.current_version}  ${p.name} (${p.role})`);
+  }
+}
+
+async function runCloudPublish(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const localId = args.find((a) => !a.startsWith('-'));
+  if (!localId) {
+    console.error('usage: od cloud publish <local-project-id> [--name <n>] [--message <m>]');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      local_project_id: localId,
+      name: (flags as any).name,
+      message: (flags as any).message,
+    }),
+  });
+  const body = await safeJson(resp);
+  if (!resp.ok) {
+    handleErrorOutput(flags.json, resp.status, body, 'publish_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify(body));
+  } else {
+    console.log(`published ${body.project.id} (${body.project.name}) v${body.project.current_version}`);
+  }
+}
+
+async function runCloudOpen(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const id = args.find((a) => !a.startsWith('-'));
+  if (!id) {
+    console.error('usage: od cloud open <cloud-project-id>');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects/${encodeURIComponent(id)}/open`, {
+    method: 'POST',
+  });
+  const body = await safeJson(resp);
+  if (!resp.ok) {
+    handleErrorOutput(flags.json, resp.status, body, 'open_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify(body));
+  } else {
+    console.log(`opened v${body.base_version} → ${body.local_path}`);
+  }
+}
+
+async function runCloudDelete(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const id = args.find((a) => !a.startsWith('-'));
+  if (!id) {
+    console.error('usage: od cloud delete <cloud-project-id>');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!resp.ok) {
+    const body = await safeJson(resp);
+    handleErrorOutput(flags.json, resp.status, body, 'delete_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify({ ok: true }));
+  } else {
+    console.log(`deleted ${id}`);
+  }
+}
+
+async function runCloudRefresh(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const id = args.find((a) => !a.startsWith('-'));
+  if (!id) {
+    console.error('usage: od cloud refresh <cloud-project-id>');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects/${encodeURIComponent(id)}/refresh`, {
+    method: 'POST',
+  });
+  const body = await safeJson(resp);
+  if (!resp.ok) {
+    handleErrorOutput(flags.json, resp.status, body, 'refresh_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify(body));
+  } else {
+    console.log(`current_version=${body.current_version} downloaded=${body.downloaded}`);
+  }
+}
+
+async function runCloudVersions(args: string[]): Promise<void> {
+  const flags = parseCloudFlags(args);
+  if (flags.help) { printCloudHelp(); return; }
+  const id = args.find((a) => !a.startsWith('-'));
+  if (!id) {
+    console.error('usage: od cloud versions <cloud-project-id>');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonBaseUrl(flags);
+  const resp = await fetch(`${daemonUrl}/api/cloud/projects/${encodeURIComponent(id)}/versions`);
+  const body = await safeJson(resp);
+  if (!resp.ok) {
+    handleErrorOutput(flags.json, resp.status, body, 'versions_failed');
+    return;
+  }
+  if (flags.json) {
+    console.log(JSON.stringify(body));
+    return;
+  }
+  const versions = body.versions ?? [];
+  if (versions.length === 0) {
+    console.log('(no versions)');
+    return;
+  }
+  for (const v of versions) {
+    console.log(`v${v.version_num}  ${v.size_bytes}b  ${v.message ?? ''}  (${v.created_at})`);
+  }
+}
+
+function handleErrorOutput(json: boolean | undefined, status: number, body: any, fallback: string): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, status, ...body }));
+  } else {
+    console.error(`${fallback} (${status}): ${body.error ?? 'unknown'}`);
+    if (body.details) console.error(`  ${body.details}`);
+  }
+  if (status !== 401 && status !== 503 && status !== 404) {
+    process.exit(1);
   }
 }
