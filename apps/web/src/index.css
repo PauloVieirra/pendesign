@@ -27382,3 +27382,131 @@ body.desktop-pet-shell .pet-task-item {
 .manual-edit-delete:hover {
   background: #fef2f2;
 }
+
+/* ============================================================================
+   Cloud auth card (Phase 0). Minimal sign-in / sign-up UI; mount anywhere
+   cloud features need gating behind authentication.
+   ============================================================================ */
+.cloud-auth-card {
+  max-width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text);
+}
+.cloud-auth-card-loading,
+.cloud-auth-card-disabled {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.cloud-auth-card-disabled code {
+  background: var(--bg-subtle);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.cloud-auth-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.cloud-auth-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cloud-auth-card-tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cloud-auth-card-tabs button {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+.cloud-auth-card-tabs button.active {
+  background: var(--accent, #c96442);
+  color: #fff;
+}
+.cloud-auth-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cloud-auth-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.cloud-auth-card-field > span {
+  color: var(--text-muted);
+}
+.cloud-auth-card-field input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.cloud-auth-card-field input:focus {
+  outline: none;
+  border-color: var(--accent, #c96442);
+}
+.cloud-auth-card-helptext {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: normal;
+}
+.cloud-auth-card-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.cloud-auth-card-btn {
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cloud-auth-card-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cloud-auth-card-btn-primary {
+  background: var(--accent, #c96442);
+  color: #fff;
+}
+.cloud-auth-card-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.cloud-auth-card-btn-secondary {
+  background: var(--bg-subtle);
+  border-color: var(--border);
+  color: var(--text);
+}
+.cloud-auth-card-line {
+  font-size: 13px;
+  margin: 0;
+}
+.cloud-auth-card-email {
+  color: var(--text-muted);
+}
