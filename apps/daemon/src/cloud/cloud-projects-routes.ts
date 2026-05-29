@@ -178,12 +178,16 @@ export function registerCloudProjectsRoutes(app: Express, deps: CloudProjectsRou
       const { client, session } = await getAuthedSupabase(ready.config, ready.cloudClient, db);
 
       const projectName = customName || localId;
+      console.error('[cloud-publish] inserting as user', session.userId, 'token len', session.accessToken?.length);
       const { data: created, error: insertErr } = await client
         .from('projects')
         .insert({ owner_id: session.userId, name: projectName })
         .select('id, name, current_version, created_at, updated_at')
         .single();
-      if (insertErr) throw new CloudError('unknown', insertErr.message);
+      if (insertErr) {
+        console.error('[cloud-publish] insert project failed:', insertErr);
+        throw new CloudError('unknown', insertErr.message || JSON.stringify(insertErr));
+      }
       const project = created as { id: string; name: string; current_version: number };
 
       // Upload v1.zip
@@ -445,5 +449,6 @@ function respondError(res: Response, err: unknown): void {
     return;
   }
   const message = err instanceof Error ? err.message : 'unknown error';
+  console.error('[cloud-projects] error:', err);
   res.status(500).json({ error: 'unknown', details: message });
 }
