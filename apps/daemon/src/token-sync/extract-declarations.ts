@@ -135,7 +135,8 @@ export function extractFromDeclarations(
     const lower = value.toLowerCase();
     if (SKIP_VALUES.has(lower)) continue;
 
-    if (COLOR_PROPS.has(prop)) {
+    // CSS custom properties (--*) with color-like values are also extracted.
+    if (prop.startsWith('--') || COLOR_PROPS.has(prop)) {
       // First try the whole value (handles rgb(...), hsl(...), named colors, hex).
       // Then try splitting by whitespace for shorthands like "background: #fff url(...)".
       const hexWhole = extractColorFromValueToken(value);
