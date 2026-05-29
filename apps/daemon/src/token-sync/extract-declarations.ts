@@ -78,13 +78,14 @@ function extractColorFromValueToken(token: string): string | null {
   const t = token.trim();
   if (!t) return null;
   if (t.startsWith('#')) return canonicalizeHex(t);
-  if (t.toLowerCase() in NAMED_COLORS) return NAMED_COLORS[t.toLowerCase()];
+  const named = NAMED_COLORS[t.toLowerCase()];
+  if (named) return named;
   const rgbMatch = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i.exec(t);
-  if (rgbMatch) {
+  if (rgbMatch && rgbMatch[1] && rgbMatch[2] && rgbMatch[3]) {
     return rgbToHex(+rgbMatch[1], +rgbMatch[2], +rgbMatch[3], rgbMatch[4] != null ? +rgbMatch[4] : undefined);
   }
   const hslMatch = /^hsla?\(\s*([\d.]+)(?:deg)?\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?(?:\s*,\s*([\d.]+))?\s*\)$/i.exec(t);
-  if (hslMatch) {
+  if (hslMatch && hslMatch[1] && hslMatch[2] && hslMatch[3]) {
     return hslToHex(+hslMatch[1], +hslMatch[2], +hslMatch[3], hslMatch[4] != null ? +hslMatch[4] : undefined);
   }
   return null;
@@ -92,12 +93,12 @@ function extractColorFromValueToken(token: string): string | null {
 
 function extractPxNumber(token: string): number | null {
   const px = /^(-?\d+(?:\.\d+)?)px$/i.exec(token.trim());
-  if (px) {
+  if (px && px[1]) {
     const n = parseFloat(px[1]);
     if (Number.isFinite(n) && n > 0) return Math.round(n);
   }
   const rem = /^(-?\d+(?:\.\d+)?)rem$/i.exec(token.trim());
-  if (rem) {
+  if (rem && rem[1]) {
     const n = parseFloat(rem[1]) * 16;
     if (Number.isFinite(n) && n > 0) return Math.round(n);
   }
