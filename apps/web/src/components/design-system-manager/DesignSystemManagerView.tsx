@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createCollection,
   createGroup,
+  createMode,
   createVariable,
   deleteCollection,
   deleteGroup,
+  deleteMode,
   deleteVariable,
   fetchVariables,
+  updateMode,
   updateVariable,
   type Variable,
   type VariableType,
@@ -14,6 +17,7 @@ import {
 } from '../../providers/design-system-variables';
 import { CollectionsSidebar } from './CollectionsSidebar';
 import { VariablesTable } from './VariablesTable';
+import { SearchAndFilter } from './SearchAndFilter';
 import { Icon } from '../Icon';
 
 interface Props {
@@ -37,9 +41,9 @@ function isDsLocked(error: string | null): boolean {
 }
 
 export function DesignSystemManagerView({
-  projectId,
+  projectId: _projectId,
   designSystemId,
-  projectName,
+  projectName: _projectName,
   onAttachDsRequested,
   onCreateEmpty,
   sidebarCollapsed,
@@ -52,10 +56,14 @@ export function DesignSystemManagerView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
-  // New state for Phase 8 (placeholders for now)
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<Set<VariableType>>(new Set());
   const [activeGroupId, setActiveGroupId] = useState<string | 'all'>('all');
+
+  // Reset activeGroupId when the active collection changes
+  useEffect(() => {
+    setActiveGroupId('all');
+  }, [activeCollectionId]);
 
   // Load variables when DS id changes
   useEffect(() => {
@@ -104,10 +112,10 @@ export function DesignSystemManagerView({
     setVariables(result.variables);
   }, [designSystemId]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleUpdateVariable = useCallback(
-    (variableId: string, patch: Partial<Pick<Variable, 'name' | 'type'>>) => {
-      if (!designSystemId || !variables) return;
+  // Handler: per-mode value update — optimistic + POST patch
+  const handleUpdateValueForMode = useCallback(
+    (variableId: string, modeId: string, value: string | number | boolean) => {
+      if (!designSystemId) return;
       setVariables((prev) => {
         if (!prev) return prev;
         return {
@@ -117,20 +125,90 @@ export function DesignSystemManagerView({
             groups: c.groups.map((g) => ({
               ...g,
               variables: g.variables.map((v) =>
-                v.id === variableId ? { ...v, ...patch } as Variable : v,
+                v.id === variableId ? { ...v, valuesByMode: { ...v.valuesByMode, [modeId]: value } } : v,
               ),
             })),
           })),
         };
       });
-      void updateVariable(designSystemId, variableId, patch).then((result) => {
-        if ('error' in result) {
-          setLoadError(result.error.message);
-          void refetch();
-        }
+      void updateVariable(designSystemId, variableId, { valuesByMode: { [modeId]: value } }).then((r) => {
+        if ('error' in r) { setLoadError(r.error.message); void refetch(); }
       });
     },
-    [designSystemId, variables, refetch],
+    [designSystemId, refetch],
+  );
+
+  // Handler: rename variable — optimistic + POST patch
+  const handleRenameVariable = useCallback(
+    (variableId: string, name: string) => {
+      if (!designSystemId) return;
+      setVariables((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          collections: prev.collections.map((c) => ({
+            ...c,
+            groups: c.groups.map((g) => ({
+              ...g,
+              variables: g.variables.map((v) =>
+                v.id === variableId ? { ...v, name } as Variable : v,
+              ),
+            })),
+          })),
+        };
+      });
+      void updateVariable(designSystemId, variableId, { name }).then((r) => {
+        if ('error' in r) { setLoadError(r.error.message); void refetch(); }
+      });
+    },
+    [designSystemId, refetch],
+  );
+
+  // Handler: create variable
+  const handleCreateVariable = useCallback(
+    async (groupId: string, body: { name: string; type: VariableType }) => {
+      if (!designSystemId || !activeCollection) return;
+      await createVariable(designSystemId, activeCollection.id, groupId, body);
+      await refetch();
+    },
+    [designSystemId, activeCollection, refetch],
+  );
+
+  // Mode handlers
+  const handleCreateMode = useCallback(
+    async (body: { name: string; width?: number }) => {
+      if (!designSystemId || !activeCollection) return;
+      await createMode(designSystemId, activeCollection.id, body);
+      await refetch();
+    },
+    [designSystemId, activeCollection, refetch],
+  );
+
+  const handleRenameMode = useCallback(
+    async (modeId: string, name: string) => {
+      if (!designSystemId || !activeCollection) return;
+      await updateMode(designSystemId, activeCollection.id, modeId, { name });
+      await refetch();
+    },
+    [designSystemId, activeCollection, refetch],
+  );
+
+  const handleSetModeWidth = useCallback(
+    async (modeId: string, width: number | null) => {
+      if (!designSystemId || !activeCollection) return;
+      await updateMode(designSystemId, activeCollection.id, modeId, { width });
+      await refetch();
+    },
+    [designSystemId, activeCollection, refetch],
+  );
+
+  const handleDeleteMode = useCallback(
+    async (modeId: string) => {
+      if (!designSystemId || !activeCollection) return;
+      await deleteMode(designSystemId, activeCollection.id, modeId);
+      await refetch();
+    },
+    [designSystemId, activeCollection, refetch],
   );
 
   // Treat a missing or locked DS as "no DS attached" — show the empty
@@ -148,8 +226,12 @@ export function DesignSystemManagerView({
             <Icon name="sidebar" size={14} />
           </button>
         </div>
-        {/* SearchAndFilter placeholder — Phase 8 replaces this */}
-        <div className="ds-modal__placeholder-search" />
+        <SearchAndFilter
+          query={query}
+          onQueryChange={setQuery}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
+        />
         <div className="ds-modal__actions">
           <button type="button" className="ds-modal__icon-btn" onClick={onToggleMaximize} aria-label={maximized ? 'Restore' : 'Maximize'}>
             <Icon name={maximized ? 'minimize' : 'maximize'} size={14} />
@@ -192,23 +274,20 @@ export function DesignSystemManagerView({
           {!showBanner && designSystemId && variables && activeCollection ? (
             <VariablesTable
               collection={activeCollection}
-              onUpdateVariable={handleUpdateVariable as any} // TODO: Phase 8 widens to valuesByMode
+              activeGroupId={activeGroupId}
+              query={query}
+              typeFilter={typeFilter}
+              onUpdateVariableValueForMode={handleUpdateValueForMode}
+              onRenameVariable={handleRenameVariable}
               onDeleteVariable={async (variableId) => {
                 await deleteVariable(designSystemId, variableId);
                 await refetch();
               }}
-              onCreateVariable={async (groupId, body) => {
-                await createVariable(designSystemId, activeCollection.id, groupId, body as any); // TODO: Phase 8
-                await refetch();
-              }}
-              onCreateGroup={async (name) => {
-                await createGroup(designSystemId, activeCollection.id, name);
-                await refetch();
-              }}
-              onDeleteGroup={async (groupId) => {
-                await deleteGroup(designSystemId, activeCollection.id, groupId);
-                await refetch();
-              }}
+              onCreateVariable={handleCreateVariable}
+              onCreateMode={handleCreateMode}
+              onRenameMode={handleRenameMode}
+              onSetModeWidth={handleSetModeWidth}
+              onDeleteMode={handleDeleteMode}
             />
           ) : (
             <DesignSystemEmptyBanner
