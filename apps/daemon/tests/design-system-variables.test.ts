@@ -294,3 +294,17 @@ test('migrateV1ToV2 is idempotent on v2 file', () => {
   const out = migrateV1ToV2(v2);
   assert.deepEqual(out, v2);
 });
+
+test('readVariables auto-migrates v1 files to v2', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-mig-'));
+  const v1 = {
+    version: 1,
+    collections: [{ id: 'c1', name: 'X', groups: [{ id: 'g1', name: 'g', variables: [
+      { id: 'v1', name: 'a', type: 'color', value: '#000' },
+    ]}]}],
+  };
+  await writeFile(path.join(dir, VARIABLES_FILE_NAME), JSON.stringify(v1), 'utf8');
+  const out = await readVariables(dir);
+  assert.equal(out?.version, 2);
+  assert.equal(out?.collections[0].modes.length, 1);
+});

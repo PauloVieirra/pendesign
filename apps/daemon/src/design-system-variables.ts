@@ -74,7 +74,10 @@ export async function readVariables(dsDir: string): Promise<VariablesFile | null
     const raw = await readFile(path.join(dsDir, VARIABLES_FILE_NAME), 'utf8');
     const parsed = JSON.parse(raw);
     if (parsed?.version === 2) return parsed as VariablesFile;
-    return null;
+    const upgraded = migrateV1ToV2(parsed);
+    // Best-effort write back; if it fails (e.g. read-only fixture), still return upgraded.
+    try { await writeVariables(dsDir, upgraded); } catch { /* ignore */ }
+    return upgraded;
   } catch (err: any) {
     if (err?.code === 'ENOENT') return null;
     throw err;
