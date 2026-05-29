@@ -37,3 +37,5 @@ export { registerCloudProjectsRoutes } from './cloud-projects-routes.js';
 export type { CloudProjectsRouteDeps } from './cloud-projects-routes.js';
 export { getAuthedSupabase } from './cloud-supabase.js';
 export type { AuthenticatedSupabase } from './cloud-supabase.js';
+export { registerCloudShareRoutes } from './cloud-share-routes.js';
+export type { CloudShareRouteDeps } from './cloud-share-routes.js';
