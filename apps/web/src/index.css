@@ -26603,36 +26603,70 @@ body.desktop-pet-shell .pet-task-item {
 .ds-var-picker__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
 .ds-var-picker__empty { padding: 12px; color: var(--text-muted, #6a6a6a); font-size: 12px; }
 
-/* ---- DS Manager top bar (close + title) ------------------------- */
-.ds-mgr-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* ============================================================================
+   Design System Variables Modal
+   ============================================================================ */
+.ds-modal__backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  animation: ds-modal-backdrop-in 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.ds-mgr-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
+@keyframes ds-modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ds-modal {
+  width: min(1120px, calc(100vw - 64px));
+  height: min(680px, calc(100vh - 96px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: ds-modal-pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.ds-mgr-topbar__title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+@keyframes ds-modal-pop-in {
+  from { transform: scale(0.96); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
 }
-.ds-mgr-topbar__close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--border, #d4d4d4);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--surface, #fff);
-  color: var(--text, inherit);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+.ds-modal.is-max {
+  width: calc(100vw - 16px);
+  height: calc(100vh - 16px);
 }
-.ds-mgr-topbar__close:hover { background: var(--bg-subtle, #f7f7f7); }
+
+.ds-modal-body { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ds-modal__header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  height: 48px;
+}
+.ds-modal__title { display: inline-flex; align-items: center; gap: 6px; }
+.ds-modal__title h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.ds-modal__icon-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: transparent; border: 0; color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ds-modal__icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.ds-modal__actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.ds-modal__placeholder-search { flex: 1; }
+
+.ds-modal__body {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  flex: 1; min-height: 0;
+}
+.ds-modal__body.is-sidebar-collapsed { grid-template-columns: 0 1fr; }
+.ds-modal__main { overflow: auto; min-width: 0; }
+
+@media (max-width: 768px) {
+  .ds-modal__backdrop { background: transparent; }
+  .ds-modal {
+    width: 100vw; height: 100vh; border-radius: 0; border: 0;
+  }
+  .ds-modal__body { grid-template-columns: 1fr; }
+}
 
 /* ---- In-pane empty banner --------------------------------------- */
 .ds-mgr-empty-banner {
