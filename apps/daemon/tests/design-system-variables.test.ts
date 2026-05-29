@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'vitest';
@@ -7,24 +7,28 @@ import {
   readVariables,
   writeVariables,
   type VariablesFile,
+  migrateV1ToV2,
+  VARIABLES_FILE_NAME,
 } from '../src/design-system-variables.js';
 import { newVariableId, newCollectionId, newGroupId } from '../src/design-system-variables.js';
 
 test('readVariables returns parsed JSON, writeVariables roundtrips it', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-'));
+  const modeId = 'm_default';
   const file: VariablesFile = {
-    version: 1,
+    version: 2,
     collections: [
       {
         id: 'c_1',
         name: 'Cores',
+        modes: [{ id: modeId, name: 'Default' }],
         groups: [
           {
             id: 'g_1',
             name: 'Orange',
             variables: [
-              { id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' },
-              { id: 'v_2', name: '200', type: 'color', value: '#FAD8CD' },
+              { id: 'v_1', name: '100', type: 'color', valuesByMode: { [modeId]: '#FDEEE9' } },
+              { id: 'v_2', name: '200', type: 'color', valuesByMode: { [modeId]: '#FAD8CD' } },
             ],
           },
         ],
@@ -254,4 +258,39 @@ test('applyUpdateVariable changes value by id', () => {
 test('applyDeleteVariable removes by id', () => {
   const next = applyDeleteVariable(makeFile(), { variableId: 'v_1' });
   assert.equal(next.collections[0]!.groups[0]!.variables.length, 0);
+});
+
+test('migrateV1ToV2 converts v1 file to v2 with single Default mode', () => {
+  const v1: any = {
+    version: 1,
+    collections: [{
+      id: 'c_1',
+      name: 'Cores',
+      groups: [{
+        id: 'g_1',
+        name: 'Orange',
+        variables: [{ id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' }],
+      }],
+    }],
+  };
+  const v2 = migrateV1ToV2(v1);
+  assert.equal(v2.version, 2);
+  assert.equal(v2.collections[0].modes.length, 1);
+  assert.equal(v2.collections[0].modes[0].name, 'Default');
+  const modeId = v2.collections[0].modes[0].id;
+  const variable = v2.collections[0].groups[0].variables[0];
+  assert.deepEqual(variable.valuesByMode, { [modeId]: '#FDEEE9' });
+  assert.equal((variable as any).value, undefined);
+});
+
+test('migrateV1ToV2 is idempotent on v2 file', () => {
+  const v2: any = {
+    version: 2,
+    collections: [{
+      id: 'c_1', name: 'X', modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{ id: 'g_1', name: 'A', variables: [{ id: 'v_1', name: 'a', type: 'color', valuesByMode: { m_1: '#fff' } }] }],
+    }],
+  };
+  const out = migrateV1ToV2(v2);
+  assert.deepEqual(out, v2);
 });

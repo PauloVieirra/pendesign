@@ -4,11 +4,17 @@ import { randomBytes } from 'node:crypto';
 
 export type VariableType = 'color' | 'number' | 'string' | 'boolean';
 
+export interface Mode {
+  id: string;
+  name: string;
+  width?: number;
+}
+
 export interface Variable {
   id: string;
   name: string;
   type: VariableType;
-  value: string | number | boolean;
+  valuesByMode: Record<string, string | number | boolean>;
 }
 
 export interface VariableGroup {
@@ -20,21 +26,54 @@ export interface VariableGroup {
 export interface VariableCollection {
   id: string;
   name: string;
+  modes: Mode[];
   groups: VariableGroup[];
 }
 
 export interface VariablesFile {
-  version: 1;
+  version: 2;
   collections: VariableCollection[];
 }
 
 export const VARIABLES_FILE_NAME = 'variables.json';
 
+export function newModeId(): string {
+  return `m_${shortToken()}`;
+}
+
+export function migrateV1ToV2(input: any): VariablesFile {
+  if (!input || typeof input !== 'object') {
+    return { version: 2, collections: [] };
+  }
+  if (input.version === 2) return input as VariablesFile;
+  const collections = Array.isArray(input.collections) ? input.collections : [];
+  const migratedCollections: VariableCollection[] = collections.map((c: any) => {
+    const defaultMode: Mode = { id: newModeId(), name: 'Default' };
+    const groups = Array.isArray(c.groups) ? c.groups : [];
+    return {
+      id: String(c.id),
+      name: String(c.name),
+      modes: [defaultMode],
+      groups: groups.map((g: any) => ({
+        id: String(g.id),
+        name: String(g.name),
+        variables: (Array.isArray(g.variables) ? g.variables : []).map((v: any) => ({
+          id: String(v.id),
+          name: String(v.name),
+          type: v.type as VariableType,
+          valuesByMode: { [defaultMode.id]: v.value },
+        })),
+      })),
+    };
+  });
+  return { version: 2, collections: migratedCollections };
+}
+
 export async function readVariables(dsDir: string): Promise<VariablesFile | null> {
   try {
     const raw = await readFile(path.join(dsDir, VARIABLES_FILE_NAME), 'utf8');
-    const parsed = JSON.parse(raw) as VariablesFile;
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.collections)) return parsed;
+    const parsed = JSON.parse(raw);
+    if (parsed?.version === 2) return parsed as VariablesFile;
     return null;
   } catch (err: any) {
     if (err?.code === 'ENOENT') return null;
