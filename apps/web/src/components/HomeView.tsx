@@ -50,7 +50,6 @@ import { PluginsHomeSection } from './PluginsHomeSection';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import type { PluginUseAction } from './plugins-home/useActions';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
-import { WelcomeBanner } from './WelcomeBanner';
 
 interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -931,7 +930,6 @@ export function HomeView({
 
   return (
     <div className="home-view" data-testid="home-view">
-      <WelcomeBanner />
       <HomeHero
         ref={inputRef}
         prompt={prompt}

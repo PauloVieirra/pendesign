@@ -27609,23 +27609,30 @@ body.desktop-pet-shell .pet-task-item {
 }
 
 /* ============================================================================
-   WelcomeBanner — greeting + avatar at the top of HomeView.
+   WelcomeBanner (chip) — greeting pill aligned with `.inline-switcher__chip`
+   on the entry topbar. Pushes itself to the left via margin-right: auto so
+   the existing right-aligned chips/cog stay in place.
    ============================================================================ */
-.welcome-banner {
-  display: flex;
+.welcome-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  margin-bottom: 18px;
-  background: var(--bg-panel);
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 4px;
+  margin-right: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  max-width: 100%;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: var(--shadow-xs);
+  max-width: 280px;
 }
-.welcome-banner__avatar {
+.welcome-chip__avatar {
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
@@ -27634,31 +27641,31 @@ body.desktop-pet-shell .pet-task-item {
   background: linear-gradient(135deg, var(--accent, #c96442), color-mix(in oklab, var(--accent, #c96442) 60%, #fff));
   color: #fff;
 }
-.welcome-banner__avatar img {
+.welcome-chip__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.welcome-banner__avatar-placeholder {
-  font-size: 18px;
+.welcome-chip__avatar-placeholder {
+  font-size: 12px;
   font-weight: 600;
   user-select: none;
 }
-.welcome-banner__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.welcome-chip__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.welcome-banner__hello {
-  font-size: 12px;
+.welcome-chip__hello {
   color: var(--text-muted);
 }
-.welcome-banner__name {
-  font-size: 15px;
+.welcome-chip__name {
   font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
+  color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;
 }

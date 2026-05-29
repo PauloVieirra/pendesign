@@ -407,7 +407,7 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
         data-testid="workspace-brand"
       >
         <img
-          src="/app-icon.svg"
+          src="/vision-logo.svg"
           alt=""
           className="workspace-tabs-brand__img"
           draggable={false}

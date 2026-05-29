@@ -1,10 +1,6 @@
-// Small greeting banner shown at the top of the home screen.
-//
-// Pulls the current user from the daemon's /api/cloud/auth/me. Falls back to
-// a generic greeting when the user isn't signed in (e.g. cloud not configured
-// → app is in local-only mode). Reuses the avatar field from the profile
-// table, which is empty for now but future-proofed for Google OAuth / manual
-// upload via Phase 5+.
+// Compact greeting chip rendered in the entry topbar, aligned with the
+// "Local CLI" pill on the right. Pulls the current user from the daemon's
+// /api/cloud/auth/me; renders nothing when the user isn't signed in.
 
 import { useEffect, useState } from 'react';
 import { fetchCloudMe, type CloudUser } from '../providers/cloud';
@@ -62,18 +58,18 @@ export function WelcomeBanner({ user: userOverride }: WelcomeBannerProps = {}) {
   const avatarUrl = (user as CloudUser & { avatar_url?: string | null }).avatar_url ?? null;
 
   return (
-    <div className="welcome-banner" data-testid="welcome-banner">
-      <div className="welcome-banner__avatar" aria-hidden>
+    <div className="welcome-chip" data-testid="welcome-banner">
+      <span className="welcome-chip__avatar" aria-hidden>
         {avatarUrl ? (
           <img src={avatarUrl} alt="" />
         ) : (
-          <span className="welcome-banner__avatar-placeholder">{initial}</span>
+          <span className="welcome-chip__avatar-placeholder">{initial}</span>
         )}
-      </div>
-      <div className="welcome-banner__text">
-        <span className="welcome-banner__hello">Olá,</span>
-        <span className="welcome-banner__name">{greeting}</span>
-      </div>
+      </span>
+      <span className="welcome-chip__text">
+        <span className="welcome-chip__hello">Olá,</span>
+        <span className="welcome-chip__name">{greeting}</span>
+      </span>
     </div>
   );
 }

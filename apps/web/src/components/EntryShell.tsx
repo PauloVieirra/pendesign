@@ -52,6 +52,7 @@ import { Icon } from './Icon';
 import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { NewProjectModal } from './NewProjectModal';
+import { WelcomeBanner } from './WelcomeBanner';
 import { PluginsView } from './PluginsView';
 import type { CreateInput, CreateTab, FigmaCreateInput } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
@@ -505,6 +506,7 @@ export function EntryShell({
         />
         <main className="entry-main entry-main--scroll">
           <div className="entry-main__topbar">
+            <WelcomeBanner />
             <div className="entry-main__topbar-chips">
               <InlineModelSwitcher
                 config={config}
