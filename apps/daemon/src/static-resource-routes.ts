@@ -698,9 +698,18 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     try {
       const resolved = await resolveDsDir(req.params.id);
       if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
-      const patch = req.body as Partial<{ name: string; type: string; value: unknown }>;
+      const patch = req.body as Partial<{
+        name: string;
+        type: VariableType;
+        value: string | number | boolean;
+        valuesByMode: Record<string, string | number | boolean>;
+      }>;
       if (!patch || typeof patch !== 'object') {
         return sendApiError(res, 400, 'BAD_REQUEST', 'patch body required');
+      }
+      const hasField = ('name' in patch) || ('type' in patch) || ('value' in patch) || ('valuesByMode' in patch);
+      if (!hasField) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'patch must include at least one of: name, type, value, valuesByMode');
       }
       await withDsLock(resolved.key, async () => {
         const current = await loadOrMigrate(resolved.dir, resolved.key);
