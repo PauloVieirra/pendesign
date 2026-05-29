@@ -358,6 +358,7 @@ import { LiveArtifactRefreshUnavailableError, refreshLiveArtifact } from './live
 import { LiveArtifactRefreshAbortError } from './live-artifacts/refresh.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { registerActiveContextRoutes } from './active-context-routes.js';
+import { registerCloudAuthRoutes } from './cloud/cloud-auth-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerXaiRoutes } from './xai-routes.js';
 import { registerLiveArtifactRoutes } from './live-artifact-routes.js';
@@ -4164,6 +4165,12 @@ export async function startServer({
     db,
     http: httpDeps,
     projectStore: projectStoreDeps,
+  });
+  // Cloud collaboration (Supabase-backed). Gated by OD_CLOUD_URL — when unset,
+  // /api/cloud/auth/status returns { configured: false } and the rest 503.
+  registerCloudAuthRoutes(app, {
+    db,
+    http: httpDeps,
   });
   registerProjectRoutes(app, {
     db,
