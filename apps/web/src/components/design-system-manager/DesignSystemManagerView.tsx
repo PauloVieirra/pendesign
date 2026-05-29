@@ -163,17 +163,30 @@ export function DesignSystemManagerView({
         <CollectionsSidebar
           collections={dsMissingOrLocked ? [] : variables?.collections ?? []}
           activeCollectionId={activeCollectionId}
-          onSelect={setActiveCollectionId}
-          onCreate={async (name) => {
+          activeGroupId={activeGroupId}
+          onSelectCollection={setActiveCollectionId}
+          onSelectGroup={setActiveGroupId}
+          onCreateCollection={async (name) => {
             if (!designSystemId || dsMissingOrLocked) return;
             await createCollection(designSystemId, name);
             await refetch();
           }}
-          onDelete={async (collectionId) => {
+          onDeleteCollection={async (collectionId) => {
             if (!designSystemId || dsMissingOrLocked) return;
             await deleteCollection(designSystemId, collectionId);
             await refetch();
           }}
+          onCreateGroup={async (name) => {
+            if (!designSystemId || dsMissingOrLocked || !activeCollectionId) return;
+            await createGroup(designSystemId, activeCollectionId, name);
+            await refetch();
+          }}
+          onDeleteGroup={async (groupId) => {
+            if (!designSystemId || dsMissingOrLocked || !activeCollectionId) return;
+            await deleteGroup(designSystemId, activeCollectionId, groupId);
+            await refetch();
+          }}
+          collapsed={sidebarCollapsed}
         />
         <main className="ds-modal__main">
           {!showBanner && designSystemId && variables && activeCollection ? (
