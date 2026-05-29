@@ -3,6 +3,12 @@ import { bootstrapSidecarRuntime } from "@open-design/sidecar";
 import { readProcessStamp } from "@open-design/platform";
 
 import { startDaemonSidecar } from "./server.js";
+import { loadDotenvFromProjectRoot } from "../cloud/cloud-env-loader.js";
+
+// Auto-load .env.local (and .env) from the working directory before anything
+// else so OD_CLOUD_URL / OD_CLOUD_ANON_KEY are present when the cloud module
+// reads process.env. No-op when the file is absent. Shell-supplied env wins.
+loadDotenvFromProjectRoot(process.cwd());
 
 async function main(): Promise<void> {
   const stamp = readProcessStamp(process.argv.slice(2), OPEN_DESIGN_SIDECAR_CONTRACT);

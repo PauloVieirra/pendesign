@@ -87,6 +87,15 @@ export async function startDaemonRuntime(options: DaemonRuntimeOptions = {}): Pr
 }
 
 export async function runDaemonCliStartup(argv: string[], options: { printHelp?: () => void } = {}): Promise<void> {
+  // Auto-load .env.local from the working directory so OD_CLOUD_URL etc.
+  // don't require sourcing shell config before `pnpm tools-dev`. Shell-supplied
+  // env still wins — see cloud-env-loader.ts. No-op when the file is absent.
+  try {
+    const { loadDotenvFromProjectRoot } = await import('./cloud/cloud-env-loader.js');
+    loadDotenvFromProjectRoot(process.cwd());
+  } catch {
+    // env loading is best-effort; never abort startup over it.
+  }
   let port = Number(process.env.OD_PORT) || 7456;
   let host = process.env.OD_BIND_HOST || '127.0.0.1';
   let open = true;
