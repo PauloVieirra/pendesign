@@ -236,6 +236,61 @@ test('applyCreateVariable seeds valuesByMode for every mode in the collection', 
   for (const id of Object.keys(v.valuesByMode)) assert.equal(v.valuesByMode[id], 12);
 });
 
+import {
+  applyCreateMode, applyUpdateMode, applyDeleteMode, VariablesError,
+} from '../src/design-system-variables.js';
+
+test('applyCreateMode appends mode and seeds variable values from previous last mode', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'Grid' });
+  const c = file.collections[0];
+  file = applyCreateGroup(file, { collectionId: c.id, name: 'g' });
+  file = applyCreateVariable(file, {
+    collectionId: c.id, groupId: file.collections[0].groups[0].id,
+    name: 'col', type: 'number', valueByDefault: 12,
+  });
+  file = applyCreateMode(file, { collectionId: c.id, name: 'Tablet', width: 834 });
+  const collection = file.collections[0];
+  assert.equal(collection.modes.length, 2);
+  const newId = collection.modes[1].id;
+  const v = collection.groups[0].variables[0];
+  assert.equal(v.valuesByMode[newId], 12); // seeded from previous last mode
+});
+
+test('applyDeleteMode strips that mode from all variables', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'X' });
+  const c = file.collections[0];
+  file = applyCreateMode(file, { collectionId: c.id, name: 'B' });
+  const modeBId = file.collections[0].modes[1].id;
+  file = applyCreateGroup(file, { collectionId: c.id, name: 'g' });
+  file = applyCreateVariable(file, {
+    collectionId: c.id, groupId: file.collections[0].groups[0].id,
+    name: 'v', type: 'number', valueByDefault: 1,
+  });
+  file = applyDeleteMode(file, { collectionId: c.id, modeId: modeBId });
+  const v = file.collections[0].groups[0].variables[0];
+  assert.equal(Object.keys(v.valuesByMode).length, 1);
+  assert.equal(v.valuesByMode[modeBId], undefined);
+});
+
+test('applyDeleteMode refuses to remove the last mode', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'X' });
+  const modeId = file.collections[0].modes[0].id;
+  assert.throws(() => applyDeleteMode(file, { collectionId: file.collections[0].id, modeId }), VariablesError);
+});
+
+test('applyCreateMode rejects duplicate name within collection', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'X' });
+  assert.throws(() => applyCreateMode(file, { collectionId: file.collections[0].id, name: 'Default' }), VariablesError);
+});
+
+test('applyUpdateMode renames and updates width', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'X' });
+  const modeId = file.collections[0].modes[0].id;
+  file = applyUpdateMode(file, { collectionId: file.collections[0].id, modeId, patch: { name: 'Desktop', width: 1440 } });
+  assert.equal(file.collections[0].modes[0].name, 'Desktop');
+  assert.equal(file.collections[0].modes[0].width, 1440);
+});
+
 test('applyUpdateVariable patches valuesByMode (partial merge)', () => {
   let file = applyCreateCollection(emptyV2(), { name: 'X' });
   const c = file.collections[0];

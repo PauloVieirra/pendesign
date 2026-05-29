@@ -404,3 +404,75 @@ export function defaultForType(type: VariableType): string | number | boolean {
     case 'boolean': return false;
   }
 }
+
+export function applyCreateMode(
+  file: VariablesFile,
+  params: { collectionId: string; name: string; width?: number },
+): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection not found: ${params.collectionId}`);
+  const trimmed = params.name.trim();
+  if (!trimmed) throw new VariablesError('BAD_REQUEST', 'mode name required');
+  if (collection.modes.some((m) => m.name.toLowerCase() === trimmed.toLowerCase())) {
+    throw new VariablesError('CONFLICT', `mode name already exists: ${trimmed}`);
+  }
+  const previousLast = collection.modes[collection.modes.length - 1];
+  const mode: Mode = { id: newModeId(), name: trimmed };
+  if (typeof params.width === 'number' && Number.isFinite(params.width)) mode.width = params.width;
+  collection.modes.push(mode);
+  // Seed every variable with the previous-last-mode value as the starting point.
+  for (const group of collection.groups) {
+    for (const variable of group.variables) {
+      const seed = (previousLast ? variable.valuesByMode[previousLast.id] : undefined) ?? defaultForType(variable.type);
+      variable.valuesByMode = { ...variable.valuesByMode, [mode.id]: seed };
+    }
+  }
+  return next;
+}
+
+export function applyUpdateMode(
+  file: VariablesFile,
+  params: { collectionId: string; modeId: string; patch: Partial<Pick<Mode, 'name' | 'width'>> },
+): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection not found: ${params.collectionId}`);
+  const mode = collection.modes.find((m) => m.id === params.modeId);
+  if (!mode) throw new VariablesError('NOT_FOUND', `mode not found: ${params.modeId}`);
+  if (typeof params.patch.name === 'string') {
+    const trimmed = params.patch.name.trim();
+    if (!trimmed) throw new VariablesError('BAD_REQUEST', 'mode name required');
+    if (collection.modes.some((m) => m.id !== mode.id && m.name.toLowerCase() === trimmed.toLowerCase())) {
+      throw new VariablesError('CONFLICT', `mode name already exists: ${trimmed}`);
+    }
+    mode.name = trimmed;
+  }
+  if (params.patch.width !== undefined) {
+    if (params.patch.width === null) delete (mode as any).width;
+    else mode.width = params.patch.width;
+  }
+  return next;
+}
+
+export function applyDeleteMode(
+  file: VariablesFile,
+  params: { collectionId: string; modeId: string },
+): VariablesFile {
+  const next = clone(file);
+  const collection = next.collections.find((c) => c.id === params.collectionId);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection not found: ${params.collectionId}`);
+  if (collection.modes.length <= 1) {
+    throw new VariablesError('BAD_REQUEST', 'cannot delete the last mode');
+  }
+  const idx = collection.modes.findIndex((m) => m.id === params.modeId);
+  if (idx === -1) throw new VariablesError('NOT_FOUND', `mode not found: ${params.modeId}`);
+  collection.modes.splice(idx, 1);
+  for (const group of collection.groups) {
+    for (const variable of group.variables) {
+      const { [params.modeId]: _drop, ...rest } = variable.valuesByMode;
+      variable.valuesByMode = rest;
+    }
+  }
+  return next;
+}
