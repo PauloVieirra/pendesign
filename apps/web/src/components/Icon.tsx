@@ -68,7 +68,11 @@ export type IconName =
   | 'sidebar'
   | 'maximize'
   | 'minimize'
-  | 'filter';
+  | 'filter'
+  | 'color'
+  | 'hash'
+  | 'text'
+  | 'circle';
 
 interface Props extends Omit<SVGProps<SVGSVGElement>, 'name'> {
   name: IconName;
@@ -635,6 +639,36 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
       return (
         <svg {...common}>
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+      );
+    case 'color':
+      return (
+        <svg {...common}>
+          <path d="M12 2a5 5 0 0 1 5 5c0 2.76-2.24 7-5 10C9.24 14 7 9.76 7 7a5 5 0 0 1 5-5z" />
+          <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'hash':
+      return (
+        <svg {...common}>
+          <line x1="4" y1="9" x2="20" y2="9" />
+          <line x1="4" y1="15" x2="20" y2="15" />
+          <line x1="10" y1="3" x2="8" y2="21" />
+          <line x1="16" y1="3" x2="14" y2="21" />
+        </svg>
+      );
+    case 'text':
+      return (
+        <svg {...common}>
+          <path d="M4 7V4h16v3" />
+          <path d="M9 20h6" />
+          <path d="M12 4v16" />
+        </svg>
+      );
+    case 'circle':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
         </svg>
       );
     default:

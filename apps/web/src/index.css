@@ -26700,6 +26700,106 @@ body.desktop-pet-shell .pet-task-item {
   padding: 4px 8px; font-size: 12px; color: var(--text);
 }
 
+/* ---- SearchAndFilter -------------------------------------------- */
+.ds-search-filter { display: inline-flex; align-items: center; gap: 4px; flex: 1; max-width: 360px; position: relative; }
+.ds-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: 1; min-width: 0; height: 28px;
+  padding: 0 8px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-muted);
+}
+.ds-search input { background: transparent; border: 0; outline: 0; flex: 1; color: var(--text); font-size: 12px; min-width: 0; }
+.ds-search input::placeholder { color: var(--text-faint); }
+.ds-filter-btn {
+  position: relative; width: 28px; height: 28px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent; color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ds-filter-btn:hover, .ds-filter-btn.has-active { border-color: var(--border); color: var(--text); }
+.ds-filter-btn__badge {
+  position: absolute; top: -2px; right: -2px;
+  background: var(--accent); color: #fff;
+  font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 8px;
+}
+.ds-filter-popover {
+  position: absolute; top: 36px; right: 0; z-index: 5;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px; display: flex; flex-direction: column; gap: 4px;
+  min-width: 140px; box-shadow: var(--shadow-md);
+}
+.ds-filter-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.ds-filter-chip:hover { background: var(--bg-subtle); }
+.ds-filter-chip.is-on { color: var(--text-strong); }
+
+/* ---- ModeColumnHeader + AddModeButton --------------------------- */
+.ds-col-header, .ds-add-mode { position: relative; }
+.ds-col-header__btn, .ds-add-mode__btn {
+  background: transparent; border: 0; color: var(--text-muted);
+  font-size: 12px; padding: 6px 8px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline;
+}
+.ds-col-header__btn:hover, .ds-add-mode__btn:hover { color: var(--text); }
+.ds-col-header__name { font-weight: 600; color: var(--text); }
+.ds-col-header__width { color: var(--text-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ds-col-header__popover, .ds-add-mode__popover {
+  position: absolute; top: 28px; left: 0; z-index: 6;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px; min-width: 200px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ds-col-header__field, .ds-add-mode__popover label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted); }
+.ds-col-header__field input, .ds-add-mode__popover input {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; color: var(--text); font-size: 12px;
+}
+.ds-col-header__actions, .ds-add-mode__actions { display: flex; gap: 6px; justify-content: flex-end; padding-top: 4px; border-top: 1px solid var(--border-soft); }
+.ds-col-header__actions .danger { color: var(--danger, #e54); }
+
+/* ---- CreateVariableButton --------------------------------------- */
+.ds-create-var { position: relative; padding: 8px 12px; border-top: 1px solid var(--border); }
+.ds-create-var__btn {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  background: transparent; border: 0; color: var(--text-muted); padding: 6px 8px; border-radius: 4px; cursor: pointer;
+}
+.ds-create-var__btn:hover { background: var(--bg-subtle); color: var(--text); }
+.ds-create-var__popover {
+  position: absolute; bottom: 36px; left: 12px; z-index: 6;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px; min-width: 140px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column;
+}
+.ds-create-var__item {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px;
+  background: transparent; border: 0; color: var(--text); font-size: 12px; cursor: pointer;
+}
+.ds-create-var__item:hover { background: var(--bg-subtle); }
+
+/* ---- VariablesTable + VariableRow ------------------------------- */
+.ds-table { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ds-table__head, .ds-row {
+  display: grid; grid-template-columns: var(--ds-grid);
+  align-items: center; column-gap: 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ds-table__head { background: var(--bg-subtle); position: sticky; top: 0; z-index: 1; }
+.ds-table__th { font-size: 11px; color: var(--text-muted); padding: 8px 12px; }
+.ds-table__body { flex: 1; overflow-y: auto; }
+.ds-group__head { font-size: 12px; font-weight: 600; padding: 12px 12px 6px; color: var(--text-muted); }
+.ds-row__name { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
+.ds-row__name input { background: transparent; border: 0; outline: 0; color: var(--text); font-size: 12px; flex: 1; min-width: 0; }
+.ds-cell {
+  width: 100%; height: 32px;
+  background: transparent; border: 1px solid transparent;
+  padding: 0 8px; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.ds-cell:hover { background: var(--bg-subtle); }
+.ds-cell:focus { background: var(--bg-panel); border-color: var(--accent); outline: 0; }
+.ds-cell--bool { text-align: left; cursor: pointer; }
+.ds-row__delete {
+  background: transparent; border: 0; color: var(--text-faint); padding: 4px; cursor: pointer; opacity: 0;
+}
+.ds-row:hover .ds-row__delete { opacity: 1; }
+.ds-table__empty { padding: 24px; text-align: center; color: var(--text-muted); }
+
 /* ---- In-pane empty banner --------------------------------------- */
 .ds-mgr-empty-banner {
   display: flex;
