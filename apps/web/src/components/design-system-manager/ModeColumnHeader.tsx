@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../Icon';
+import { useT } from '../../i18n';
 import type { Mode } from '../../providers/design-system-variables';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function ModeColumnHeader({ mode, canDelete, onRename, onSetWidth, onDelete }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(mode.name);
   const [width, setWidth] = useState<string>(mode.width != null ? String(mode.width) : '');
@@ -50,7 +52,7 @@ export function ModeColumnHeader({ mode, canDelete, onRename, onSetWidth, onDele
           </label>
           <div className="ds-col-header__actions">
             <button type="button" disabled={!canDelete} onClick={async () => { await onDelete(); setOpen(false); }} className="danger">
-              <Icon name="trash" size={12} /> Delete column
+              <Icon name="trash" size={12} /> {t('ds.modal.deleteMode')}
             </button>
             <button type="button" onClick={() => void commitAndClose()}>Save</button>
           </div>

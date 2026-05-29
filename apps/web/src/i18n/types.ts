@@ -1293,6 +1293,26 @@ export interface Dict {
   'examples.previewLabel': string;
 
   // Design systems tab
+  'ds.modal.title': string;
+  'ds.modal.search': string;
+  'ds.modal.filter': string;
+  'ds.modal.collections': string;
+  'ds.modal.groups': string;
+  'ds.modal.all': string;
+  'ds.modal.createVariable': string;
+  'ds.modal.createCollection': string;
+  'ds.modal.createGroup': string;
+  'ds.modal.addMode': string;
+  'ds.modal.renameMode': string;
+  'ds.modal.deleteMode': string;
+  'ds.modal.deleteModeConfirm': string;
+  'ds.modal.empty': string;
+  'ds.modal.searchNoResults': string;
+  'ds.modal.openShortcut': string;
+  'ds.types.color': string;
+  'ds.types.number': string;
+  'ds.types.string': string;
+  'ds.types.boolean': string;
   'ds.surfaceLabel': string;
   'ds.surfaceWeb': string;
   'ds.surfaceImage': string;

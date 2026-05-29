@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useT } from '../../i18n';
 import type { Variable, VariableCollection, VariableType } from '../../providers/design-system-variables';
 import { VariableRow } from './VariableRow';
 import { ModeColumnHeader } from './ModeColumnHeader';
@@ -25,6 +26,7 @@ export function VariablesTable({
   onUpdateVariableValueForMode, onRenameVariable, onDeleteVariable, onCreateVariable,
   onCreateMode, onRenameMode, onSetModeWidth, onDeleteMode,
 }: Props) {
+  const t = useT();
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
     return collection.groups
@@ -64,7 +66,7 @@ export function VariablesTable({
       </div>
       <div className="ds-table__body">
         {filteredGroups.length === 0 ? (
-          <p className="ds-table__empty">No variables match the filter.</p>
+          <p className="ds-table__empty">{t('ds.modal.searchNoResults')}</p>
         ) : null}
         {filteredGroups.map((g) => (
           <div key={g.id} className="ds-group">

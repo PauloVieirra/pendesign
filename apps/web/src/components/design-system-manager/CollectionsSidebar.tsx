@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../Icon';
+import { useT } from '../../i18n';
 import type { VariableCollection } from '../../providers/design-system-variables';
 
 interface Props {
@@ -21,6 +22,7 @@ export function CollectionsSidebar({
   onCreateCollection, onDeleteCollection, onCreateGroup, onDeleteGroup,
   collapsed,
 }: Props) {
+  const t = useT();
   const [newColl, setNewColl] = useState<string | null>(null);
   const [newGroup, setNewGroup] = useState<string | null>(null);
   const activeCollection = collections.find((c) => c.id === activeCollectionId) ?? null;
@@ -34,7 +36,7 @@ export function CollectionsSidebar({
   return (
     <aside className="ds-sidebar" data-testid="ds-sidebar">
       <SidebarSection
-        label="Collections"
+        label={t('ds.modal.collections')}
         onCreate={() => setNewColl('')}
       >
         {collections.map((c) => (
@@ -66,7 +68,7 @@ export function CollectionsSidebar({
       </SidebarSection>
 
       <SidebarSection
-        label="Groups"
+        label={t('ds.modal.groups')}
         onCreate={activeCollection ? () => setNewGroup('') : undefined}
       >
         <button
@@ -74,7 +76,7 @@ export function CollectionsSidebar({
           className={`ds-sidebar__row${activeGroupId === 'all' ? ' is-active' : ''}`}
           onClick={() => onSelectGroup('all')}
         >
-          <span className="ds-sidebar__row-name">All</span>
+          <span className="ds-sidebar__row-name">{t('ds.modal.all')}</span>
           <span className="ds-sidebar__row-count">{activeCollection ? countVariables(activeCollection) : 0}</span>
         </button>
         {activeCollection?.groups.map((g) => (

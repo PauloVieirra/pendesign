@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { navigate, useRoute } from '../../router';
+import { useT } from '../../i18n';
 import { DesignSystemManagerView } from './DesignSystemManagerView';
 
 interface Props {
@@ -17,6 +18,7 @@ const LS_MAX_KEY = (dsId: string) => `ds-modal:max:${dsId}`;
 export function DesignSystemModal({
   open, projectId, designSystemId, projectName, onCreateEmpty, onAttachDsRequested,
 }: Props) {
+  const t = useT();
   const route = useRoute();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [maximized, setMaximized] = useState(false);
@@ -67,7 +69,7 @@ export function DesignSystemModal({
         className={`ds-modal${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}${maximized ? ' is-max' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Variables"
+        aria-label={t('ds.modal.title')}
         data-testid="ds-modal"
       >
         <DesignSystemManagerView

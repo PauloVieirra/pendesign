@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useT } from '../../i18n';
 import {
   createCollection,
   createGroup,
@@ -52,6 +53,7 @@ export function DesignSystemManagerView({
   onToggleMaximize,
   onClose,
 }: Props) {
+  const t = useT();
   const [variables, setVariables] = useState<VariablesFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -221,7 +223,7 @@ export function DesignSystemManagerView({
     <div className="ds-modal-body">
       <header className="ds-modal__header">
         <div className="ds-modal__title">
-          <h2>Variables</h2>
+          <h2>{t('ds.modal.title')}</h2>
           <button type="button" className="ds-modal__icon-btn" onClick={onToggleSidebar} aria-label="Toggle sidebar">
             <Icon name="sidebar" size={14} />
           </button>

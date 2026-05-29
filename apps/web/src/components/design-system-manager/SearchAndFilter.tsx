@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../Icon';
+import { useT } from '../../i18n';
 import type { VariableType } from '../../providers/design-system-variables';
 
 const ALL_TYPES: VariableType[] = ['color', 'number', 'string', 'boolean'];
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function SearchAndFilter({ query, onQueryChange, typeFilter, onTypeFilterChange }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
 
@@ -37,7 +39,7 @@ export function SearchAndFilter({ query, onQueryChange, typeFilter, onTypeFilter
           value={query}
           onChange={(ev) => onQueryChange(ev.target.value)}
           onKeyDown={(ev) => { if (ev.key === 'Escape' && query) { ev.stopPropagation(); onQueryChange(''); } }}
-          placeholder="Search"
+          placeholder={t('ds.modal.search')}
           data-testid="ds-search-input"
         />
       </label>
@@ -47,7 +49,7 @@ export function SearchAndFilter({ query, onQueryChange, typeFilter, onTypeFilter
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Filter"
+        title={t('ds.modal.filter')}
       >
         <Icon name="filter" size={12} />
         {typeFilter.size > 0 ? <span className="ds-filter-btn__badge">{typeFilter.size}</span> : null}

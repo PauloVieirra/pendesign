@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../Icon';
+import { useT } from '../../i18n';
 import type { VariableType } from '../../providers/design-system-variables';
-
-const ITEMS: Array<{ type: VariableType; label: string; icon: 'color' | 'hash' | 'text' | 'circle' }> = [
-  { type: 'color', label: 'Color', icon: 'color' },
-  { type: 'number', label: 'Number', icon: 'hash' },
-  { type: 'string', label: 'String', icon: 'text' },
-  { type: 'boolean', label: 'Boolean', icon: 'circle' },
-];
 
 interface Props {
   onCreate: (type: VariableType) => void;
@@ -15,6 +9,13 @@ interface Props {
 }
 
 export function CreateVariableButton({ onCreate, disabled }: Props) {
+  const t = useT();
+  const ITEMS: Array<{ type: VariableType; icon: 'color' | 'hash' | 'text' | 'circle' }> = [
+    { type: 'color', icon: 'color' },
+    { type: 'number', icon: 'hash' },
+    { type: 'string', icon: 'text' },
+    { type: 'boolean', icon: 'circle' },
+  ];
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
 
@@ -28,14 +29,14 @@ export function CreateVariableButton({ onCreate, disabled }: Props) {
   return (
     <div className="ds-create-var" ref={wrap}>
       <button type="button" className="ds-create-var__btn" onClick={() => setOpen((v) => !v)} disabled={disabled} data-testid="ds-create-variable">
-        <Icon name="plus" size={12} /> Create variable
+        <Icon name="plus" size={12} /> {t('ds.modal.createVariable')}
       </button>
       {open ? (
         <div className="ds-create-var__popover" role="menu">
           {ITEMS.map((item) => (
             <button key={item.type} type="button" className="ds-create-var__item" onClick={() => { onCreate(item.type); setOpen(false); }}>
               <Icon name={item.icon} size={12} />
-              <span>{item.label}</span>
+              <span>{t(`ds.types.${item.type}` as 'ds.types.color' | 'ds.types.number' | 'ds.types.string' | 'ds.types.boolean')}</span>
             </button>
           ))}
         </div>
