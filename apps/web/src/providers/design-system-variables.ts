@@ -1,10 +1,16 @@
 export type VariableType = 'color' | 'number' | 'string' | 'boolean';
 
+export interface Mode {
+  id: string;
+  name: string;
+  width?: number;
+}
+
 export interface Variable {
   id: string;
   name: string;
   type: VariableType;
-  value: string | number | boolean;
+  valuesByMode: Record<string, string | number | boolean>;
 }
 
 export interface VariableGroup {
@@ -16,18 +22,18 @@ export interface VariableGroup {
 export interface VariableCollection {
   id: string;
   name: string;
+  modes: Mode[];
   groups: VariableGroup[];
 }
 
 export interface VariablesFile {
-  version: 1;
+  version: 2;
   collections: VariableCollection[];
 }
 
 interface ApiErrorEnvelope {
   error?: { code?: string; message?: string } | string;
 }
-
 interface ErrorResult { error: { code?: string; message: string } }
 
 async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T | ErrorResult> {
@@ -47,64 +53,91 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T | Erro
   }
 }
 
-export function fetchVariables(dsId: string) {
-  return jsonFetch<{ variables: VariablesFile; migrated?: boolean }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables`,
-  );
-}
+const enc = encodeURIComponent;
 
-export function updateVariable(dsId: string, variableId: string, patch: Partial<Pick<Variable, 'name' | 'type' | 'value'>>) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/${encodeURIComponent(variableId)}`,
+export const fetchVariables = (dsId: string) =>
+  jsonFetch<{ variables: VariablesFile; migrated?: boolean }>(
+    `/api/design-systems/${enc(dsId)}/variables`,
+  );
+
+export const updateVariable = (
+  dsId: string,
+  variableId: string,
+  patch: Partial<Pick<Variable, 'name' | 'type'>> & {
+    valuesByMode?: Record<string, string | number | boolean>;
+    value?: string | number | boolean;
+  },
+) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/${enc(variableId)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) },
   );
-}
 
-export function deleteVariable(dsId: string, variableId: string) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/${encodeURIComponent(variableId)}`,
+export const deleteVariable = (dsId: string, variableId: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/${enc(variableId)}`,
     { method: 'DELETE' },
   );
-}
 
-export function createVariable(dsId: string, collectionId: string, groupId: string, body: { name: string; type: VariableType; value: Variable['value'] }) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/collections/${encodeURIComponent(collectionId)}/groups/${encodeURIComponent(groupId)}/variables`,
+export const createVariable = (
+  dsId: string, collectionId: string, groupId: string,
+  body: { name: string; type: VariableType; value?: string | number | boolean },
+) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/groups/${enc(groupId)}/variables`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
-}
 
-export function createCollection(dsId: string, name: string) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/collections`,
+export const createCollection = (dsId: string, name: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
   );
-}
 
-export function deleteCollection(dsId: string, collectionId: string) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/collections/${encodeURIComponent(collectionId)}`,
+export const deleteCollection = (dsId: string, collectionId: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}`,
     { method: 'DELETE' },
   );
-}
 
-export function createGroup(dsId: string, collectionId: string, name: string) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/collections/${encodeURIComponent(collectionId)}/groups`,
+export const createGroup = (dsId: string, collectionId: string, name: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/groups`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
   );
-}
 
-export function deleteGroup(dsId: string, collectionId: string, groupId: string) {
-  return jsonFetch<{ ok: true }>(
-    `/api/design-systems/${encodeURIComponent(dsId)}/variables/collections/${encodeURIComponent(collectionId)}/groups/${encodeURIComponent(groupId)}`,
+export const deleteGroup = (dsId: string, collectionId: string, groupId: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/groups/${enc(groupId)}`,
     { method: 'DELETE' },
   );
-}
 
-export function createEmptyDesignSystemForProject(projectId: string) {
-  return jsonFetch<{ designSystem: { id: string; title?: string; summary?: string }; designSystemId: string }>(
-    `/api/projects/${encodeURIComponent(projectId)}/design-system/create-empty`,
-    { method: 'POST' },
+export const createMode = (dsId: string, collectionId: string, body: { name: string; width?: number }) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/modes`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
-}
+
+export const updateMode = (
+  dsId: string, collectionId: string, modeId: string,
+  patch: { name?: string; width?: number | null },
+) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/modes/${enc(modeId)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) },
+  );
+
+export const deleteMode = (dsId: string, collectionId: string, modeId: string) =>
+  jsonFetch<{ ok: true }>(
+    `/api/design-systems/${enc(dsId)}/variables/collections/${enc(collectionId)}/modes/${enc(modeId)}`,
+    { method: 'DELETE' },
+  );
+
+export const createEmptyDesignSystemForProject = (
+  projectId: string,
+  body: { seed?: 'empty' | 'defaults' } = {},
+) =>
+  jsonFetch<{ designSystem: { id: string; title?: string; summary?: string }; designSystemId: string }>(
+    `/api/projects/${enc(projectId)}/design-system/create-empty`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  );
