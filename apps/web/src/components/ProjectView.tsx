@@ -1109,10 +1109,13 @@ export function ProjectView({
         projectId: project.id,
         conversationId: activeConversationId,
         fileName: target,
+        // Preserve the ds=open query param so the DS modal remains open
+        // when the conversation URL sync fires while the modal is visible.
+        ...(route.kind === 'project' && route.ds === 'open' ? { ds: 'open' as const } : {}),
       },
       { replace: true },
     );
-  }, [openTabsState.active, projectFileNames, project.id, activeConversationId]);
+  }, [openTabsState.active, projectFileNames, project.id, activeConversationId, route]);
 
   const handleEnsureProject = useCallback(async (): Promise<string | null> => {
     return project.id;
