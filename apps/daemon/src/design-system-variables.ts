@@ -133,14 +133,17 @@ export function renderTokensCss(file: VariablesFile): string {
 }
 
 function formatValue(variable: Variable): string {
+  // Use the first mode's value as the canonical CSS token output.
+  // This mirrors legacy single-value behavior and is stable across modes for CSS generation.
+  const value = Object.values(variable.valuesByMode)[0];
   if (variable.type === 'color' || variable.type === 'string') {
-    return String(variable.value);
+    return String(value);
   }
   if (variable.type === 'number') {
-    return `${Number(variable.value)}px`;
+    return `${Number(value)}px`;
   }
   // boolean → CSS uses 0/1
-  return variable.value ? '1' : '0';
+  return value ? '1' : '0';
 }
 
 const VAR_RE = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
@@ -211,18 +214,21 @@ function titleCase(value: string): string {
 
 export function migrateFromTokensCss(css: string): VariablesFile {
   if (!css || !css.trim()) {
+    const defaultModeId = newModeId();
     return {
-      version: 1,
+      version: 2,
       collections: [
         {
           id: newCollectionId(),
           name: 'Default',
+          modes: [{ id: defaultModeId, name: 'Default' }],
           groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
         },
       ],
     };
   }
-  const buckets = new Map<string, Map<string, Variable[]>>();
+  // Build a map of collectionName -> (groupName -> { defaultModeId, variables })
+  const buckets = new Map<string, { modeId: string; groups: Map<string, Variable[]> }>();
   VAR_RE.lastIndex = 0;
   let match;
   while ((match = VAR_RE.exec(css)) !== null) {
@@ -230,34 +236,45 @@ export function migrateFromTokensCss(css: string): VariablesFile {
     const rawValue = match[2];
     if (rawName === undefined || rawValue === undefined) continue;
     const cls = classifyVariable(rawName, rawValue);
+    const coerced = coerceValue(cls.type, cls.rawValue);
+    let bucket = buckets.get(cls.collectionName);
+    if (!bucket) {
+      bucket = { modeId: newModeId(), groups: new Map<string, Variable[]>() };
+      buckets.set(cls.collectionName, bucket);
+    }
     const variable: Variable = {
       id: newVariableId(),
       name: cls.varName,
       type: cls.type,
-      value: coerceValue(cls.type, cls.rawValue),
+      valuesByMode: { [bucket.modeId]: coerced },
     };
-    const collection = buckets.get(cls.collectionName) ?? new Map<string, Variable[]>();
-    const group = collection.get(cls.group) ?? [];
+    const group = bucket.groups.get(cls.group) ?? [];
     group.push(variable);
-    collection.set(cls.group, group);
-    buckets.set(cls.collectionName, collection);
+    bucket.groups.set(cls.group, group);
   }
   const collections: VariableCollection[] = [];
-  for (const [collectionName, groups] of buckets) {
+  for (const [collectionName, bucket] of buckets) {
     const groupArray: VariableGroup[] = [];
-    for (const [groupName, variables] of groups) {
+    for (const [groupName, variables] of bucket.groups) {
       groupArray.push({ id: newGroupId(), name: groupName, variables });
     }
-    collections.push({ id: newCollectionId(), name: collectionName, groups: groupArray });
+    collections.push({
+      id: newCollectionId(),
+      name: collectionName,
+      modes: [{ id: bucket.modeId, name: 'Default' }],
+      groups: groupArray,
+    });
   }
   if (collections.length === 0) {
+    const defaultModeId = newModeId();
     collections.push({
       id: newCollectionId(),
       name: 'Default',
+      modes: [{ id: defaultModeId, name: 'Default' }],
       groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
     });
   }
-  return { version: 1, collections };
+  return { version: 2, collections };
 }
 
 const TOKENS_CSS_FILE_NAME = 'tokens.css';
@@ -282,7 +299,7 @@ export async function withDsLock<T>(key: string, fn: () => Promise<T>): Promise<
 }
 
 export class VariablesError extends Error {
-  constructor(readonly code: 'NOT_FOUND' | 'BAD_REQUEST', message: string) {
+  constructor(readonly code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT', message: string) {
     super(message);
     this.name = 'VariablesError';
   }
@@ -297,7 +314,8 @@ export function applyCreateCollection(file: VariablesFile, params: { name: strin
   next.collections.push({
     id: newCollectionId(),
     name: params.name.trim() || 'New collection',
-    groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
+    modes: [{ id: newModeId(), name: 'Default' }],
+    groups: [],
   });
   return next;
 }
@@ -324,30 +342,48 @@ export function applyDeleteGroup(file: VariablesFile, params: { collectionId: st
   return next;
 }
 
-export function applyCreateVariable(file: VariablesFile, params: { collectionId: string; groupId: string; name: string; type: VariableType; value: Variable['value'] }): VariablesFile {
+export function applyCreateVariable(
+  file: VariablesFile,
+  params: { collectionId: string; groupId: string; name: string; type: VariableType; valueByDefault: string | number | boolean },
+): VariablesFile {
   const next = clone(file);
   const collection = next.collections.find((c) => c.id === params.collectionId);
-  if (!collection) throw new VariablesError('NOT_FOUND', `collection ${params.collectionId} not found`);
+  if (!collection) throw new VariablesError('NOT_FOUND', `collection not found: ${params.collectionId}`);
   const group = collection.groups.find((g) => g.id === params.groupId);
-  if (!group) throw new VariablesError('NOT_FOUND', `group ${params.groupId} not found`);
-  group.variables.push({ id: newVariableId(), name: params.name, type: params.type, value: params.value });
+  if (!group) throw new VariablesError('NOT_FOUND', `group not found: ${params.groupId}`);
+  const valuesByMode: Record<string, string | number | boolean> = {};
+  for (const mode of collection.modes) valuesByMode[mode.id] = params.valueByDefault;
+  group.variables.push({
+    id: newVariableId(),
+    name: params.name,
+    type: params.type,
+    valuesByMode,
+  });
   return next;
 }
 
-export function applyUpdateVariable(file: VariablesFile, params: { variableId: string; patch: Partial<Pick<Variable, 'name' | 'type' | 'value'>> }): VariablesFile {
+export function applyUpdateVariable(
+  file: VariablesFile,
+  params: { variableId: string; patch: Partial<Pick<Variable, 'name' | 'type'>> & { valuesByMode?: Record<string, string | number | boolean>; value?: string | number | boolean } },
+): VariablesFile {
   const next = clone(file);
   for (const collection of next.collections) {
     for (const group of collection.groups) {
-      const idx = group.variables.findIndex((v) => v.id === params.variableId);
-      if (idx >= 0) {
-        const existing = group.variables[idx];
-        if (!existing) continue;
-        group.variables[idx] = { ...existing, ...params.patch } as Variable;
-        return next;
+      const variable = group.variables.find((v) => v.id === params.variableId);
+      if (!variable) continue;
+      if (typeof params.patch.name === 'string') variable.name = params.patch.name;
+      if (params.patch.type) variable.type = params.patch.type;
+      if (params.patch.valuesByMode) {
+        variable.valuesByMode = { ...variable.valuesByMode, ...params.patch.valuesByMode };
       }
+      if (params.patch.value !== undefined && collection.modes[0]) {
+        // Legacy single-value payload routes to the first mode.
+        variable.valuesByMode = { ...variable.valuesByMode, [collection.modes[0].id]: params.patch.value };
+      }
+      return next;
     }
   }
-  throw new VariablesError('NOT_FOUND', `variable ${params.variableId} not found`);
+  throw new VariablesError('NOT_FOUND', `variable not found: ${params.variableId}`);
 }
 
 export function applyDeleteVariable(file: VariablesFile, params: { variableId: string }): VariablesFile {
@@ -358,4 +394,13 @@ export function applyDeleteVariable(file: VariablesFile, params: { variableId: s
     }
   }
   return next;
+}
+
+export function defaultForType(type: VariableType): string | number | boolean {
+  switch (type) {
+    case 'color': return '#000000';
+    case 'number': return 0;
+    case 'string': return '';
+    case 'boolean': return false;
+  }
 }

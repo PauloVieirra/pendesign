@@ -60,15 +60,16 @@ import { renderTokensCss } from '../src/design-system-variables.js';
 
 test('renderTokensCss emits CSS variables with collection/group/name slugs', () => {
   const css = renderTokensCss({
-    version: 1,
+    version: 2,
     collections: [
       {
         id: 'c_1', name: 'Cores',
+        modes: [{ id: 'm_1', name: 'Default' }],
         groups: [
           { id: 'g_1', name: 'Orange',
             variables: [
-              { id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' },
-              { id: 'v_2', name: '200', type: 'color', value: '#FAD8CD' },
+              { id: 'v_1', name: '100', type: 'color', valuesByMode: { m_1: '#FDEEE9' } },
+              { id: 'v_2', name: '200', type: 'color', valuesByMode: { m_1: '#FAD8CD' } },
             ],
           },
         ],
@@ -81,14 +82,15 @@ test('renderTokensCss emits CSS variables with collection/group/name slugs', () 
 
 test('renderTokensCss disambiguates colliding slugs with numeric suffix', () => {
   const css = renderTokensCss({
-    version: 1,
+    version: 2,
     collections: [
       {
         id: 'c_1', name: 'A',
+        modes: [{ id: 'm_1', name: 'Default' }],
         groups: [{ id: 'g_1', name: 'X',
           variables: [
-            { id: 'v_1', name: '100', type: 'color', value: '#ffffff' },
-            { id: 'v_2', name: '100', type: 'color', value: '#000000' },
+            { id: 'v_1', name: '100', type: 'color', valuesByMode: { m_1: '#ffffff' } },
+            { id: 'v_2', name: '100', type: 'color', valuesByMode: { m_1: '#000000' } },
           ],
         }],
       },
@@ -100,11 +102,11 @@ test('renderTokensCss disambiguates colliding slugs with numeric suffix', () => 
 
 test('renderTokensCss serializes number/string/boolean variables', () => {
   const css = renderTokensCss({
-    version: 1,
-    collections: [{ id: 'c_1', name: 'M', groups: [{ id: 'g_1', name: 'G', variables: [
-      { id: 'v_1', name: 'gap', type: 'number', value: 16 },
-      { id: 'v_2', name: 'fam', type: 'string', value: 'Inter, sans-serif' },
-      { id: 'v_3', name: 'on', type: 'boolean', value: true },
+    version: 2,
+    collections: [{ id: 'c_1', name: 'M', modes: [{ id: 'm_1', name: 'Default' }], groups: [{ id: 'g_1', name: 'G', variables: [
+      { id: 'v_1', name: 'gap', type: 'number', valuesByMode: { m_1: 16 } },
+      { id: 'v_2', name: 'fam', type: 'string', valuesByMode: { m_1: 'Inter, sans-serif' } },
+      { id: 'v_3', name: 'on', type: 'boolean', valuesByMode: { m_1: true } },
     ] }] }],
   });
   assert.match(css, /--m-g-gap:\s*16px;/);
@@ -117,11 +119,14 @@ import { migrateFromTokensCss } from '../src/design-system-variables.js';
 test('migrateFromTokensCss groups color tokens into Colors collection', () => {
   const css = `:root { --color-rausch: #ff385c; --color-ink: #222222; }`;
   const file = migrateFromTokensCss(css);
+  assert.equal(file.version, 2);
   const colors = file.collections.find((c) => c.name === 'Colors');
   assert.ok(colors, 'Colors collection missing');
+  assert.equal(colors!.modes.length, 1);
   const flat = colors!.groups.flatMap((g) => g.variables);
   assert.equal(flat.length, 2);
-  assert.deepEqual(flat.map((v) => v.value), ['#ff385c', '#222222']);
+  const modeId = colors!.modes[0].id;
+  assert.deepEqual(flat.map((v) => v.valuesByMode[modeId]), ['#ff385c', '#222222']);
   for (const v of flat) assert.equal(v.type, 'color');
 });
 
@@ -137,7 +142,7 @@ test('migrateFromTokensCss puts space and radius into separate collections', () 
 
 test('migrateFromTokensCss returns single default collection when input is empty', () => {
   const file = migrateFromTokensCss('');
-  assert.equal(file.version, 1);
+  assert.equal(file.version, 2);
   assert.equal(file.collections.length, 1);
   assert.equal(file.collections[0].name, 'Default');
 });
@@ -147,16 +152,17 @@ import { readFile } from 'node:fs/promises';
 
 test('saveVariables writes variables.json AND regenerated tokens.css', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-save-'));
+  const modeId = 'm_1';
   const file: VariablesFile = {
-    version: 1,
-    collections: [{ id: 'c_1', name: 'Cores', groups: [{ id: 'g_1', name: 'Orange',
-      variables: [{ id: 'v_1', name: '100', type: 'color', value: '#FDEEE9' }],
+    version: 2,
+    collections: [{ id: 'c_1', name: 'Cores', modes: [{ id: modeId, name: 'Default' }], groups: [{ id: 'g_1', name: 'Orange',
+      variables: [{ id: 'v_1', name: '100', type: 'color', valuesByMode: { [modeId]: '#FDEEE9' } }],
     }] }],
   };
   await saveVariables(dir, file);
   const json = JSON.parse(await readFile(path.join(dir, 'variables.json'), 'utf8'));
   const css = await readFile(path.join(dir, 'tokens.css'), 'utf8');
-  assert.equal(json.collections[0].groups[0].variables[0].value, '#FDEEE9');
+  assert.equal(json.collections[0].groups[0].variables[0].valuesByMode[modeId], '#FDEEE9');
   assert.match(css, /--cores-orange-100:\s*#FDEEE9;/);
 });
 
@@ -206,24 +212,68 @@ import {
   applyDeleteVariable,
 } from '../src/design-system-variables.js';
 
+function emptyV2(): VariablesFile { return { version: 2, collections: [] }; }
+
+test('applyCreateCollection seeds a single Default mode', () => {
+  const file = applyCreateCollection(emptyV2(), { name: 'Cores' });
+  assert.equal(file.collections[0].modes.length, 1);
+  assert.equal(file.collections[0].modes[0].name, 'Default');
+});
+
+test('applyCreateVariable seeds valuesByMode for every mode in the collection', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'Grid' });
+  const c = file.collections[0];
+  // Hand-add a second mode for the test
+  c.modes.push({ id: 'm_tab', name: 'Tablet', width: 834 });
+  file = applyCreateGroup(file, { collectionId: c.id, name: 'Layout' });
+  const g = file.collections[0].groups[0];
+  file = applyCreateVariable(file, {
+    collectionId: c.id, groupId: g.id, name: 'Columns', type: 'number',
+    valueByDefault: 12,
+  });
+  const v = file.collections[0].groups[0].variables[0];
+  assert.equal(Object.keys(v.valuesByMode).length, 2);
+  for (const id of Object.keys(v.valuesByMode)) assert.equal(v.valuesByMode[id], 12);
+});
+
+test('applyUpdateVariable patches valuesByMode (partial merge)', () => {
+  let file = applyCreateCollection(emptyV2(), { name: 'X' });
+  const c = file.collections[0];
+  c.modes.push({ id: 'm_b', name: 'B' });
+  file = applyCreateGroup(file, { collectionId: c.id, name: 'g' });
+  file = applyCreateVariable(file, {
+    collectionId: c.id, groupId: file.collections[0].groups[0].id,
+    name: 'v', type: 'number', valueByDefault: 0,
+  });
+  const v0 = file.collections[0].groups[0].variables[0];
+  const aId = c.modes[0].id;
+  file = applyUpdateVariable(file, { variableId: v0.id, patch: { valuesByMode: { [aId]: 42 } } });
+  const v1 = file.collections[0].groups[0].variables[0];
+  assert.equal(v1.valuesByMode[aId], 42);
+  assert.equal(v1.valuesByMode['m_b'], 0); // not patched
+});
+
+const MAKE_FILE_MODE_ID = 'm_default';
 function makeFile(): VariablesFile {
   return {
-    version: 1,
+    version: 2,
     collections: [
-      { id: 'c_1', name: 'Cores', groups: [
+      { id: 'c_1', name: 'Cores', modes: [{ id: MAKE_FILE_MODE_ID, name: 'Default' }], groups: [
         { id: 'g_1', name: 'Orange', variables: [
-          { id: 'v_1', name: '100', type: 'color', value: '#aaaaaa' },
+          { id: 'v_1', name: '100', type: 'color', valuesByMode: { [MAKE_FILE_MODE_ID]: '#aaaaaa' } },
         ] },
       ] },
     ],
   };
 }
 
-test('applyCreateCollection appends a collection with a default group', () => {
+test('applyCreateCollection appends a collection with a Default mode and no groups', () => {
   const next = applyCreateCollection(makeFile(), { name: 'Spacing' });
   assert.equal(next.collections.length, 2);
   assert.equal(next.collections[1]!.name, 'Spacing');
-  assert.equal(next.collections[1]!.groups.length, 1);
+  assert.equal(next.collections[1]!.modes.length, 1);
+  assert.equal(next.collections[1]!.modes[0]!.name, 'Default');
+  assert.equal(next.collections[1]!.groups.length, 0);
 });
 
 test('applyDeleteCollection removes by id', () => {
@@ -245,14 +295,14 @@ test('applyDeleteGroup removes a group by id', () => {
 test('applyCreateVariable appends to the target group', () => {
   const next = applyCreateVariable(makeFile(), {
     collectionId: 'c_1', groupId: 'g_1',
-    name: '200', type: 'color', value: '#bbbbbb',
+    name: '200', type: 'color', valueByDefault: '#bbbbbb',
   });
   assert.equal(next.collections[0]!.groups[0]!.variables.length, 2);
 });
 
-test('applyUpdateVariable changes value by id', () => {
+test('applyUpdateVariable changes value via legacy value patch (routes to first mode)', () => {
   const next = applyUpdateVariable(makeFile(), { variableId: 'v_1', patch: { value: '#cccccc' } });
-  assert.equal(next.collections[0]!.groups[0]!.variables[0]!.value, '#cccccc');
+  assert.equal(next.collections[0]!.groups[0]!.variables[0]!.valuesByMode[MAKE_FILE_MODE_ID], '#cccccc');
 });
 
 test('applyDeleteVariable removes by id', () => {
