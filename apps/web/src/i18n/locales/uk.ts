@@ -1615,4 +1615,7 @@ export const uk: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'API-ключ Pixabay',
+  'settings.pixabay.description': 'Безкоштовний ключ на pixabay.com/api — вмикає пошук зображень для сторінок, згенерованих ШІ. Ліміт: 5000 запитів/годину.',
+  'settings.pixabay.placeholder': 'Ваш API-ключ Pixabay',
 };

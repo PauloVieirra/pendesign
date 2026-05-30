@@ -1617,4 +1617,7 @@ export const id: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Kunci API Pixabay',
+  'settings.pixabay.description': 'Kunci gratis dari pixabay.com/api — mengaktifkan pencarian gambar untuk halaman yang dihasilkan AI. Batas 5000 permintaan/jam.',
+  'settings.pixabay.placeholder': 'Kunci API Pixabay Anda',
 };

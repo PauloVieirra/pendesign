@@ -1459,4 +1459,7 @@ export const it: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Chiave API Pixabay',
+  'settings.pixabay.description': 'Chiave gratuita da pixabay.com/api — abilita la ricerca di immagini per le pagine generate dall\'AI. Limite di 5000 richieste/ora.',
+  'settings.pixabay.placeholder': 'La tua chiave API Pixabay',
 };

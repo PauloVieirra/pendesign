@@ -1733,4 +1733,7 @@ export const zhTW: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Pixabay API 金鑰',
+  'settings.pixabay.description': '在 pixabay.com/api 取得免費金鑰 — 為 AI 生成的頁面啟用圖片搜尋。每小時限 5000 次請求。',
+  'settings.pixabay.placeholder': '您的 Pixabay API 金鑰',
 };

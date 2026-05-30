@@ -1510,4 +1510,7 @@ export const ja: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Pixabay APIキー',
+  'settings.pixabay.description': 'pixabay.com/apiの無料キー — AIが生成したページの画像検索を有効にします。1時間あたり5000リクエストまで。',
+  'settings.pixabay.placeholder': 'Pixabay APIキーを入力',
 };

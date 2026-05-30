@@ -1573,4 +1573,7 @@ export const ar: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'مفتاح API لـ Pixabay',
+  'settings.pixabay.description': 'مفتاح مجاني من pixabay.com/api — يُتيح البحث عن الصور للصفحات المُولَّدة بالذكاء الاصطناعي. الحد: 5000 طلب في الساعة.',
+  'settings.pixabay.placeholder': 'مفتاح Pixabay API الخاص بك',
 };

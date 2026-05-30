@@ -1614,4 +1614,7 @@ export const ptBR: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Chave API do Pixabay',
+  'settings.pixabay.description': 'Chave gratuita em pixabay.com/api — habilita busca de imagens para páginas geradas pelo AI. Limite de 5000 requisições/hora.',
+  'settings.pixabay.placeholder': 'Sua chave API do Pixabay',
 };

@@ -1511,4 +1511,7 @@ export const de: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Pixabay API-Schlüssel',
+  'settings.pixabay.description': 'Kostenloser Schlüssel von pixabay.com/api — ermöglicht die Bildsuche für KI-generierte Seiten. Limit: 5000 Anfragen/Stunde.',
+  'settings.pixabay.placeholder': 'Ihr Pixabay API-Schlüssel',
 };

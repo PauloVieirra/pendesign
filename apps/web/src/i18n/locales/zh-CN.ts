@@ -2158,4 +2158,7 @@ export const zhCN: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Pixabay API 密钥',
+  'settings.pixabay.description': '在 pixabay.com/api 获取免费密钥 — 为 AI 生成的页面启用图片搜索。每小时限 5000 次请求。',
+  'settings.pixabay.placeholder': '您的 Pixabay API 密钥',
 };

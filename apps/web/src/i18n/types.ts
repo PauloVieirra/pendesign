@@ -2202,4 +2202,7 @@ export interface Dict {
   'lean_inception.error.extraction_failed': string;
   'lean_inception.error.document_not_found': string;
   'lean_inception.error.generic': string;
+  'settings.pixabay.label': string;
+  'settings.pixabay.description': string;
+  'settings.pixabay.placeholder': string;
 }

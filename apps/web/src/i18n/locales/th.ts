@@ -1415,4 +1415,7 @@ export const th: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'คีย์ API ของ Pixabay',
+  'settings.pixabay.description': 'คีย์ฟรีจาก pixabay.com/api — เปิดใช้งานการค้นหารูปภาพสำหรับหน้าที่สร้างโดย AI ขีดจำกัด 5,000 คำขอ/ชั่วโมง',
+  'settings.pixabay.placeholder': 'คีย์ API Pixabay ของคุณ',
 };

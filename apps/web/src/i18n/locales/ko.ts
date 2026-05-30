@@ -1623,4 +1623,7 @@ export const ko: Dict = {
   'lean_inception.error.extraction_failed': 'Extraction failed: {message}',
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
+  'settings.pixabay.label': 'Pixabay API 키',
+  'settings.pixabay.description': 'pixabay.com/api의 무료 키 — AI 생성 페이지의 이미지 검색을 활성화합니다. 시간당 5000건 요청 제한.',
+  'settings.pixabay.placeholder': 'Pixabay API 키를 입력하세요',
 };
