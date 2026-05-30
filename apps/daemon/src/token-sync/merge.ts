@@ -8,7 +8,7 @@ import {
   type VariableGroup,
   type VariablesFile,
 } from '../design-system-variables.js';
-import type { ExtractedTokens } from './types.js';
+import type { ExtractedToken, ExtractedTokens } from './types.js';
 
 function slugFont(family: string): string {
   return family.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -86,6 +86,31 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
+function mergeNumericTokens(
+  next: VariablesFile,
+  tokens: ExtractedToken<number>[],
+  collectionName: string,
+  modeNames: string[],
+  groupName: string,
+  namePrefix: string,
+): void {
+  if (tokens.length === 0) return;
+  const c = ensureCollection(next, collectionName, modeNames);
+  const g = ensureGroup(c, groupName);
+  for (const t of tokens) {
+    if (valueExistsInCollection(c, t.value)) continue;
+    const valuesByMode: Record<string, number> = {};
+    for (const m of c.modes) valuesByMode[m.id] = t.value;
+    g.variables.push({
+      id: newVariableId(),
+      name: namePrefix + t.value,
+      type: 'number',
+      valuesByMode,
+      scope: t.scope,
+    });
+  }
+}
+
 export function mergeExtractedIntoDs(file: VariablesFile, tokens: ExtractedTokens): VariablesFile {
   const next = clone(file);
 
@@ -102,6 +127,7 @@ export function mergeExtractedIntoDs(file: VariablesFile, tokens: ExtractedToken
         name: colorVarName(t.value),
         type: 'color',
         valuesByMode,
+        scope: t.scope,
       });
     }
   }
@@ -119,43 +145,22 @@ export function mergeExtractedIntoDs(file: VariablesFile, tokens: ExtractedToken
         name: 'font-' + slugFont(t.value),
         type: 'string',
         valuesByMode,
+        scope: t.scope,
       });
     }
   }
 
   // Sizes → Typography/Detected sizes
-  if (tokens.sizes.length > 0) {
-    const c = ensureCollection(next, 'Typography', ['Desktop', 'Tablet', 'Mobile']);
-    const g = ensureGroup(c, 'Detected sizes');
-    for (const t of tokens.sizes) {
-      if (valueExistsInCollection(c, t.value)) continue;
-      const valuesByMode: Record<string, number> = {};
-      for (const m of c.modes) valuesByMode[m.id] = t.value;
-      g.variables.push({
-        id: newVariableId(),
-        name: 'size-' + t.value,
-        type: 'number',
-        valuesByMode,
-      });
-    }
-  }
+  mergeNumericTokens(next, tokens.sizes, 'Typography', ['Desktop', 'Tablet', 'Mobile'], 'Detected sizes', 'size-');
 
   // Spacing → Spacing/Detected spacing
-  if (tokens.spacing.length > 0) {
-    const c = ensureCollection(next, 'Spacing', ['Default']);
-    const g = ensureGroup(c, 'Detected spacing');
-    for (const t of tokens.spacing) {
-      if (valueExistsInCollection(c, t.value)) continue;
-      const valuesByMode: Record<string, number> = {};
-      for (const m of c.modes) valuesByMode[m.id] = t.value;
-      g.variables.push({
-        id: newVariableId(),
-        name: 'space-' + t.value,
-        type: 'number',
-        valuesByMode,
-      });
-    }
-  }
+  mergeNumericTokens(next, tokens.spacing, 'Spacing', ['Default'], 'Detected spacing', 'space-');
+
+  // Border Radius → Border Radius/Detected
+  mergeNumericTokens(next, tokens.borderRadii, 'Border Radius', ['Default'], 'Detected', 'radius-');
+
+  // Border Width → Border Width/Detected
+  mergeNumericTokens(next, tokens.borderWidths, 'Border Width', ['Default'], 'Detected', 'border-');
 
   return next;
 }
