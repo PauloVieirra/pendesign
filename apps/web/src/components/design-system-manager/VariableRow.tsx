@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../Icon';
+import { ColorPickerPopover } from '../ColorPickerPopover';
 import type { Mode, Variable } from '../../providers/design-system-variables';
 
 interface Props {
@@ -40,10 +41,44 @@ export function VariableRow({ variable, modes, onChangeValueForMode, onRename, o
 
 function ValueCell({ type, value, onCommit }: { type: Variable['type']; value: string | number | boolean | undefined; onCommit: (v: string | number | boolean) => void }) {
   const [raw, setRaw] = useState(value == null ? '' : String(value));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const swatchRef = useRef<HTMLButtonElement | null>(null);
+
   if (type === 'boolean') {
     const on = value === true;
     return (
       <button type="button" className="ds-cell ds-cell--bool" onClick={() => onCommit(!on)}>{on ? 'true' : 'false'}</button>
+    );
+  }
+  if (type === 'color') {
+    return (
+      <span className="ds-cell ds-cell--color">
+        <button
+          ref={swatchRef}
+          type="button"
+          className="ds-cell__swatch"
+          style={{ background: raw || 'transparent' }}
+          aria-label="Open color picker"
+          onClick={() => setPickerOpen((v) => !v)}
+        />
+        <input
+          value={raw}
+          onChange={(ev) => { setRaw(ev.target.value); }}
+          onBlur={() => commit(raw, type, onCommit)}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur(); }}
+        />
+        {pickerOpen ? (
+          <ColorPickerPopover
+            value={raw}
+            onChange={(next) => {
+              setRaw(next);
+              onCommit(next);
+            }}
+            anchorRef={swatchRef}
+            onClose={() => setPickerOpen(false)}
+          />
+        ) : null}
+      </span>
     );
   }
   return (
