@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n';
 import {
   createCollection,
@@ -77,12 +77,22 @@ export function DesignSystemManagerView({
   // user-editable DS via create-empty. The brand association is intentionally
   // dropped — the variables panel is for project-specific tokens, not for
   // editing shared brand systems.
+  //
+  // The in-flight guard uses a ref (not state) because React 18 StrictMode
+  // mounts effects twice in dev; a state-based guard re-fires before the
+  // first setState batches in, causing the request to be sent to the daemon
+  // twice (and TWO new DSes created on disk). A ref persists across the
+  // intentional remount and reliably prevents the second call.
   const needsAttach = !localDsId || isDsLocked(loadError);
+  const attachInFlight = useRef(false);
   useEffect(() => {
-    if (!needsAttach || attaching) return;
-    let cancelled = false;
+    if (!needsAttach) return;
+    if (attachInFlight.current) return;
+    attachInFlight.current = true;
     setAttaching(true);
+    let cancelled = false;
     void createEmptyDesignSystemForProject(projectId).then((result) => {
+      attachInFlight.current = false;
       if (cancelled) return;
       setAttaching(false);
       if ('error' in result) {
@@ -93,7 +103,7 @@ export function DesignSystemManagerView({
       setLocalDsId(result.designSystemId);
     });
     return () => { cancelled = true; };
-  }, [needsAttach, attaching, projectId]);
+  }, [needsAttach, projectId]);
 
   // Reset activeGroupId when the active collection changes
   useEffect(() => {
