@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../../i18n';
 import {
   createCollection,
+  createEmptyDesignSystemForProject,
   createGroup,
   createMode,
   createVariable,
@@ -41,10 +42,10 @@ function isDsLocked(error: string | null): boolean {
 }
 
 export function DesignSystemManagerView({
-  projectId: _projectId,
+  projectId,
   designSystemId,
   projectName: _projectName,
-  onAttachDsRequested,
+  onAttachDsRequested: _onAttachDsRequested,
   sidebarCollapsed,
   onToggleSidebar,
   maximized,
@@ -52,6 +53,13 @@ export function DesignSystemManagerView({
   onClose,
 }: Props) {
   const t = useT();
+  // Local mirror of the DS id. Initially comes from the prop, but if the
+  // project arrives without a DS (e.g., legacy project created before
+  // auto-attach landed), we self-heal by calling create-empty here and
+  // tracking the new id locally. Parent state catches up on the next
+  // navigation; the modal does not need to wait for it.
+  const [localDsId, setLocalDsId] = useState<string | null>(designSystemId);
+  const [attaching, setAttaching] = useState(false);
   const [variables, setVariables] = useState<VariablesFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,6 +68,27 @@ export function DesignSystemManagerView({
   const [typeFilter, setTypeFilter] = useState<Set<VariableType>>(new Set());
   const [activeGroupId, setActiveGroupId] = useState<string | 'all'>('all');
 
+  useEffect(() => {
+    setLocalDsId(designSystemId);
+  }, [designSystemId]);
+
+  // Self-heal: project has no DS attached → trigger create-empty once.
+  useEffect(() => {
+    if (localDsId || attaching) return;
+    let cancelled = false;
+    setAttaching(true);
+    void createEmptyDesignSystemForProject(projectId).then((result) => {
+      if (cancelled) return;
+      setAttaching(false);
+      if ('error' in result) {
+        setLoadError(result.error.message);
+        return;
+      }
+      setLocalDsId(result.designSystemId);
+    });
+    return () => { cancelled = true; };
+  }, [localDsId, attaching, projectId]);
+
   // Reset activeGroupId when the active collection changes
   useEffect(() => {
     setActiveGroupId('all');
@@ -67,13 +96,13 @@ export function DesignSystemManagerView({
 
   // Load variables when DS id changes
   useEffect(() => {
-    if (!designSystemId) {
+    if (!localDsId) {
       setVariables(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    void fetchVariables(designSystemId).then((result) => {
+    void fetchVariables(localDsId).then((result) => {
       if (cancelled) return;
       setLoading(false);
       if ('error' in result) {
@@ -84,18 +113,18 @@ export function DesignSystemManagerView({
       setActiveCollectionId((prev) => prev ?? result.variables.collections[0]?.id ?? null);
     });
     return () => { cancelled = true; };
-  }, [designSystemId]);
+  }, [localDsId]);
 
   // Persist / hydrate activeCollectionId per DS id
   useEffect(() => {
-    if (!designSystemId) return;
-    const stored = localStorage.getItem(LS_ACTIVE_COLLECTION(designSystemId));
+    if (!localDsId) return;
+    const stored = localStorage.getItem(LS_ACTIVE_COLLECTION(localDsId));
     if (stored) setActiveCollectionId(stored);
-  }, [designSystemId]);
+  }, [localDsId]);
   useEffect(() => {
-    if (!designSystemId || !activeCollectionId) return;
-    try { localStorage.setItem(LS_ACTIVE_COLLECTION(designSystemId), activeCollectionId); } catch { /* ignore */ }
-  }, [designSystemId, activeCollectionId]);
+    if (!localDsId || !activeCollectionId) return;
+    try { localStorage.setItem(LS_ACTIVE_COLLECTION(localDsId), activeCollectionId); } catch { /* ignore */ }
+  }, [localDsId, activeCollectionId]);
 
   const activeCollection = useMemo(
     () => variables?.collections.find((c) => c.id === activeCollectionId) ?? null,
@@ -103,19 +132,19 @@ export function DesignSystemManagerView({
   );
 
   const refetch = useCallback(async () => {
-    if (!designSystemId) return;
-    const result = await fetchVariables(designSystemId);
+    if (!localDsId) return;
+    const result = await fetchVariables(localDsId);
     if ('error' in result) {
       setLoadError(result.error.message);
       return;
     }
     setVariables(result.variables);
-  }, [designSystemId]);
+  }, [localDsId]);
 
   // Handler: per-mode value update — optimistic + POST patch
   const handleUpdateValueForMode = useCallback(
     (variableId: string, modeId: string, value: string | number | boolean) => {
-      if (!designSystemId) return;
+      if (!localDsId) return;
       setVariables((prev) => {
         if (!prev) return prev;
         return {
@@ -131,17 +160,17 @@ export function DesignSystemManagerView({
           })),
         };
       });
-      void updateVariable(designSystemId, variableId, { valuesByMode: { [modeId]: value } }).then((r) => {
+      void updateVariable(localDsId, variableId, { valuesByMode: { [modeId]: value } }).then((r) => {
         if ('error' in r) { setLoadError(r.error.message); void refetch(); }
       });
     },
-    [designSystemId, refetch],
+    [localDsId, refetch],
   );
 
   // Handler: rename variable — optimistic + POST patch
   const handleRenameVariable = useCallback(
     (variableId: string, name: string) => {
-      if (!designSystemId) return;
+      if (!localDsId) return;
       setVariables((prev) => {
         if (!prev) return prev;
         return {
@@ -157,63 +186,63 @@ export function DesignSystemManagerView({
           })),
         };
       });
-      void updateVariable(designSystemId, variableId, { name }).then((r) => {
+      void updateVariable(localDsId, variableId, { name }).then((r) => {
         if ('error' in r) { setLoadError(r.error.message); void refetch(); }
       });
     },
-    [designSystemId, refetch],
+    [localDsId, refetch],
   );
 
   // Handler: create variable
   const handleCreateVariable = useCallback(
     async (groupId: string, body: { name: string; type: VariableType }) => {
-      if (!designSystemId || !activeCollection) return;
-      await createVariable(designSystemId, activeCollection.id, groupId, body);
+      if (!localDsId || !activeCollection) return;
+      await createVariable(localDsId, activeCollection.id, groupId, body);
       await refetch();
     },
-    [designSystemId, activeCollection, refetch],
+    [localDsId, activeCollection, refetch],
   );
 
   // Mode handlers
   const handleCreateMode = useCallback(
     async (body: { name: string; width?: number }) => {
-      if (!designSystemId || !activeCollection) return;
-      await createMode(designSystemId, activeCollection.id, body);
+      if (!localDsId || !activeCollection) return;
+      await createMode(localDsId, activeCollection.id, body);
       await refetch();
     },
-    [designSystemId, activeCollection, refetch],
+    [localDsId, activeCollection, refetch],
   );
 
   const handleRenameMode = useCallback(
     async (modeId: string, name: string) => {
-      if (!designSystemId || !activeCollection) return;
-      await updateMode(designSystemId, activeCollection.id, modeId, { name });
+      if (!localDsId || !activeCollection) return;
+      await updateMode(localDsId, activeCollection.id, modeId, { name });
       await refetch();
     },
-    [designSystemId, activeCollection, refetch],
+    [localDsId, activeCollection, refetch],
   );
 
   const handleSetModeWidth = useCallback(
     async (modeId: string, width: number | null) => {
-      if (!designSystemId || !activeCollection) return;
-      await updateMode(designSystemId, activeCollection.id, modeId, { width });
+      if (!localDsId || !activeCollection) return;
+      await updateMode(localDsId, activeCollection.id, modeId, { width });
       await refetch();
     },
-    [designSystemId, activeCollection, refetch],
+    [localDsId, activeCollection, refetch],
   );
 
   const handleDeleteMode = useCallback(
     async (modeId: string) => {
-      if (!designSystemId || !activeCollection) return;
-      await deleteMode(designSystemId, activeCollection.id, modeId);
+      if (!localDsId || !activeCollection) return;
+      await deleteMode(localDsId, activeCollection.id, modeId);
       await refetch();
     },
-    [designSystemId, activeCollection, refetch],
+    [localDsId, activeCollection, refetch],
   );
 
   // Treat a missing or locked DS as a transient state — the daemon auto-creates
   // a DS on project creation, so we just show a loading indicator.
-  const dsMissingOrLocked = !designSystemId || isDsLocked(loadError);
+  const dsMissingOrLocked = !localDsId || isDsLocked(loadError);
   const showLoadingState = dsMissingOrLocked || !variables || !activeCollection;
 
   return (
@@ -248,29 +277,29 @@ export function DesignSystemManagerView({
           onSelectCollection={setActiveCollectionId}
           onSelectGroup={setActiveGroupId}
           onCreateCollection={async (name) => {
-            if (!designSystemId || dsMissingOrLocked) return;
-            await createCollection(designSystemId, name);
+            if (!localDsId || dsMissingOrLocked) return;
+            await createCollection(localDsId, name);
             await refetch();
           }}
           onDeleteCollection={async (collectionId) => {
-            if (!designSystemId || dsMissingOrLocked) return;
-            await deleteCollection(designSystemId, collectionId);
+            if (!localDsId || dsMissingOrLocked) return;
+            await deleteCollection(localDsId, collectionId);
             await refetch();
           }}
           onCreateGroup={async (name) => {
-            if (!designSystemId || dsMissingOrLocked || !activeCollectionId) return;
-            await createGroup(designSystemId, activeCollectionId, name);
+            if (!localDsId || dsMissingOrLocked || !activeCollectionId) return;
+            await createGroup(localDsId, activeCollectionId, name);
             await refetch();
           }}
           onDeleteGroup={async (groupId) => {
-            if (!designSystemId || dsMissingOrLocked || !activeCollectionId) return;
-            await deleteGroup(designSystemId, activeCollectionId, groupId);
+            if (!localDsId || dsMissingOrLocked || !activeCollectionId) return;
+            await deleteGroup(localDsId, activeCollectionId, groupId);
             await refetch();
           }}
           collapsed={sidebarCollapsed}
         />
         <main className="ds-modal__main">
-          {!showLoadingState && designSystemId && variables && activeCollection ? (
+          {!showLoadingState && localDsId && variables && activeCollection ? (
             <VariablesTable
               collection={activeCollection}
               activeGroupId={activeGroupId}
@@ -279,7 +308,7 @@ export function DesignSystemManagerView({
               onUpdateVariableValueForMode={handleUpdateValueForMode}
               onRenameVariable={handleRenameVariable}
               onDeleteVariable={async (variableId) => {
-                await deleteVariable(designSystemId, variableId);
+                await deleteVariable(localDsId, variableId);
                 await refetch();
               }}
               onCreateVariable={handleCreateVariable}
@@ -290,7 +319,7 @@ export function DesignSystemManagerView({
             />
           ) : (
             <div className="ds-modal__loading">
-              <p>Loading design system…</p>
+              <p>{attaching ? 'Setting up design system…' : 'Loading design system…'}</p>
             </div>
           )}
           {loadError && !dsMissingOrLocked && variables ? (
