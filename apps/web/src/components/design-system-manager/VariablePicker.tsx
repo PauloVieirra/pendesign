@@ -24,6 +24,14 @@ function varSlugFor(variable: Variable, collectionName: string, groupName: strin
   return `--${slugify(collectionName)}-${slugify(groupName)}-${slugify(variable.name)}`;
 }
 
+/**
+ * Exported helper: returns the full CSS variable name for a variable.
+ * Used by ManualEditPanel for reverse lookups (chip display).
+ */
+export function varNameForVariable(collectionName: string, groupName: string, variable: Variable): string {
+  return varSlugFor(variable, collectionName, groupName);
+}
+
 export function VariablePicker({ variables, filterType, requiredScope, onPick, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -140,7 +148,8 @@ export function VariablePicker({ variables, filterType, requiredScope, onPick, a
                         <span className="ds-var-picker__type">{m.variable.type}</span>
                       )}
                       <span className="ds-var-picker__label">
-                        {m.collectionName}/{m.groupName}/<strong>{m.variable.name}</strong>
+                        <strong>{m.variable.name}</strong>
+                        <small className="ds-var-picker__path">{m.collectionName} › {m.groupName}</small>
                       </span>
                     </button>
                   </li>

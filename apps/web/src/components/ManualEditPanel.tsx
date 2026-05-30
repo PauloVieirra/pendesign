@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 import { pickPrimaryValue, type VariableScope, type VariablesFile } from '../providers/design-system-variables';
-import { VariablePicker } from './design-system-manager/VariablePicker';
+import { varNameForVariable, VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';
 import { DeleteConfirmModal, type DeleteConfirmModalLabels } from './DeleteConfirmModal';
 
@@ -102,17 +102,21 @@ function SizeRow({
   ariaLabel,
   value,
   onChange,
+  variables = null,
 }: {
   label: string;
   ariaLabel: string;
   value: string;
   onChange: (next: string) => void;
+  variables?: VariablesFile | null;
 }) {
   if (isCssVarToken(value)) {
+    const tokenName = varTokenName(value);
+    const displayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : value;
     return (
       <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
         <span className="manual-edit-size-label">{label}</span>
-        <span className="manual-edit-size-token" title={value}>{value}</span>
+        <span className="manual-edit-size-token" title={value}>{displayName}</span>
         <button
           type="button"
           className="manual-edit-size-clear"
@@ -758,8 +762,8 @@ function StyleInspector({
       <Section title="Layout">
         <SubSection title="Size">
           <PairRow>
-            <SizeRow label="W" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} />
-            <SizeRow label="H" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} />
+            <SizeRow label="W" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} variables={dsVariables} />
+            <SizeRow label="H" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} variables={dsVariables} />
           </PairRow>
         </SubSection>
 
@@ -871,6 +875,22 @@ function varTokenName(value: string): string | null {
   return match ? match[1]! : null;
 }
 
+// Reverse-lookup: given a CSS var name (e.g. `--cores-group-btn-primary`),
+// find the variable's leaf name (e.g. `btn-primary`) by scanning the DS
+// variables file. Returns null when the DS file is absent or the slug has
+// no match.
+function lookupVariableName(varCssName: string, variables: VariablesFile | null): string | null {
+  if (!variables) return null;
+  for (const c of variables.collections) {
+    for (const g of c.groups) {
+      for (const v of g.variables) {
+        if (varNameForVariable(c.name, g.name, v) === varCssName) return v.name;
+      }
+    }
+  }
+  return null;
+}
+
 function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables = null, requiredScope }: {
   label: string; value: string; onChange: (v: string) => void;
   unit: string; autoUnit?: boolean; disabled?: boolean;
@@ -897,14 +917,41 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables =
     const next = formatSteppedNumber(Number(display) + direction * step, display, step);
     onChange(valueFromDisplay(next));
   };
+  if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
+    return (
+      <label className="cc-row">
+        <span className="cc-label">{label}</span>
+        <span className="cc-value cc-value-token">
+          <input value={displayName} readOnly title={tokenName} aria-label={`${label} bound to ${tokenName}`} />
+          <button
+            type="button"
+            className="cc-token-clear"
+            aria-label={`Unbind ${label}`}
+            title="Unbind token"
+            onClick={() => onChange('')}
+          >×</button>
+          {variables ? (
+            <VariablePicker
+              variables={variables}
+              filterType="number"
+              requiredScope={requiredScope}
+              ariaLabel={`Rebind ${label} to design system variable`}
+              onPick={(slug) => onChange(`var(${slug})`)}
+            />
+          ) : null}
+        </span>
+      </label>
+    );
+  }
   return (
     <label className="cc-row">
       <span className="cc-label">{label}</span>
-      <span className={`cc-value${tokenName ? ' cc-value-token' : ''}`}>
+      <span className="cc-value">
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} decrease`} onClick={() => stepBy(-1)}>−</button>
         <input value={display} placeholder="" disabled={disabled} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} increase`} onClick={() => stepBy(1)}>+</button>
-        {unit && !tokenName ? <em className="cc-unit">{unit}</em> : null}
+        {unit ? <em className="cc-unit">{unit}</em> : null}
         {variables ? (
           <VariablePicker
             variables={variables}
@@ -926,11 +973,12 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, v
 }) {
   const tokenName = varTokenName(value);
   if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
     return (
       <label className="cc-row">
         <span className="cc-label">{label}</span>
         <span className="cc-value cc-value-token">
-          <input value={tokenName} readOnly aria-label={`${label} bound to ${tokenName}`} />
+          <input value={displayName} readOnly title={tokenName} aria-label={`${label} bound to ${tokenName}`} />
           <button
             type="button"
             className="cc-token-clear"
@@ -980,11 +1028,12 @@ function FontRow({ value, onChange, variables = null, requiredScope }: {
 }) {
   const tokenName = varTokenName(value);
   if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
     return (
       <label className="cc-row">
         <span className="cc-label">Font</span>
         <span className="cc-value cc-value-token">
-          <input value={tokenName} readOnly aria-label={`Font bound to ${tokenName}`} />
+          <input value={displayName} readOnly title={tokenName} aria-label={`Font bound to ${tokenName}`} />
           <button
             type="button"
             className="cc-token-clear"
@@ -1075,25 +1124,41 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
   // click-outside is handled inside ColorPickerPopover (it owns the portal'd
   // node and the trigger anchor); we only manage open/closed state here.
   const swatchBackground = resolveVarColor(value, variables) ?? value ?? 'transparent';
+  const tokenName = varTokenName(value);
+  const tokenDisplayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : null;
   return (
     <label className="cc-row">
       {compact ? null : <span className="cc-label">{label}</span>}
-      <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}`} ref={ref}>
+      <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}${tokenName ? ' cc-value-token' : ''}`} ref={ref}>
         <button ref={swatchRef} type="button" className="cc-swatch"
           style={{ background: swatchBackground }}
           onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
-        <input value={value} placeholder="#000000"
-          onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => setOpen(true)} />
+        <input value={tokenDisplayName ?? value} placeholder="#000000"
+          title={tokenName ?? undefined}
+          onChange={(e) => { if (tokenName) { onChange(''); } else { onChange(e.currentTarget.value); } }}
+          onFocus={() => { if (!tokenName) setOpen(true); }}
+          readOnly={!!tokenName}
+          aria-label={tokenName ? `${label} bound to ${tokenName}` : undefined}
+        />
+        {tokenName ? (
+          <button
+            type="button"
+            className="cc-token-clear"
+            aria-label={`Unbind ${label}`}
+            title="Unbind token"
+            onClick={() => { setOpen(false); onChange(''); }}
+          >×</button>
+        ) : null}
         {variables ? (
           <VariablePicker
             variables={variables}
             filterType="color"
             requiredScope={requiredScope}
-            ariaLabel={`Bind ${label} to design system variable`}
-            onPick={(slug) => onChange(`var(${slug})`)}
+            ariaLabel={tokenName ? `Rebind ${label} to design system variable` : `Bind ${label} to design system variable`}
+            onPick={(slug) => { setOpen(false); onChange(`var(${slug})`); }}
           />
         ) : null}
-        {open ? (
+        {open && !tokenName ? (
           <ColorPickerPopover
             value={value}
             onChange={onChange}
@@ -1143,7 +1208,8 @@ function QuadCell({ axis, value, onChange, variables = null, requiredScope }: {
   requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
-  const display = tokenName ? tokenName : stripPxUnit(value);
+  const displayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : null;
+  const display = displayName ?? stripPxUnit(value);
   const canStep = !tokenName && isNumericInput(display);
   const stepBy = (direction: -1 | 1) => {
     if (!canStep) return;
@@ -1153,7 +1219,7 @@ function QuadCell({ axis, value, onChange, variables = null, requiredScope }: {
     <span className={`cc-quad-cell${tokenName ? ' cc-quad-cell-token' : ''}`}>
       <em className="cc-quad-axis">{axis}</em>
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} decrease`} onClick={() => stepBy(-1)}>−</button>
-      <input value={display} placeholder="0" readOnly={!!tokenName}
+      <input value={display} placeholder="0" title={tokenName ?? undefined} readOnly={!!tokenName}
         onChange={(e) => {
           const raw = e.currentTarget.value.trim();
           if (raw === '') onChange('');
@@ -1170,12 +1236,21 @@ function QuadCell({ axis, value, onChange, variables = null, requiredScope }: {
         }} />
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} increase`} onClick={() => stepBy(1)}>+</button>
       {tokenName ? null : <em className="cc-quad-unit">px</em>}
+      {tokenName ? (
+        <button
+          type="button"
+          className="cc-token-clear"
+          aria-label={`Unbind ${axis}`}
+          title="Unbind token"
+          onClick={() => onChange('')}
+        >×</button>
+      ) : null}
       {variables ? (
         <VariablePicker
           variables={variables}
           filterType="number"
           requiredScope={requiredScope}
-          ariaLabel={`Bind ${axis} to design system variable`}
+          ariaLabel={tokenName ? `Rebind ${axis} to design system variable` : `Bind ${axis} to design system variable`}
           onPick={(slug) => onChange(`var(${slug})`)}
         />
       ) : null}

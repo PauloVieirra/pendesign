@@ -26572,9 +26572,9 @@ body.desktop-pet-shell .pet-task-item {
 .ds-var-picker__list li button {
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -26600,7 +26600,9 @@ body.desktop-pet-shell .pet-task-item {
   border-radius: 3px;
   flex: 0 0 auto;
 }
-.ds-var-picker__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
+.ds-var-picker__label { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 1px; color: var(--text, inherit); }
+.ds-var-picker__label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-var-picker__path { font-size: 10px; color: var(--text-faint, #9ca3af); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-var-picker__empty { padding: 12px; color: var(--text-muted, #6a6a6a); font-size: 12px; }
 
 /* ============================================================================
