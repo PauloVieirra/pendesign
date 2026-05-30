@@ -71,7 +71,38 @@ const SEED_SPEC: SeedSpec[] = [
     ],
   },
   { collectionName: 'Cores', modes: [{ name: 'Default' }], groups: [] },
-  { collectionName: 'Spacing', modes: [{ name: 'Default' }], groups: [] },
+  {
+    collectionName: 'Spacing',
+    modes: DESKTOP_TABLET_MOBILE,
+    groups: [
+      {
+        groupName: 'Padding',
+        variables: [
+          { name: 'xs', type: 'number', values: [8, 6, 4], scope: 'padding' },
+          { name: 'sm', type: 'number', values: [12, 10, 8], scope: 'padding' },
+          { name: 'md', type: 'number', values: [16, 14, 12], scope: 'padding' },
+          { name: 'lg', type: 'number', values: [24, 20, 16], scope: 'padding' },
+          { name: 'xl', type: 'number', values: [32, 28, 24], scope: 'padding' },
+          { name: '2xl', type: 'number', values: [48, 40, 32], scope: 'padding' },
+          { name: '3xl', type: 'number', values: [64, 56, 48], scope: 'padding' },
+          { name: '4xl', type: 'number', values: [96, 80, 64], scope: 'padding' },
+        ],
+      },
+      {
+        groupName: 'Margin',
+        variables: [
+          { name: 'xs', type: 'number', values: [8, 6, 4], scope: 'margin' },
+          { name: 'sm', type: 'number', values: [12, 10, 8], scope: 'margin' },
+          { name: 'md', type: 'number', values: [16, 14, 12], scope: 'margin' },
+          { name: 'lg', type: 'number', values: [24, 20, 16], scope: 'margin' },
+          { name: 'xl', type: 'number', values: [32, 28, 24], scope: 'margin' },
+          { name: '2xl', type: 'number', values: [48, 40, 32], scope: 'margin' },
+          { name: '3xl', type: 'number', values: [64, 56, 48], scope: 'margin' },
+          { name: '4xl', type: 'number', values: [96, 80, 64], scope: 'margin' },
+        ],
+      },
+    ],
+  },
 ];
 
 export function buildSeededVariablesFile(): VariablesFile {

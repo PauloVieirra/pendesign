@@ -30,6 +30,31 @@ test('Cores collection seeds a single Default mode with no variables', () => {
   assert.equal(cores.groups.length, 0);
 });
 
+test('Spacing collection seeds Desktop/Tablet/Mobile modes with Padding + Margin groups', () => {
+  const file = buildSeededVariablesFile();
+  const spacing = file.collections.find((c) => c.name === 'Spacing')!;
+  const modes = spacing.modes.map((m) => m.name);
+  assert.deepEqual(modes, ['Desktop', 'Tablet', 'Mobile']);
+  const groupNames = spacing.groups.map((g) => g.name).sort();
+  assert.deepEqual(groupNames, ['Margin', 'Padding']);
+  const padding = spacing.groups.find((g) => g.name === 'Padding')!;
+  assert.equal(padding.variables.length, 8);
+  for (const v of padding.variables) assert.equal(v.scope, 'padding');
+  const margin = spacing.groups.find((g) => g.name === 'Margin')!;
+  for (const v of margin.variables) assert.equal(v.scope, 'margin');
+});
+
+test('Spacing Padding md has values 16/14/12 across modes', () => {
+  const file = buildSeededVariablesFile();
+  const spacing = file.collections.find((c) => c.name === 'Spacing')!;
+  const padding = spacing.groups.find((g) => g.name === 'Padding')!;
+  const md = padding.variables.find((v) => v.name === 'md')!;
+  const [d, t, m] = spacing.modes.map((mode) => mode.id);
+  assert.equal(md.valuesByMode[d], 16);
+  assert.equal(md.valuesByMode[t], 14);
+  assert.equal(md.valuesByMode[m], 12);
+});
+
 test('buildSeededVariablesFile is deterministic in shape (ids vary, names stable)', () => {
   const a = buildSeededVariablesFile();
   const b = buildSeededVariablesFile();
