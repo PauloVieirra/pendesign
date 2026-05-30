@@ -16,7 +16,7 @@ test('readVariables returns parsed JSON, writeVariables roundtrips it', async ()
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-'));
   const modeId = 'm_default';
   const file: VariablesFile = {
-    version: 2,
+    version: 3,
     collections: [
       {
         id: 'c_1',
@@ -60,7 +60,7 @@ import { renderTokensCss } from '../src/design-system-variables.js';
 
 test('renderTokensCss emits CSS variables with collection/group/name slugs', () => {
   const css = renderTokensCss({
-    version: 2,
+    version: 3,
     collections: [
       {
         id: 'c_1', name: 'Cores',
@@ -82,7 +82,7 @@ test('renderTokensCss emits CSS variables with collection/group/name slugs', () 
 
 test('renderTokensCss disambiguates colliding slugs with numeric suffix', () => {
   const css = renderTokensCss({
-    version: 2,
+    version: 3,
     collections: [
       {
         id: 'c_1', name: 'A',
@@ -102,7 +102,7 @@ test('renderTokensCss disambiguates colliding slugs with numeric suffix', () => 
 
 test('renderTokensCss serializes number/string/boolean variables', () => {
   const css = renderTokensCss({
-    version: 2,
+    version: 3,
     collections: [{ id: 'c_1', name: 'M', modes: [{ id: 'm_1', name: 'Default' }], groups: [{ id: 'g_1', name: 'G', variables: [
       { id: 'v_1', name: 'gap', type: 'number', valuesByMode: { m_1: 16 } },
       { id: 'v_2', name: 'fam', type: 'string', valuesByMode: { m_1: 'Inter, sans-serif' } },
@@ -119,7 +119,7 @@ import { migrateFromTokensCss } from '../src/design-system-variables.js';
 test('migrateFromTokensCss groups color tokens into Colors collection', () => {
   const css = `:root { --color-rausch: #ff385c; --color-ink: #222222; }`;
   const file = migrateFromTokensCss(css);
-  assert.equal(file.version, 2);
+  assert.equal(file.version, 3);
   const colors = file.collections.find((c) => c.name === 'Colors');
   assert.ok(colors, 'Colors collection missing');
   assert.equal(colors!.modes.length, 1);
@@ -142,7 +142,7 @@ test('migrateFromTokensCss puts space and radius into separate collections', () 
 
 test('migrateFromTokensCss returns single default collection when input is empty', () => {
   const file = migrateFromTokensCss('');
-  assert.equal(file.version, 2);
+  assert.equal(file.version, 3);
   assert.equal(file.collections.length, 1);
   assert.equal(file.collections[0].name, 'Default');
 });
@@ -154,7 +154,7 @@ test('saveVariables writes variables.json AND regenerated tokens.css', async () 
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-save-'));
   const modeId = 'm_1';
   const file: VariablesFile = {
-    version: 2,
+    version: 3,
     collections: [{ id: 'c_1', name: 'Cores', modes: [{ id: modeId, name: 'Default' }], groups: [{ id: 'g_1', name: 'Orange',
       variables: [{ id: 'v_1', name: '100', type: 'color', valuesByMode: { [modeId]: '#FDEEE9' } }],
     }] }],
@@ -212,7 +212,7 @@ import {
   applyDeleteVariable,
 } from '../src/design-system-variables.js';
 
-function emptyV2(): VariablesFile { return { version: 2, collections: [] }; }
+function emptyV2(): VariablesFile { return { version: 3, collections: [] }; } // v2 name kept for historical context; now returns v3
 
 test('applyCreateCollection seeds a single Default mode', () => {
   const file = applyCreateCollection(emptyV2(), { name: 'Cores' });
@@ -311,7 +311,7 @@ test('applyUpdateVariable patches valuesByMode (partial merge)', () => {
 const MAKE_FILE_MODE_ID = 'm_default';
 function makeFile(): VariablesFile {
   return {
-    version: 2,
+    version: 3,
     collections: [
       { id: 'c_1', name: 'Cores', modes: [{ id: MAKE_FILE_MODE_ID, name: 'Default' }], groups: [
         { id: 'g_1', name: 'Orange', variables: [
@@ -390,7 +390,7 @@ test('migrateV1ToV2 converts v1 file to v2 with single Default mode', () => {
 
 test('migrateV1ToV2 is idempotent on v2 file', () => {
   const v2: any = {
-    version: 2,
+    version: 3,
     collections: [{
       id: 'c_1', name: 'X', modes: [{ id: 'm_1', name: 'Default' }],
       groups: [{ id: 'g_1', name: 'A', variables: [{ id: 'v_1', name: 'a', type: 'color', valuesByMode: { m_1: '#fff' } }] }],
@@ -400,7 +400,7 @@ test('migrateV1ToV2 is idempotent on v2 file', () => {
   assert.deepEqual(out, v2);
 });
 
-test('readVariables auto-migrates v1 files to v2', async () => {
+test('readVariables auto-migrates v1 files to v3 (via v1→v2→v3 chain)', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-mig-'));
   const v1 = {
     version: 1,
@@ -410,6 +410,68 @@ test('readVariables auto-migrates v1 files to v2', async () => {
   };
   await writeFile(path.join(dir, VARIABLES_FILE_NAME), JSON.stringify(v1), 'utf8');
   const out = await readVariables(dir);
-  assert.equal(out?.version, 2);
+  assert.equal(out?.version, 3);
   assert.equal(out?.collections[0].modes.length, 1);
+});
+
+import { migrateV2ToV3 } from '../src/design-system-variables.js';
+
+test('migrateV2ToV3 adds scope:null to all variables and sets version:3', () => {
+  const v2: any = {
+    version: 2,
+    collections: [{
+      id: 'c_1', name: 'Cores',
+      modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{
+        id: 'g_1', name: 'Orange',
+        variables: [
+          { id: 'v_1', name: '100', type: 'color', valuesByMode: { m_1: '#FDEEE9' } },
+          { id: 'v_2', name: '200', type: 'color', valuesByMode: { m_1: '#FAD8CD' } },
+        ],
+      }],
+    }],
+  };
+  const v3 = migrateV2ToV3(v2);
+  assert.equal(v3.version, 3);
+  const variables = v3.collections[0].groups[0].variables;
+  assert.equal(variables.length, 2);
+  for (const v of variables) {
+    assert.ok('scope' in v, 'scope field must be present');
+    assert.equal(v.scope, null);
+  }
+});
+
+test('migrateV2ToV3 is idempotent on v3 file', () => {
+  const v3: any = {
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Cores',
+      modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{
+        id: 'g_1', name: 'Orange',
+        variables: [
+          { id: 'v_1', name: '100', type: 'color', valuesByMode: { m_1: '#FDEEE9' }, scope: 'color' },
+        ],
+      }],
+    }],
+  };
+  const out = migrateV2ToV3(v3);
+  assert.equal(out.version, 3);
+  assert.equal(out.collections[0].groups[0].variables[0].scope, 'color');
+});
+
+test('readVariables chains v1→v3 (full migration path)', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'od-ds-vars-v3-'));
+  const v1 = {
+    version: 1,
+    collections: [{ id: 'c1', name: 'X', groups: [{ id: 'g1', name: 'g', variables: [
+      { id: 'v1', name: 'a', type: 'color', value: '#000' },
+    ]}]}],
+  };
+  await writeFile(path.join(dir, VARIABLES_FILE_NAME), JSON.stringify(v1), 'utf8');
+  const out = await readVariables(dir);
+  assert.equal(out?.version, 3);
+  const variable = out?.collections[0].groups[0].variables[0];
+  assert.ok(variable && 'scope' in variable, 'scope field must be present after full migration');
+  assert.equal(variable?.scope, null);
 });

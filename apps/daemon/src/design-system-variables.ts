@@ -4,6 +4,22 @@ import { randomBytes } from 'node:crypto';
 
 export type VariableType = 'color' | 'number' | 'string' | 'boolean';
 
+export type VariableScope =
+  | 'color'
+  | 'font-size'
+  | 'font-family'
+  | 'font-weight'
+  | 'line-height'
+  | 'padding'
+  | 'margin'
+  | 'gap'
+  | 'border-radius'
+  | 'border-width'
+  | 'width'
+  | 'height'
+  | 'opacity'
+  | null;
+
 export interface Mode {
   id: string;
   name: string;
@@ -15,6 +31,7 @@ export interface Variable {
   name: string;
   type: VariableType;
   valuesByMode: Record<string, string | number | boolean>;
+  scope?: VariableScope;
 }
 
 export interface VariableGroup {
@@ -31,7 +48,7 @@ export interface VariableCollection {
 }
 
 export interface VariablesFile {
-  version: 2;
+  version: 3;
   collections: VariableCollection[];
 }
 
@@ -41,11 +58,13 @@ export function newModeId(): string {
   return `m_${shortToken()}`;
 }
 
-export function migrateV1ToV2(input: any): VariablesFile {
+// migrateV1ToV2 returns a v2-shaped object (intermediate step in chain).
+// We return 'any' here so migrateV2ToV3 can accept it without version literal mismatch.
+export function migrateV1ToV2(input: any): any {
   if (!input || typeof input !== 'object') {
     return { version: 2, collections: [] };
   }
-  if (input.version === 2) return input as VariablesFile;
+  if (input.version === 2 || input.version === 3) return input;
   const collections = Array.isArray(input.collections) ? input.collections : [];
   const migratedCollections: VariableCollection[] = collections.map((c: any) => {
     const defaultMode: Mode = { id: newModeId(), name: 'Default' };
@@ -69,12 +88,32 @@ export function migrateV1ToV2(input: any): VariablesFile {
   return { version: 2, collections: migratedCollections };
 }
 
+export function migrateV2ToV3(input: any): VariablesFile {
+  if (!input || typeof input !== 'object') {
+    return { version: 3, collections: [] };
+  }
+  if (input.version === 3) return input as VariablesFile;
+  const collections = Array.isArray(input.collections) ? input.collections : [];
+  const migratedCollections: VariableCollection[] = collections.map((c: any) => ({
+    ...c,
+    groups: (Array.isArray(c.groups) ? c.groups : []).map((g: any) => ({
+      ...g,
+      variables: (Array.isArray(g.variables) ? g.variables : []).map((v: any) => ({
+        ...v,
+        scope: 'scope' in v ? v.scope : null,
+      })),
+    })),
+  }));
+  return { version: 3, collections: migratedCollections };
+}
+
 export async function readVariables(dsDir: string): Promise<VariablesFile | null> {
   try {
     const raw = await readFile(path.join(dsDir, VARIABLES_FILE_NAME), 'utf8');
     const parsed = JSON.parse(raw);
-    if (parsed?.version === 2) return parsed as VariablesFile;
-    const upgraded = migrateV1ToV2(parsed);
+    if (parsed?.version === 3) return parsed as VariablesFile;
+    const afterV2 = migrateV1ToV2(parsed);
+    const upgraded = migrateV2ToV3(afterV2);
     // Best-effort write back; if it fails (e.g. read-only fixture), still return upgraded.
     try { await writeVariables(dsDir, upgraded); } catch { /* ignore */ }
     return upgraded;
@@ -216,7 +255,7 @@ export function migrateFromTokensCss(css: string): VariablesFile {
   if (!css || !css.trim()) {
     const defaultModeId = newModeId();
     return {
-      version: 2,
+      version: 3,
       collections: [
         {
           id: newCollectionId(),
@@ -274,7 +313,7 @@ export function migrateFromTokensCss(css: string): VariablesFile {
       groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
     });
   }
-  return { version: 2, collections };
+  return { version: 3, collections };
 }
 
 const TOKENS_CSS_FILE_NAME = 'tokens.css';
