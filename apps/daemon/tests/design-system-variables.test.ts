@@ -475,3 +475,142 @@ test('readVariables chains v1→v3 (full migration path)', async () => {
   assert.ok(variable && 'scope' in variable, 'scope field must be present after full migration');
   assert.equal(variable?.scope, null);
 });
+
+// ── Fluid responsive renderTokensCss tests ──────────────────────────────────
+
+test('renderTokensCss single-mode numeric variable → flat output with px', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Typography',
+      modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{ id: 'g_1', name: 'Size', variables: [
+        { id: 'v_1', name: 'body', type: 'number', valuesByMode: { m_1: 16 }, scope: 'font-size' },
+      ] }],
+    }],
+  });
+  assert.match(css, /--typography-size-body:\s*16px;/);
+  assert.ok(!css.includes('@media'), 'no @media blocks for single mode');
+  assert.ok(!css.includes('clamp'), 'no clamp for single mode');
+});
+
+test('renderTokensCss multi-mode numeric font-size (3 modes) → piecewise clamp', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Typography',
+      modes: [
+        { id: 'm_mob', name: 'Mobile', width: 412 },
+        { id: 'm_tab', name: 'Tablet', width: 834 },
+        { id: 'm_des', name: 'Desktop', width: 1440 },
+      ],
+      groups: [{ id: 'g_1', name: 'Size', variables: [
+        { id: 'v_1', name: 'h1', type: 'number', valuesByMode: { m_mob: 32, m_tab: 40, m_des: 48 }, scope: 'font-size' },
+      ] }],
+    }],
+  });
+  // Baseline :root declaration
+  assert.match(css, /--typography-size-h1:\s*32px;/);
+  // Two @media blocks at the lo-breakpoints (412 and 834)
+  assert.ok(css.includes('@media (min-width: 412px)'), 'missing 412px breakpoint');
+  assert.ok(css.includes('@media (min-width: 834px)'), 'missing 834px breakpoint');
+  // clamp boundaries present
+  assert.ok(css.includes('32px'), 'missing lower bound 32px');
+  assert.ok(css.includes('40px'), 'missing mid bound 40px');
+  assert.ok(css.includes('48px'), 'missing upper bound 48px');
+  assert.ok(css.includes('clamp('), 'missing clamp()');
+  // interpolation: the calc uses the lo-width in the subtraction
+  assert.ok(css.includes('412px'), 'missing 412px in calc');
+  assert.ok(css.includes('834px'), 'missing 834px in calc');
+  // widthDiff for first segment (834-412=422) and second (1440-834=606)
+  assert.ok(css.includes('422'), 'missing widthDiff 422 for first segment');
+  assert.ok(css.includes('606'), 'missing widthDiff 606 for second segment (1440-834)');
+});
+
+test('renderTokensCss multi-mode with all equal values → flat output (no clamps)', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Space',
+      modes: [
+        { id: 'm_mob', name: 'Mobile', width: 375 },
+        { id: 'm_des', name: 'Desktop', width: 1280 },
+      ],
+      groups: [{ id: 'g_1', name: 'Gap', variables: [
+        { id: 'v_1', name: 'md', type: 'number', valuesByMode: { m_mob: 16, m_des: 16 }, scope: 'gap' },
+      ] }],
+    }],
+  });
+  assert.match(css, /--space-gap-md:\s*16px;/);
+  assert.ok(!css.includes('@media'), 'no @media for equal values');
+  assert.ok(!css.includes('clamp'), 'no clamp for equal values');
+});
+
+test('renderTokensCss multi-mode color → emits @media steps with raw hex values', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Colors',
+      modes: [
+        { id: 'm_light', name: 'Light', width: 375 },
+        { id: 'm_dark', name: 'Dark', width: 1280 },
+      ],
+      groups: [{ id: 'g_1', name: 'Brand', variables: [
+        { id: 'v_1', name: 'primary', type: 'color', valuesByMode: { m_light: '#ffffff', m_dark: '#000000' }, scope: 'color' },
+      ] }],
+    }],
+  });
+  assert.match(css, /--colors-brand-primary:\s*#ffffff;/);
+  assert.ok(css.includes('@media (min-width: 1280px)'), 'missing 1280px breakpoint');
+  assert.ok(css.includes('#000000'), 'missing dark hex');
+  assert.ok(!css.includes('clamp'), 'no clamp for color type');
+});
+
+test('renderTokensCss multi-mode with one mode missing width → falls back to flat', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Typography',
+      modes: [
+        { id: 'm_mob', name: 'Mobile', width: 375 },
+        { id: 'm_des', name: 'Desktop' }, // no width
+      ],
+      groups: [{ id: 'g_1', name: 'Size', variables: [
+        { id: 'v_1', name: 'body', type: 'number', valuesByMode: { m_mob: 14, m_des: 18 }, scope: 'font-size' },
+      ] }],
+    }],
+  });
+  // Should use first mode value (14px) flat
+  assert.match(css, /--typography-size-body:\s*14px;/);
+  assert.ok(!css.includes('@media'), 'no @media when a mode is missing width');
+  assert.ok(!css.includes('clamp'), 'no clamp when a mode is missing width');
+});
+
+test('renderTokensCss line-height scope → emits unitless number', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Typography',
+      modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{ id: 'g_1', name: 'Leading', variables: [
+        { id: 'v_1', name: 'normal', type: 'number', valuesByMode: { m_1: 1.5 }, scope: 'line-height' },
+      ] }],
+    }],
+  });
+  assert.match(css, /--typography-leading-normal:\s*1\.5;/);
+  assert.ok(!css.includes('1.5px'), 'line-height must not append px');
+});
+
+test('renderTokensCss scope null with numeric value → defaults to px', () => {
+  const css = renderTokensCss({
+    version: 3,
+    collections: [{
+      id: 'c_1', name: 'Misc',
+      modes: [{ id: 'm_1', name: 'Default' }],
+      groups: [{ id: 'g_1', name: 'X', variables: [
+        { id: 'v_1', name: 'val', type: 'number', valuesByMode: { m_1: 24 }, scope: null },
+      ] }],
+    }],
+  });
+  assert.match(css, /--misc-x-val:\s*24px;/);
+});

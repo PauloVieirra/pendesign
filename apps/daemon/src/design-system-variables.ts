@@ -146,12 +146,159 @@ function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 }
 
+function unitForScope(scope: VariableScope | undefined): string {
+  switch (scope) {
+    case 'line-height':
+    case 'opacity':
+    case 'font-weight':
+      return '';
+    case 'font-size':
+    case 'padding':
+    case 'margin':
+    case 'gap':
+    case 'border-radius':
+    case 'border-width':
+    case 'width':
+    case 'height':
+      return 'px';
+    case 'color':
+    case 'font-family':
+      return ''; // unused for numeric path
+    case null:
+    case undefined:
+      return 'px'; // fallback for unscoped numeric
+  }
+  return '';
+}
+
+function formatValueWithUnit(value: number | string | boolean, unit: string): string {
+  if (typeof value === 'number') return unit ? `${value}${unit}` : String(value);
+  if (typeof value === 'string') return value;
+  return String(value);
+}
+
+interface ModeValue {
+  mode: Mode;
+  value: string | number | boolean;
+}
+
+interface VarRender {
+  /** The baseline CSS declaration line (indent included), e.g. `  --foo: 32px;` */
+  rootLine: string;
+  /**
+   * Zero or more self-contained @media block strings to emit after the root baseline.
+   * Each entry is a complete `@media (...) {\n  :root {\n    ...\n  }\n}` string.
+   */
+  mediaBlocks: string[];
+}
+
+function renderVariableDecl(
+  varName: string,
+  variable: Variable,
+  modes: Mode[],
+): VarRender | null {
+  // Collect mode values respecting collection mode order
+  const modeValues: ModeValue[] = [];
+  for (const mode of modes) {
+    const val = variable.valuesByMode[mode.id];
+    if (val !== undefined) {
+      modeValues.push({ mode, value: val });
+    }
+  }
+
+  if (modeValues.length === 0) return null;
+
+  function serializeValue(val: string | number | boolean): string {
+    if (variable.type === 'number') {
+      const unit = unitForScope(variable.scope);
+      return formatValueWithUnit(val, unit);
+    }
+    if (variable.type === 'boolean') {
+      return val ? '1' : '0';
+    }
+    return String(val);
+  }
+
+  // Single mode → flat
+  if (modeValues.length === 1) {
+    return { rootLine: `  ${varName}: ${serializeValue(modeValues[0]!.value)};`, mediaBlocks: [] };
+  }
+
+  // Check if all values are identical → emit flat
+  const firstVal = modeValues[0]!.value;
+  const allEqual = modeValues.every((mv) => mv.value === firstVal);
+  if (allEqual) {
+    return { rootLine: `  ${varName}: ${serializeValue(firstVal)};`, mediaBlocks: [] };
+  }
+
+  if (variable.type === 'number') {
+    // Check if ALL modes have width
+    const withWidth = modeValues.filter((mv) => typeof mv.mode.width === 'number');
+    if (withWidth.length !== modeValues.length) {
+      // Some modes missing width → flat using first mode
+      return { rootLine: `  ${varName}: ${serializeValue(modeValues[0]!.value)};`, mediaBlocks: [] };
+    }
+
+    // All have width → piecewise clamp
+    const sorted = [...withWidth].sort((a, b) => (a.mode.width as number) - (b.mode.width as number));
+    const unit = unitForScope(variable.scope);
+
+    const rootLine = `  ${varName}: ${serializeValue(sorted[0]!.value)};`;
+    const mediaBlocks: string[] = [];
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const lo = sorted[i]!;
+      const hi = sorted[i + 1]!;
+      const loVal = Number(lo.value);
+      const hiVal = Number(hi.value);
+      const loWidth = lo.mode.width as number;
+      const hiWidth = hi.mode.width as number;
+      const widthDiff = hiWidth - loWidth;
+      const loFmt = unit ? `${loVal}${unit}` : String(loVal);
+      const hiFmt = unit ? `${hiVal}${unit}` : String(hiVal);
+      mediaBlocks.push(
+        `@media (min-width: ${loWidth}px) {\n` +
+        `  :root {\n` +
+        `    ${varName}: clamp(\n` +
+        `      ${loFmt},\n` +
+        `      calc(${loFmt} + (${hiVal} - ${loVal}) * ((100vw - ${loWidth}px) / (${widthDiff}))),\n` +
+        `      ${hiFmt}\n` +
+        `    );\n` +
+        `  }\n` +
+        `}`,
+      );
+    }
+    return { rootLine, mediaBlocks };
+  }
+
+  // string / color / boolean — emit @media steps for modes that have widths
+  const withWidth = modeValues.filter((mv) => typeof mv.mode.width === 'number');
+  const rootLine = `  ${varName}: ${serializeValue(modeValues[0]!.value)};`;
+  const mediaBlocks: string[] = [];
+
+  if (withWidth.length > 0) {
+    const sorted = [...withWidth].sort((a, b) => (a.mode.width as number) - (b.mode.width as number));
+    for (const mv of sorted) {
+      mediaBlocks.push(
+        `@media (min-width: ${mv.mode.width}px) {\n` +
+        `  :root {\n` +
+        `    ${varName}: ${serializeValue(mv.value)};\n` +
+        `  }\n` +
+        `}`,
+      );
+    }
+  }
+
+  return { rootLine, mediaBlocks };
+}
+
 export function renderTokensCss(file: VariablesFile): string {
-  const lines: string[] = [
-    '/* Generated from variables.json. Edits made here will be overwritten on next save. */',
-    ':root {',
-  ];
+  const header = '/* Generated from variables.json. Edits made here will be overwritten on next save. */';
   const used = new Set<string>();
+
+  const rootLines: string[] = [];
+  const mediaBlocks: string[] = [];
+
   for (const collection of file.collections) {
     for (const group of collection.groups) {
       for (const variable of group.variables) {
@@ -163,12 +310,22 @@ export function renderTokensCss(file: VariablesFile): string {
           suffix += 1;
         }
         used.add(name);
-        lines.push(`  ${name}: ${formatValue(variable)};`);
+
+        const rendered = renderVariableDecl(name, variable, collection.modes);
+        if (!rendered) continue;
+        rootLines.push(rendered.rootLine);
+        mediaBlocks.push(...rendered.mediaBlocks);
       }
     }
   }
-  lines.push('}', '');
-  return lines.join('\n');
+
+  const parts: string[] = [header, ':root {', ...rootLines, '}'];
+  if (mediaBlocks.length > 0) {
+    parts.push('');
+    parts.push(...mediaBlocks);
+  }
+  parts.push('');
+  return parts.join('\n');
 }
 
 function formatValue(variable: Variable): string {
