@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
-import { pickPrimaryValue, type VariablesFile } from '../providers/design-system-variables';
+import { pickPrimaryValue, type VariableScope, type VariablesFile } from '../providers/design-system-variables';
 import { VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';
 import { DeleteConfirmModal, type DeleteConfirmModalLabels } from './DeleteConfirmModal';
@@ -531,7 +531,7 @@ function PageInspector({
       <Section title="Page">
         {enabled ? (
           <>
-            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} />
+            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} requiredScope="color" />
             <FontRow value={font} onChange={(value) => update({ font: value })} />
             <UnitRow label="Base size" value={size} onChange={(value) => update({ size: value })} unit="px" autoUnit />
           </>
@@ -768,7 +768,7 @@ function StyleInspector({
             <p className="cc-section-hint">Select a container or group to edit flex layout.</p>
           ) : null}
           <PairRow>
-            <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} />
+            <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} requiredScope="gap" />
             <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} disabled={!layoutEnabled} />
           </PairRow>
           <PairRow>
@@ -780,31 +780,31 @@ function StyleInspector({
         <SubSection title="Spacing">
           <QuadRow label="Padding" values={{
             t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
-          }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} />
+          }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} requiredScope="padding" />
           <QuadRow label="Margin" values={{
             t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
-          }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} />
+          }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} requiredScope="margin" />
         </SubSection>
       </Section>
 
       <Section title="Typography">
-        <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} variables={dsVariables} />
+        <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} variables={dsVariables} requiredScope="font-family" />
         <PairRow>
-          <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit variables={dsVariables} />
+          <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit variables={dsVariables} requiredScope="font-size" />
           <DropdownRow label="Weight" value={styles.fontWeight} onChange={(v) => u('fontWeight', v)} options={WEIGHT_OPTS} />
         </PairRow>
         <PairRow>
-          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} variables={dsVariables} />
+          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} variables={dsVariables} requiredScope="color" />
           <DropdownRow label="Align" value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={ALIGN_OPTS} />
         </PairRow>
         <PairRow>
-          <UnitRow label="Line" value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" variables={dsVariables} />
+          <UnitRow label="Line" value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" variables={dsVariables} requiredScope="line-height" />
           <UnitRow label="Tracking" value={styles.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit />
         </PairRow>
       </Section>
 
       <Section title="Appearance">
-        <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} />
+        <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} requiredScope="opacity" />
       </Section>
 
       <Section title="Fill">
@@ -822,18 +822,19 @@ function StyleInspector({
           }}
           variables={dsVariables}
           allowGradient
+          requiredScope="color"
         />
       </Section>
 
       <Section title="Stroke">
         <PairRow>
-          <ColorRow label="Color" value={styles.borderColor} onChange={(v) => u('borderColor', v)} variables={dsVariables} />
+          <ColorRow label="Color" value={styles.borderColor} onChange={(v) => u('borderColor', v)} variables={dsVariables} requiredScope="color" />
           <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
         </PairRow>
         <QuadRow label="Width" values={{
           t: styles.borderTopWidth, r: styles.borderRightWidth, b: styles.borderBottomWidth, l: styles.borderLeftWidth,
-        }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} variables={dsVariables} />
-        <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit variables={dsVariables} />
+        }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} variables={dsVariables} requiredScope="border-width" />
+        <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit variables={dsVariables} requiredScope="border-radius" />
       </Section>
     </div>
   );
@@ -870,10 +871,11 @@ function varTokenName(value: string): string | null {
   return match ? match[1]! : null;
 }
 
-function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables = null }: {
+function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables = null, requiredScope }: {
   label: string; value: string; onChange: (v: string) => void;
   unit: string; autoUnit?: boolean; disabled?: boolean;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
   const display = tokenName ? tokenName : (unit === 'px' ? stripPxUnit(value) : value);
@@ -907,6 +909,7 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables =
           <VariablePicker
             variables={variables}
             filterType="number"
+            requiredScope={requiredScope}
             ariaLabel={`Bind ${label} to design system variable`}
             onPick={(slug) => onChange(`var(${slug})`)}
           />
@@ -969,10 +972,11 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, v
   );
 }
 
-function FontRow({ value, onChange, variables = null }: {
+function FontRow({ value, onChange, variables = null, requiredScope }: {
   value: string;
   onChange: (v: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
   if (tokenName) {
@@ -992,6 +996,7 @@ function FontRow({ value, onChange, variables = null }: {
             <VariablePicker
               variables={variables}
               filterType="string"
+              requiredScope={requiredScope}
               ariaLabel="Rebind Font to design system variable"
               onPick={(slug) => onChange(`var(${slug})`)}
             />
@@ -1019,6 +1024,7 @@ function FontRow({ value, onChange, variables = null }: {
           <VariablePicker
             variables={variables}
             filterType="string"
+            requiredScope={requiredScope}
             ariaLabel="Bind Font to design system variable"
             onPick={(slug) => onChange(`var(${slug})`)}
           />
@@ -1054,13 +1060,14 @@ function parseFontFamilies(value: string): string[] {
     .filter(Boolean);
 }
 
-function ColorRow({ label, value, onChange, compact, variables = null, allowGradient = false }: {
+function ColorRow({ label, value, onChange, compact, variables = null, allowGradient = false, requiredScope }: {
   label: string; value: string; onChange: (v: string) => void; compact?: boolean;
   /** Project's DS variables; when present, a small link affordance lets
    * the user bind this color to a token (writes `var(--<slug>)`). */
   variables?: VariablesFile | null;
   /** Fill row enables gradient mode in the popover. Color/Border use solid only. */
   allowGradient?: boolean;
+  requiredScope?: VariableScope;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -1081,6 +1088,7 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
           <VariablePicker
             variables={variables}
             filterType="color"
+            requiredScope={requiredScope}
             ariaLabel={`Bind ${label} to design system variable`}
             onPick={(slug) => onChange(`var(${slug})`)}
           />
@@ -1100,10 +1108,11 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
   );
 }
 
-function QuadRow({ label, values, onChange, variables = null }: {
+function QuadRow({ label, values, onChange, variables = null, requiredScope }: {
   label: string; values: { t: string; r: string; b: string; l: string };
   onChange: (side: 't' | 'r' | 'b' | 'l', value: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const [open, setOpen] = useState(true);
   const allEqualValue = (() => {
@@ -1118,19 +1127,20 @@ function QuadRow({ label, values, onChange, variables = null }: {
       </button>
       {open ? (
         <div className="cc-quad-grid">
-          <QuadCell axis="T" value={values.t} onChange={(v) => onChange('t', v)} variables={variables} />
-          <QuadCell axis="R" value={values.r} onChange={(v) => onChange('r', v)} variables={variables} />
-          <QuadCell axis="B" value={values.b} onChange={(v) => onChange('b', v)} variables={variables} />
-          <QuadCell axis="L" value={values.l} onChange={(v) => onChange('l', v)} variables={variables} />
+          <QuadCell axis="T" value={values.t} onChange={(v) => onChange('t', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="R" value={values.r} onChange={(v) => onChange('r', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="B" value={values.b} onChange={(v) => onChange('b', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="L" value={values.l} onChange={(v) => onChange('l', v)} variables={variables} requiredScope={requiredScope} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function QuadCell({ axis, value, onChange, variables = null }: {
+function QuadCell({ axis, value, onChange, variables = null, requiredScope }: {
   axis: string; value: string; onChange: (v: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
   const display = tokenName ? tokenName : stripPxUnit(value);
@@ -1164,6 +1174,7 @@ function QuadCell({ axis, value, onChange, variables = null }: {
         <VariablePicker
           variables={variables}
           filterType="number"
+          requiredScope={requiredScope}
           ariaLabel={`Bind ${axis} to design system variable`}
           onPick={(slug) => onChange(`var(${slug})`)}
         />

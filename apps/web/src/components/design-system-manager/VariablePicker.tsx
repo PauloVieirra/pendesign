@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { pickPrimaryValue, type Variable, type VariableType, type VariablesFile } from '../../providers/design-system-variables';
+import { pickPrimaryValue, type Variable, type VariableScope, type VariableType, type VariablesFile } from '../../providers/design-system-variables';
 import { Icon } from '../Icon';
 
 interface Props {
   variables: VariablesFile | null;
   filterType?: VariableType;
+  /** When set, only variables whose scope matches OR whose scope is null are shown. */
+  requiredScope?: VariableScope;
   onPick: (slug: string, variable: Variable) => void;
   /** Render the trigger as a small inline button. */
   ariaLabel?: string;
@@ -22,7 +24,7 @@ function varSlugFor(variable: Variable, collectionName: string, groupName: strin
   return `--${slugify(collectionName)}-${slugify(groupName)}-${slugify(variable.name)}`;
 }
 
-export function VariablePicker({ variables, filterType, onPick, ariaLabel }: Props) {
+export function VariablePicker({ variables, filterType, requiredScope, onPick, ariaLabel }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLSpanElement>(null);
@@ -78,6 +80,9 @@ export function VariablePicker({ variables, filterType, onPick, ariaLabel }: Pro
       for (const group of collection.groups) {
         for (const variable of group.variables) {
           if (filterType && variable.type !== filterType) continue;
+          // scope filter: if requiredScope is set, keep only variables whose
+          // scope matches OR whose scope is null (unscoped = fallback anywhere).
+          if (requiredScope !== undefined && variable.scope !== requiredScope && variable.scope !== null) continue;
           const slug = varSlugFor(variable, collection.name, group.name);
           if (q && !variable.name.toLowerCase().includes(q)
               && !slug.includes(q)) continue;
