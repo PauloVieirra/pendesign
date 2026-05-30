@@ -1,6 +1,6 @@
 import {
   newCollectionId, newGroupId, newModeId, newVariableId,
-  type VariablesFile, type VariableCollection, type Variable,
+  type VariablesFile, type VariableCollection, type Variable, type VariableScope,
 } from './design-system-variables.js';
 
 type SeedSpec = {
@@ -8,7 +8,7 @@ type SeedSpec = {
   modes: Array<{ name: string; width?: number }>;
   groups: Array<{
     groupName: string;
-    variables: Array<{ name: string; type: Variable['type']; values: Array<string | number | boolean> }>;
+    variables: Array<{ name: string; type: Variable['type']; values: Array<string | number | boolean>; scope: VariableScope }>;
   }>;
 };
 
@@ -24,7 +24,7 @@ const SEED_SPEC: SeedSpec[] = [
     modes: DESKTOP_TABLET_MOBILE,
     groups: [{
       groupName: 'Resolução',
-      variables: [{ name: 'Resolução', type: 'number', values: [1440, 834, 412] }],
+      variables: [{ name: 'Resolução', type: 'number', values: [1440, 834, 412], scope: 'width' }],
     }],
   },
   {
@@ -33,9 +33,9 @@ const SEED_SPEC: SeedSpec[] = [
     groups: [{
       groupName: 'Layout',
       variables: [
-        { name: 'Columns', type: 'number', values: [12, 8, 5] },
-        { name: 'Margin', type: 'number', values: [48, 24, 16] },
-        { name: 'Gutter', type: 'number', values: [24, 16, 16] },
+        { name: 'Columns', type: 'number', values: [12, 8, 5], scope: null },
+        { name: 'Margin', type: 'number', values: [48, 24, 16], scope: 'margin' },
+        { name: 'Gutter', type: 'number', values: [24, 16, 16], scope: 'gap' },
       ],
     }],
   },
@@ -45,27 +45,27 @@ const SEED_SPEC: SeedSpec[] = [
     groups: [
       {
         groupName: 'Font Family',
-        variables: [{ name: 'Font Family', type: 'string', values: ['Inter', 'Inter', 'Inter'] }],
+        variables: [{ name: 'Font Family', type: 'string', values: ['Inter', 'Inter', 'Inter'], scope: 'font-family' }],
       },
       {
         groupName: 'Size',
         variables: [
-          { name: 'Display 1', type: 'number', values: [68, 60, 52] },
-          { name: 'Display 2', type: 'number', values: [60, 52, 44] },
-          { name: 'H1', type: 'number', values: [48, 40, 32] },
-          { name: 'H2', type: 'number', values: [40, 32, 28] },
-          { name: 'H3', type: 'number', values: [32, 28, 24] },
-          { name: 'H4', type: 'number', values: [28, 24, 20] },
-          { name: 'H5', type: 'number', values: [24, 20, 20] },
-          { name: 'H6', type: 'number', values: [16, 16, 16] },
+          { name: 'Display 1', type: 'number', values: [68, 60, 52], scope: 'font-size' },
+          { name: 'Display 2', type: 'number', values: [60, 52, 44], scope: 'font-size' },
+          { name: 'H1', type: 'number', values: [48, 40, 32], scope: 'font-size' },
+          { name: 'H2', type: 'number', values: [40, 32, 28], scope: 'font-size' },
+          { name: 'H3', type: 'number', values: [32, 28, 24], scope: 'font-size' },
+          { name: 'H4', type: 'number', values: [28, 24, 20], scope: 'font-size' },
+          { name: 'H5', type: 'number', values: [24, 20, 20], scope: 'font-size' },
+          { name: 'H6', type: 'number', values: [16, 16, 16], scope: 'font-size' },
         ],
       },
       {
         groupName: 'Weight',
         variables: [
-          { name: 'Regular', type: 'number', values: [400, 400, 400] },
-          { name: 'Medium', type: 'number', values: [500, 500, 500] },
-          { name: 'Bold', type: 'number', values: [700, 700, 700] },
+          { name: 'Regular', type: 'number', values: [400, 400, 400], scope: 'font-weight' },
+          { name: 'Medium', type: 'number', values: [500, 500, 500], scope: 'font-weight' },
+          { name: 'Bold', type: 'number', values: [700, 700, 700], scope: 'font-weight' },
         ],
       },
     ],
@@ -87,10 +87,10 @@ export function buildSeededVariablesFile(): VariablesFile {
         variables: g.variables.map((v) => {
           const valuesByMode: Record<string, string | number | boolean> = {};
           modes.forEach((mode, i) => { valuesByMode[mode.id] = v.values[i] ?? v.values[v.values.length - 1] as string | number | boolean; });
-          return { id: newVariableId(), name: v.name, type: v.type, valuesByMode };
+          return { id: newVariableId(), name: v.name, type: v.type, valuesByMode, scope: v.scope };
         }),
       })),
     };
   });
-  return { version: 2, collections };
+  return { version: 3, collections };
 }
