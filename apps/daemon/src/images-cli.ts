@@ -63,16 +63,21 @@ async function runSearch(argv: string[]): Promise<number> {
     return 1;
   }
   const apiKey = process.env.PIXABAY_API_KEY ?? '';
-  const count = flag(argv, '--count') ? Number(flag(argv, '--count')) : undefined;
+  const countRaw = flag(argv, '--count');
   const orientationRaw = flag(argv, '--orientation');
-  const orientation: 'horizontal' | 'vertical' | 'all' | undefined =
-    orientationRaw === 'horizontal' || orientationRaw === 'vertical' ? orientationRaw : undefined;
-  const minWidth = flag(argv, '--min-width') ? Number(flag(argv, '--min-width')) : undefined;
-  const category = (flag(argv, '--category') ?? undefined) as PixabayCategory | undefined;
+  const minWidthRaw = flag(argv, '--min-width');
+  const categoryRaw = flag(argv, '--category') as PixabayCategory | null;
   const asJson = hasFlag(argv, '--json');
 
   try {
-    const results = await searchPixabay({ query, apiKey, count, orientation, minWidth, category });
+    const results = await searchPixabay({
+      query,
+      apiKey,
+      ...(countRaw !== null && { count: Number(countRaw) }),
+      ...(orientationRaw === 'horizontal' || orientationRaw === 'vertical' ? { orientation: orientationRaw } : {}),
+      ...(minWidthRaw !== null && { minWidth: Number(minWidthRaw) }),
+      ...(categoryRaw !== null && { category: categoryRaw }),
+    });
     if (asJson) {
       console.log(JSON.stringify(results, null, 2));
     } else {

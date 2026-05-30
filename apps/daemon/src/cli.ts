@@ -9,6 +9,7 @@ import { splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
 import { runLeanInception } from './lean-inception-cli.js';
 import { runCloud } from './cli-cloud.js';
+import { runImages } from './images-cli.js';
 
 const argv = process.argv.slice(2);
 
@@ -230,6 +231,7 @@ const SUBCOMMAND_MAP = {
   config: runConfig,
   'lean-inception': runLeanInception,
   cloud: runCloud,
+  images: runImages,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
