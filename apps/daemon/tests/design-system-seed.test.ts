@@ -6,7 +6,7 @@ test('buildSeededVariablesFile returns a valid v2 VariablesFile', () => {
   const file = buildSeededVariablesFile();
   assert.equal(file.version, 2);
   const names = file.collections.map((c) => c.name).sort();
-  assert.deepEqual(names, ['Container Size', 'Controle', 'Cores', 'Grid', 'Spacing', 'Style', 'Typography']);
+  assert.deepEqual(names, ['Container Size', 'Cores', 'Grid', 'Spacing', 'Typography']);
 });
 
 test('Typography collection seeds Desktop/Tablet/Mobile modes with Display 1 = 68/60/52', () => {

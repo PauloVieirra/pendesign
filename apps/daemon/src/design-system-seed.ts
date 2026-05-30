@@ -72,8 +72,6 @@ const SEED_SPEC: SeedSpec[] = [
   },
   { collectionName: 'Cores', modes: [{ name: 'Default' }], groups: [] },
   { collectionName: 'Spacing', modes: [{ name: 'Default' }], groups: [] },
-  { collectionName: 'Style', modes: [{ name: 'Default' }], groups: [] },
-  { collectionName: 'Controle', modes: [{ name: 'Default' }], groups: [] },
 ];
 
 export function buildSeededVariablesFile(): VariablesFile {

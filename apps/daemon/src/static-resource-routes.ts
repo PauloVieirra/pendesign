@@ -116,6 +116,19 @@ export async function autoCreateDesignSystemForProject(
     throw new Error(`failed to attach DS to project: ${String(err?.message ?? err)}`);
   }
 
+  // Initial token-sync over any existing project files. This is what
+  // populates Cores/Spacing/Typography from the project's CSS+HTML when a
+  // DS is attached AFTER source files already exist (e.g., import flow,
+  // legacy projects, modal self-heal). Best-effort: a failure here doesn't
+  // roll back the DS attachment — the next AI write will retry via the
+  // artifact-create hook.
+  try {
+    const { syncProjectNow } = await import('./token-sync/index.js');
+    await syncProjectNow(projectId);
+  } catch (err) {
+    console.warn(`[autoCreateDs] initial token-sync failed for ${projectId}:`, err);
+  }
+
   return { designSystemId: fullDsId, dsDir: outDir };
 }
 
