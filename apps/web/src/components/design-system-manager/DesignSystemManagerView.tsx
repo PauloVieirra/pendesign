@@ -72,9 +72,14 @@ export function DesignSystemManagerView({
     setLocalDsId(designSystemId);
   }, [designSystemId]);
 
-  // Self-heal: project has no DS attached → trigger create-empty once.
+  // Self-heal: project has no DS attached OR the attached DS is a read-only
+  // brand (e.g. `cisco`, `vercel`) that can't be edited → swap to a fresh
+  // user-editable DS via create-empty. The brand association is intentionally
+  // dropped — the variables panel is for project-specific tokens, not for
+  // editing shared brand systems.
+  const needsAttach = !localDsId || isDsLocked(loadError);
   useEffect(() => {
-    if (localDsId || attaching) return;
+    if (!needsAttach || attaching) return;
     let cancelled = false;
     setAttaching(true);
     void createEmptyDesignSystemForProject(projectId).then((result) => {
@@ -84,10 +89,11 @@ export function DesignSystemManagerView({
         setLoadError(result.error.message);
         return;
       }
+      setLoadError(null);
       setLocalDsId(result.designSystemId);
     });
     return () => { cancelled = true; };
-  }, [localDsId, attaching, projectId]);
+  }, [needsAttach, attaching, projectId]);
 
   // Reset activeGroupId when the active collection changes
   useEffect(() => {
