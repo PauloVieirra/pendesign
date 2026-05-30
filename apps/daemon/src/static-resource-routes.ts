@@ -37,6 +37,7 @@ import {
   migrateFromTokensCss,
   newCollectionId,
   newGroupId,
+  migrateV2ToV3,
   newModeId,
   readVariables,
   saveVariables,
@@ -103,7 +104,7 @@ export async function autoCreateDesignSystemForProject(
 
   const seedParam = opts.seed ?? 'defaults';
   const initial: VariablesFile = seedParam === 'empty'
-    ? { version: 2, collections: [] }
+    ? { version: 3, collections: [] }
     : buildSeededVariablesFile();
   await saveVariables(outDir, initial);
 
@@ -735,10 +736,11 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       if (!resolved) {
         return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found or not editable: ${req.params.id}`);
       }
-      const body = req.body as VariablesFile | undefined;
-      if (!body || body.version !== 2 || !Array.isArray(body.collections)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 2, collections: [...] }');
+      const rawBody = req.body as any;
+      if (!rawBody || (rawBody.version !== 2 && rawBody.version !== 3) || !Array.isArray(rawBody.collections)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 2 or 3, collections: [...] }');
       }
+      const body: VariablesFile = rawBody.version === 2 ? migrateV2ToV3(rawBody) : rawBody as VariablesFile;
       await withDsLock(resolved.key, () => saveVariables(resolved.dir, body));
       await afterDesignSystemSave(req.params.id, resolved.dir);
       res.json({ variables: body });

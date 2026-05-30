@@ -433,7 +433,7 @@ test('migrateV2ToV3 adds scope:null to all variables and sets version:3', () => 
   };
   const v3 = migrateV2ToV3(v2);
   assert.equal(v3.version, 3);
-  const variables = v3.collections[0].groups[0].variables;
+  const variables = v3.collections[0]!.groups[0]!.variables;
   assert.equal(variables.length, 2);
   for (const v of variables) {
     assert.ok('scope' in v, 'scope field must be present');
@@ -457,7 +457,7 @@ test('migrateV2ToV3 is idempotent on v3 file', () => {
   };
   const out = migrateV2ToV3(v3);
   assert.equal(out.version, 3);
-  assert.equal(out.collections[0].groups[0].variables[0].scope, 'color');
+  assert.equal(out.collections[0]?.groups[0]?.variables[0]?.scope, 'color');
 });
 
 test('readVariables chains v1→v3 (full migration path)', async () => {

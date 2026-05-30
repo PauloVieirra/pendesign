@@ -5,20 +5,20 @@ import { extractFromHtml } from '../../src/token-sync/extract-html.js';
 test('extracts from style="..." attribute', () => {
   const html = `<div style="color: #ff0000; padding: 16px">Hi</div>`;
   const out = extractFromHtml(html, '/p/index.html');
-  assert.equal(out.colors[0].value, '#ff0000');
-  assert.equal(out.spacing[0].value, 16);
+  assert.equal(out.colors[0]?.value, '#ff0000');
+  assert.equal(out.spacing[0]?.value, 16);
 });
 
 test('extracts from style=\'...\' (single quotes)', () => {
   const html = `<div style='color: #00ff00'>Hi</div>`;
   const out = extractFromHtml(html, '/p/index.html');
-  assert.equal(out.colors[0].value, '#00ff00');
+  assert.equal(out.colors[0]?.value, '#00ff00');
 });
 
 test('extracts from STYLE="..." (uppercase, case-insensitive)', () => {
   const html = `<div STYLE="color: #0000ff">Hi</div>`;
   const out = extractFromHtml(html, '/p/index.html');
-  assert.equal(out.colors[0].value, '#0000ff');
+  assert.equal(out.colors[0]?.value, '#0000ff');
 });
 
 test('handles multiple elements with different styles', () => {

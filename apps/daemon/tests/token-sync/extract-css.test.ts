@@ -22,9 +22,9 @@ test('extracts tokens from a simple CSS file', () => {
   const blues = out.colors.find((c) => c.value === '#0066ff')!;
   assert.equal(blues.usageCount, 2);
   assert.equal(out.fonts.length, 1);
-  assert.equal(out.fonts[0].value, 'Inter');
+  assert.equal(out.fonts[0]?.value, 'Inter');
   assert.equal(out.sizes.length, 1);
-  assert.equal(out.sizes[0].value, 16);
+  assert.equal(out.sizes[0]?.value, 16);
   assert.deepEqual(out.spacing.map((s) => s.value).sort(), [12, 24]);
 });
 
@@ -37,7 +37,7 @@ test('strips /* ... */ comments before parsing', () => {
   `;
   const out = extractFromCss(css, '/p/a.css');
   assert.equal(out.colors.length, 1);
-  assert.equal(out.colors[0].value, '#00ff00');
+  assert.equal(out.colors[0]?.value, '#00ff00');
 });
 
 test('handles malformed CSS without crashing', () => {
@@ -74,5 +74,5 @@ test('ignores @media wrapping (still parses inner rules)', () => {
   const out = extractFromCss(css, '/p/a.css');
   // Inner rule body is still a declaration block; the @media line is just text.
   assert.equal(out.colors.length, 1);
-  assert.equal(out.colors[0].value, '#ff0000');
+  assert.equal(out.colors[0]?.value, '#ff0000');
 });

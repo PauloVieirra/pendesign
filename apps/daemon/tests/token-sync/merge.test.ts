@@ -55,7 +55,7 @@ test('preserves user-renamed variables (matches by value, not by name)', () => {
   // Simulate user rename
   const cores = file.collections.find((c) => c.name === 'Cores')!;
   const extracted = cores.groups.find((g) => g.name === 'Extracted')!;
-  const v = extracted.variables[0];
+  const v = extracted.variables[0]!;
   v.name = 'brand-accent';
 
   // Re-extract: the literal still appears in code.
@@ -63,7 +63,7 @@ test('preserves user-renamed variables (matches by value, not by name)', () => {
     colors: [tok('#abcdef', 'color')],
   }));
   const reread = file.collections.find((c) => c.name === 'Cores')!
-    .groups.find((g) => g.name === 'Extracted')!.variables[0];
+    .groups.find((g) => g.name === 'Extracted')!.variables[0]!;
   assert.equal(reread.name, 'brand-accent', 'user rename must be preserved');
 });
 
@@ -90,8 +90,10 @@ test('sizes land in Typography/Detected sizes (new group)', () => {
   const typo = next.collections.find((c) => c.name === 'Typography')!;
   const detected = typo.groups.find((g) => g.name === 'Detected sizes');
   assert.ok(detected, 'Detected sizes group must be created');
-  assert.equal(detected!.variables[0].name, 'size-14');
-  assert.equal(detected!.variables[0].scope, 'font-size');
+  const sizeVar = detected!.variables[0];
+  assert.ok(sizeVar);
+  assert.equal(sizeVar.name, 'size-14');
+  assert.equal(sizeVar.scope, 'font-size');
 });
 
 test('spacing lands in Spacing/Detected spacing', () => {
@@ -102,8 +104,10 @@ test('spacing lands in Spacing/Detected spacing', () => {
   const spacing = next.collections.find((c) => c.name === 'Spacing')!;
   const detected = spacing.groups.find((g) => g.name === 'Detected spacing');
   assert.ok(detected);
-  assert.equal(detected!.variables[0].name, 'space-12');
-  assert.equal(detected!.variables[0].scope, 'padding');
+  const spaceVar = detected!.variables[0];
+  assert.ok(spaceVar);
+  assert.equal(spaceVar.name, 'space-12');
+  assert.equal(spaceVar.scope, 'padding');
 });
 
 test('border-radius lands in Border Radius/Detected with scope border-radius', () => {
@@ -115,10 +119,12 @@ test('border-radius lands in Border Radius/Detected with scope border-radius', (
   assert.ok(coll, 'Border Radius collection must be created');
   const detected = coll!.groups.find((g) => g.name === 'Detected');
   assert.ok(detected, 'Detected group must be created');
-  assert.equal(detected!.variables[0].name, 'radius-8');
-  assert.equal(detected!.variables[0].scope, 'border-radius');
+  const v = detected!.variables[0];
+  assert.ok(v, 'variable must exist');
+  assert.equal(v.name, 'radius-8');
+  assert.equal(v.scope, 'border-radius');
   for (const m of coll!.modes) {
-    assert.equal(detected!.variables[0].valuesByMode[m.id], 8);
+    assert.equal(v.valuesByMode[m.id], 8);
   }
 });
 
@@ -131,8 +137,10 @@ test('border-width lands in Border Width/Detected with scope border-width', () =
   assert.ok(coll, 'Border Width collection must be created');
   const detected = coll!.groups.find((g) => g.name === 'Detected');
   assert.ok(detected);
-  assert.equal(detected!.variables[0].name, 'border-2');
-  assert.equal(detected!.variables[0].scope, 'border-width');
+  const v = detected!.variables[0];
+  assert.ok(v, 'variable must exist');
+  assert.equal(v.name, 'border-2');
+  assert.equal(v.scope, 'border-width');
 });
 
 test('border-radius does not duplicate existing values in its collection', () => {

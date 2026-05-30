@@ -468,7 +468,7 @@ export async function importFigmaDesignSystem(
   await mkdir(outDir, { recursive: true });
 
   const variablesFile: VariablesFile = {
-    version: 2,
+    version: 3,
     collections: buildVariablesCollectionsFromFigma(colors, fonts, shadows, spacings, radii),
   };
   const designMd = renderDesignMd(id, displayName, figmaUrl, colors, fonts, shadows, spacings, radii);
