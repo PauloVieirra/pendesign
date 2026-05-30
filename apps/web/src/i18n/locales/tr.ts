@@ -1561,6 +1561,6 @@ export const tr: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'Pixabay API Anahtarı',
-  'settings.pixabay.description': 'pixabay.com/api\'den ücretsiz anahtar — yapay zeka tarafından oluşturulan sayfalar için görsel aramayı etkinleştirir. Saat başı 5000 istek limiti.',
+  'settings.pixabay.description': 'Stok fotoğraf arama — pixabay.com/api\'den ücretsiz anahtar. Dakikada 100 istek.',
   'settings.pixabay.placeholder': 'Pixabay API anahtarınız',
 };

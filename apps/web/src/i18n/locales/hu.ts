@@ -1584,6 +1584,6 @@ export const hu: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'Pixabay API-kulcs',
-  'settings.pixabay.description': 'Ingyenes kulcs a pixabay.com/api oldalon — képkeresést tesz lehetővé az AI által generált oldalakhoz. Korlát: 5000 kérés/óra.',
+  'settings.pixabay.description': 'Stockfotó-keresés — ingyenes kulcs a pixabay.com/api oldalon. 100 kérés/perc.',
   'settings.pixabay.placeholder': 'A Pixabay API-kulcsod',
 };

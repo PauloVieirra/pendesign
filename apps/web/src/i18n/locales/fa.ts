@@ -1617,6 +1617,6 @@ export const fa: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'کلید API پیکسابای',
-  'settings.pixabay.description': 'کلید رایگان از pixabay.com/api — جستجوی تصویر برای صفحات تولیدشده توسط هوش مصنوعی را فعال می‌کند. محدودیت: ۵۰۰۰ درخواست در ساعت.',
+  'settings.pixabay.description': 'جستجوی عکس استوک — کلید رایگان در pixabay.com/api. ۱۰۰ درخواست/دقیقه.',
   'settings.pixabay.placeholder': 'کلید API پیکسابای شما',
 };

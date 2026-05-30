@@ -1463,6 +1463,6 @@ export const esES: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'Clave API de Pixabay',
-  'settings.pixabay.description': 'Clave gratuita en pixabay.com/api — habilita la búsqueda de imágenes para páginas generadas por IA. Límite de 5000 solicitudes/hora.',
+  'settings.pixabay.description': 'Búsqueda de fotos stock — clave gratuita en pixabay.com/api. 100 solicitudes/minuto.',
   'settings.pixabay.placeholder': 'Tu clave API de Pixabay',
 };

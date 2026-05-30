@@ -1574,6 +1574,6 @@ export const pl: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'Klucz API Pixabay',
-  'settings.pixabay.description': 'Bezpłatny klucz z pixabay.com/api — umożliwia wyszukiwanie obrazów dla stron generowanych przez AI. Limit: 5000 żądań/godzinę.',
+  'settings.pixabay.description': 'Wyszukiwanie zdjęć stockowych — bezpłatny klucz na pixabay.com/api. 100 żądań/minutę.',
   'settings.pixabay.placeholder': 'Twój klucz API Pixabay',
 };

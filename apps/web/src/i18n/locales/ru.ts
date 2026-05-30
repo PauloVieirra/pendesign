@@ -1615,6 +1615,6 @@ export const ru: Dict = {
   'lean_inception.error.document_not_found': 'Document not found.',
   'lean_inception.error.generic': 'An error occurred: {message}',
   'settings.pixabay.label': 'API-ключ Pixabay',
-  'settings.pixabay.description': 'Бесплатный ключ на pixabay.com/api — включает поиск изображений для страниц, созданных ИИ. Лимит: 5000 запросов/час.',
+  'settings.pixabay.description': 'Поиск стоковых фото — бесплатный ключ на pixabay.com/api. 100 запросов/минуту.',
   'settings.pixabay.placeholder': 'Ваш API-ключ Pixabay',
 };
