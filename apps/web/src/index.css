@@ -26800,43 +26800,14 @@ body.desktop-pet-shell .pet-task-item {
 .ds-row:hover .ds-row__delete { opacity: 1; }
 .ds-table__empty { padding: 24px; text-align: center; color: var(--text-muted); }
 
-/* ---- In-pane empty banner --------------------------------------- */
-.ds-mgr-empty-banner {
+.ds-modal__loading {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 24px;
+  color: var(--text-muted, #6a6a6a);
+  font-size: 13px;
 }
-.ds-mgr-empty-banner__inner {
-  max-width: 420px;
-  text-align: center;
-  border: 1px dashed var(--border, #d4d4d4);
-  border-radius: var(--radius-sm, 8px);
-  padding: 24px;
-}
-.ds-mgr-empty-banner__inner h3 { margin: 0 0 8px; font-size: 16px; }
-.ds-mgr-empty-banner__inner p { margin: 0 0 16px; color: var(--text-muted, #6a6a6a); font-size: 13px; }
-.ds-mgr-empty-banner__actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.ds-mgr-empty-banner__actions button {
-  padding: 8px 14px;
-  border-radius: var(--radius-sm, 6px);
-  border: 1px solid var(--border, #d4d4d4);
-  background: var(--surface, #fff);
-  font: inherit;
-  cursor: pointer;
-}
-.ds-mgr-empty-banner__actions button.primary {
-  background: var(--accent, #2563eb);
-  color: var(--accent-on, #fff);
-  border-color: var(--accent, #2563eb);
-}
-.ds-mgr-empty-banner__hint { margin: 12px 0 0; color: var(--text-muted, #6a6a6a); font-size: 12px; }
-.ds-mgr-empty-banner__error { margin: 12px 0 0; color: rgb(170, 30, 30); font-size: 12px; }
 
 /* ──────────────────────────────────────────────────────────────────
  * FileExplorerPanel — VS Code-style tree shown in the left side panel

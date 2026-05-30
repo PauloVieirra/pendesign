@@ -44,7 +44,6 @@ import {
 import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { navigate, useRoute } from '../router';
 import { DesignSystemModal } from './design-system-manager/DesignSystemModal';
-import { createEmptyDesignSystemForProject } from '../providers/design-system-variables';
 import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
@@ -3227,10 +3226,6 @@ export function ProjectView({
         projectId={project.id}
         designSystemId={project.designSystemId ?? null}
         projectName={project.name}
-        onCreateEmpty={async () => {
-          const result = await createEmptyDesignSystemForProject(project.id);
-          if (!('error' in result)) onProjectsRefresh();
-        }}
         onAttachDsRequested={() => { /* defer to existing create flow */ }}
       />
       <AppChromeHeader

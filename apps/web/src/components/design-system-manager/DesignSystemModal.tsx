@@ -8,7 +8,6 @@ interface Props {
   projectId: string;
   designSystemId: string | null;
   projectName: string;
-  onCreateEmpty: () => Promise<void> | void;
   onAttachDsRequested: (kind: 'create' | 'figma' | 'library') => void;
 }
 
@@ -16,7 +15,7 @@ const LS_SIDEBAR_KEY = (dsId: string) => `ds-modal:sidebar-collapsed:${dsId}`;
 const LS_MAX_KEY = (dsId: string) => `ds-modal:max:${dsId}`;
 
 export function DesignSystemModal({
-  open, projectId, designSystemId, projectName, onCreateEmpty, onAttachDsRequested,
+  open, projectId, designSystemId, projectName, onAttachDsRequested,
 }: Props) {
   const t = useT();
   const route = useRoute();
@@ -77,7 +76,6 @@ export function DesignSystemModal({
           designSystemId={designSystemId}
           projectName={projectName}
           onAttachDsRequested={onAttachDsRequested}
-          onCreateEmpty={onCreateEmpty}
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => {
             setSidebarCollapsed((v) => { const nv = !v; if (designSystemId) persist(LS_SIDEBAR_KEY(designSystemId), nv); return nv; });

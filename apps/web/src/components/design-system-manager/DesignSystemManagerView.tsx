@@ -26,7 +26,6 @@ interface Props {
   designSystemId: string | null;
   projectName: string;
   onAttachDsRequested: (kind: 'create' | 'figma' | 'library') => void;
-  onCreateEmpty: () => Promise<void> | void;
   // Modal chrome props (Phase 6)
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
@@ -46,7 +45,6 @@ export function DesignSystemManagerView({
   designSystemId,
   projectName: _projectName,
   onAttachDsRequested,
-  onCreateEmpty,
   sidebarCollapsed,
   onToggleSidebar,
   maximized,
@@ -213,11 +211,10 @@ export function DesignSystemManagerView({
     [designSystemId, activeCollection, refetch],
   );
 
-  // Treat a missing or locked DS as "no DS attached" — show the empty
-  // banner inside the table area instead of the raw error string.
+  // Treat a missing or locked DS as a transient state — the daemon auto-creates
+  // a DS on project creation, so we just show a loading indicator.
   const dsMissingOrLocked = !designSystemId || isDsLocked(loadError);
-  const showBanner = dsMissingOrLocked || !variables || !activeCollection;
-  const bannerErrorMessage = loadError && !isDsLocked(loadError) ? loadError : null;
+  const showLoadingState = dsMissingOrLocked || !variables || !activeCollection;
 
   return (
     <div className="ds-modal-body">
@@ -273,7 +270,7 @@ export function DesignSystemManagerView({
           collapsed={sidebarCollapsed}
         />
         <main className="ds-modal__main">
-          {!showBanner && designSystemId && variables && activeCollection ? (
+          {!showLoadingState && designSystemId && variables && activeCollection ? (
             <VariablesTable
               collection={activeCollection}
               activeGroupId={activeGroupId}
@@ -292,12 +289,9 @@ export function DesignSystemManagerView({
               onDeleteMode={handleDeleteMode}
             />
           ) : (
-            <DesignSystemEmptyBanner
-              onCreate={onCreateEmpty}
-              onImport={() => onAttachDsRequested('figma')}
-              isLoading={loading}
-              errorMessage={bannerErrorMessage}
-            />
+            <div className="ds-modal__loading">
+              <p>Loading design system…</p>
+            </div>
           )}
           {loadError && !dsMissingOrLocked && variables ? (
             <p className="ds-mgr-toast">{loadError}</p>
@@ -308,42 +302,3 @@ export function DesignSystemManagerView({
   );
 }
 
-function DesignSystemEmptyBanner({
-  onCreate,
-  onImport,
-  isLoading,
-  errorMessage,
-}: {
-  onCreate: () => Promise<void> | void;
-  onImport: () => void;
-  isLoading: boolean;
-  errorMessage: string | null;
-}) {
-  return (
-    <section className="ds-mgr-empty-banner">
-      <div className="ds-mgr-empty-banner__inner">
-        <h3>Start your design system</h3>
-        <p>Create an empty system and add tokens manually, or import from an existing source.</p>
-        <div className="ds-mgr-empty-banner__actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={() => { void onCreate(); }}
-            data-testid="ds-mgr-empty-create"
-          >
-            Create empty
-          </button>
-          <button
-            type="button"
-            onClick={onImport}
-            data-testid="ds-mgr-empty-import"
-          >
-            Import from Figma / repo / disk
-          </button>
-        </div>
-        {isLoading ? <p className="ds-mgr-empty-banner__hint">Loading…</p> : null}
-        {errorMessage ? <p className="ds-mgr-empty-banner__error">{errorMessage}</p> : null}
-      </div>
-    </section>
-  );
-}
