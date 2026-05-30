@@ -1,5 +1,21 @@
 export type VariableType = 'color' | 'number' | 'string' | 'boolean';
 
+export type VariableScope =
+  | 'color'
+  | 'font-size'
+  | 'font-family'
+  | 'font-weight'
+  | 'line-height'
+  | 'padding'
+  | 'margin'
+  | 'gap'
+  | 'border-radius'
+  | 'border-width'
+  | 'width'
+  | 'height'
+  | 'opacity'
+  | null;
+
 export interface Mode {
   id: string;
   name: string;
@@ -11,6 +27,7 @@ export interface Variable {
   name: string;
   type: VariableType;
   valuesByMode: Record<string, string | number | boolean>;
+  scope?: VariableScope;
 }
 
 export interface VariableGroup {
@@ -27,7 +44,7 @@ export interface VariableCollection {
 }
 
 export interface VariablesFile {
-  version: 2;
+  version: 3;
   collections: VariableCollection[];
 }
 
