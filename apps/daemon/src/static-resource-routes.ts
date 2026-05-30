@@ -14,7 +14,7 @@ import {
 } from './skills.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
-import { readDesignSystem } from './design-systems.js';
+import { listDesignSystems, readDesignSystem } from './design-systems.js';
 import {
   LocalDesignSystemImportError,
   cleanDisplayName,
@@ -57,8 +57,67 @@ import { installFromTarget, uninstallById } from './library-install.js';
 import type { RouteDeps } from './server-context.js';
 import { setDefaultTokenSyncConfig } from './token-sync/index.js';
 import { resolveProjectDir } from './projects.js';
+import { getProject, updateProject } from './db.js';
 
 export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'paths' | 'resources' | 'db' | 'events'> {}
+
+/**
+ * Create and attach an empty (or seeded-defaults) design system for a project
+ * that has no DS yet. Steps 1-6 of the create-empty route, extracted so
+ * project-routes.ts can call the same logic without going through HTTP.
+ *
+ * Does NOT call patchProjectsUsingDesignSystem — that concern stays at the
+ * route layer (new projects have no HTML files to patch anyway).
+ *
+ * @returns The bare DS directory slug and the full `user:<slug>` id.
+ */
+export async function autoCreateDesignSystemForProject(
+  db: any,
+  projectId: string,
+  opts: { seed?: 'empty' | 'defaults'; userDesignSystemsDir: string },
+): Promise<{ designSystemId: string; dsDir: string }> {
+  const project = getProject(db, projectId);
+  if (!project) {
+    throw new Error(`project ${projectId} not found`);
+  }
+
+  const USER_DS_DIR = opts.userDesignSystemsDir;
+  const before = await listDesignSystems(USER_DS_DIR);
+  const baseSlug = slugify(`${project.name || 'project'}-ds`);
+  const id = await nextAvailableSlug(USER_DS_DIR, baseSlug, before.map((s: any) => s.id));
+  const outDir = path.join(USER_DS_DIR, id);
+  await fs.promises.mkdir(outDir, { recursive: true });
+
+  const displayName = cleanDisplayName(project.name ? `${project.name} DS` : 'New design system');
+  const designMd = `# ${displayName}\n\n> Category: User\n\nEmpty design system attached to project ${project.name ?? project.id}. Add color, typography, spacing, and other tokens from the Design Systems manager.\n`;
+  await fs.promises.writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
+  const manifest = {
+    id,
+    name: displayName,
+    summary: 'Empty design system — add tokens from the manager.',
+    category: 'User',
+    source: { type: 'manual', projectId, createdAt: new Date().toISOString() },
+    isEditable: true,
+  };
+  await fs.promises.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+  const seedParam = opts.seed ?? 'defaults';
+  const initial: VariablesFile = seedParam === 'empty'
+    ? { version: 2, collections: [] }
+    : buildSeededVariablesFile();
+  await saveVariables(outDir, initial);
+
+  const fullDsId = `user:${id}`;
+  try {
+    updateProject(db, projectId, { designSystemId: fullDsId });
+  } catch (err: any) {
+    // Roll back the on-disk DS so we don't leave an orphan.
+    try { await fs.promises.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    throw new Error(`failed to attach DS to project: ${String(err?.message ?? err)}`);
+  }
+
+  return { designSystemId: fullDsId, dsDir: outDir };
+}
 
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
@@ -1485,53 +1544,28 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   app.post('/api/projects/:projectId/design-system/create-empty', async (req, res) => {
     if (!requireLocalOrigin(req, res)) return;
     try {
-      const { getProject, updateProject } = await import('./db.js');
+      // Validate project exists before delegating to the helper.
       const project = getProject(db, req.params.projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', `project ${req.params.projectId} not found`);
       }
-      const fsp = await import('node:fs/promises');
-      const before = await listAllDesignSystems();
-      const baseSlug = slugify(`${project.name || 'project'}-ds`);
-      const id = await nextAvailableSlug(USER_DESIGN_SYSTEMS_DIR, baseSlug, before.map((s) => s.id));
-      const outDir = path.join(USER_DESIGN_SYSTEMS_DIR, id);
-      await fsp.mkdir(outDir, { recursive: true });
 
-      const displayName = cleanDisplayName(project.name ? `${project.name} DS` : 'New design system');
-      const designMd = `# ${displayName}\n\n> Category: User\n\nEmpty design system attached to project ${project.name ?? project.id}. Add color, typography, spacing, and other tokens from the Design Systems manager.\n`;
-      await fsp.writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
-      const manifest = {
-        id,
-        name: displayName,
-        summary: 'Empty design system — add tokens from the manager.',
-        category: 'User',
-        source: { type: 'manual', projectId: req.params.projectId, createdAt: new Date().toISOString() },
-        isEditable: true,
-      };
-      await fsp.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-
-      // Seed variables.json. By default the design system is pre-populated
-      // with a Container Size + Grid + Typography starter kit (seed=defaults).
-      // Pass { seed: 'empty' } in the request body to skip seeding.
-      // saveVariables also regenerates tokens.css to keep the two derived
-      // artifacts in lock-step.
+      // Steps 1-6: scaffold DS on disk and attach to project.
       const seedParam = (req.body as { seed?: 'empty' | 'defaults' } | undefined)?.seed ?? 'defaults';
-      const initial: VariablesFile = seedParam === 'empty'
-        ? { version: 2, collections: [] }
-        : buildSeededVariablesFile();
-      await saveVariables(outDir, initial);
-
-      // Attach the new DS to the project.
-      const fullDsId = `user:${id}`;
+      let fullDsId: string;
+      let outDir: string;
       try {
-        updateProject(db, req.params.projectId, { designSystemId: fullDsId });
+        const result = await autoCreateDesignSystemForProject(db, req.params.projectId, {
+          seed: seedParam,
+          userDesignSystemsDir: USER_DESIGN_SYSTEMS_DIR,
+        });
+        fullDsId = result.designSystemId;
+        outDir = result.dsDir;
       } catch (err: any) {
-        // Roll back the on-disk DS so we don't leave an orphan.
-        try { await fsp.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        return sendApiError(res, 500, 'ATTACH_FAILED', `failed to attach DS to project: ${String(err?.message ?? err)}`);
+        return sendApiError(res, 500, 'ATTACH_FAILED', String(err?.message ?? err));
       }
 
-      // Patch the project's HTML files NOW so the `<style data-od-ds-tokens>`
+      // Step 7: Patch the project's HTML files NOW so the `<style data-od-ds-tokens>`
       // element lands in the source immediately — otherwise Preview mode
       // wouldn't see any DS tokens until the user edited a variable.
       try {
