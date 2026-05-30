@@ -49,6 +49,7 @@ export type MediaProviderId =
   | 'senseaudio'
   | 'tavily'
   | 'leonardo'
+  | 'pixabay'
   | 'stub';
 
 export interface MediaProvider {
@@ -246,6 +247,15 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://api.tavily.com',
     docsUrl: 'https://app.tavily.com/home',
+  },
+  {
+    id: 'pixabay',
+    label: 'Pixabay',
+    hint: 'Stock photo search — free key required (pixabay.com/api)',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    docsUrl: 'https://pixabay.com/api/docs/',
   },
   {
     id: 'stub',
