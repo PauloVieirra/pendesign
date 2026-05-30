@@ -1,3 +1,4 @@
+import type { VariableScope } from '../design-system-variables.js';
 import type { ExtractedToken, ExtractedTokens } from './types.js';
 
 const COLOR_PROPS = new Set([
@@ -10,14 +11,28 @@ const COLOR_PROPS = new Set([
 
 const FONT_PROPS = new Set(['font-family']);
 
-const SIZE_PROPS = new Set(['font-size', 'line-height']);
+const FONT_SIZE_PROPS = new Set(['font-size']);
+const LINE_HEIGHT_PROPS = new Set(['line-height']);
 
-const SPACING_PROPS = new Set([
-  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+const PADDING_PROPS = new Set([
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  'gap', 'row-gap', 'column-gap',
-  'top', 'right', 'bottom', 'left', 'inset',
-  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+]);
+
+const MARGIN_PROPS = new Set([
+  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+]);
+
+const GAP_PROPS = new Set(['gap', 'row-gap', 'column-gap']);
+
+const BORDER_RADIUS_PROPS = new Set([
+  'border-radius',
+  'border-top-left-radius', 'border-top-right-radius',
+  'border-bottom-left-radius', 'border-bottom-right-radius',
+]);
+
+const BORDER_WIDTH_PROPS = new Set([
+  'border-width',
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
 ]);
 
 const SKIP_VALUES = new Set([
@@ -105,14 +120,15 @@ function extractPxNumber(token: string): number | null {
   return null;
 }
 
-function ensureToken<V>(bucket: ExtractedToken<V>[], value: V, sourcePath: string): void {
-  const existing = bucket.find((t) => t.value === value);
+function ensureToken<V>(bucket: ExtractedToken<V>[], value: V, scope: VariableScope, sourcePath: string): void {
+  // Tokens with the same value but different scopes are distinct entries.
+  const existing = bucket.find((t) => t.value === value && t.scope === scope);
   if (existing) {
     existing.usageCount += 1;
     if (!existing.sourceFiles.includes(sourcePath)) existing.sourceFiles.push(sourcePath);
     return;
   }
-  bucket.push({ value, usageCount: 1, sourceFiles: [sourcePath] });
+  bucket.push({ value, scope, usageCount: 1, sourceFiles: [sourcePath] });
 }
 
 /**
@@ -142,13 +158,13 @@ export function extractFromDeclarations(
       // Then try splitting by whitespace for shorthands like "background: #fff url(...)".
       const hexWhole = extractColorFromValueToken(value);
       if (hexWhole) {
-        ensureToken(out.colors, hexWhole, sourcePath);
+        ensureToken(out.colors, hexWhole, 'color', sourcePath);
       } else {
         // Try each whitespace-split token (for shorthands).
         for (const token of value.split(/\s+/)) {
           const hex = extractColorFromValueToken(token);
           if (hex) {
-            ensureToken(out.colors, hex, sourcePath);
+            ensureToken(out.colors, hex, 'color', sourcePath);
             break; // only first color-like token in shorthand
           }
         }
@@ -156,15 +172,38 @@ export function extractFromDeclarations(
     } else if (FONT_PROPS.has(prop)) {
       const first = value.split(',')[0]?.trim().replace(/^["']|["']$/g, '');
       if (first && first.toLowerCase() !== 'inherit') {
-        ensureToken(out.fonts, first, sourcePath);
+        ensureToken(out.fonts, first, 'font-family', sourcePath);
       }
-    } else if (SIZE_PROPS.has(prop)) {
+    } else if (FONT_SIZE_PROPS.has(prop)) {
       const n = extractPxNumber(value);
-      if (n != null) ensureToken(out.sizes, n, sourcePath);
-    } else if (SPACING_PROPS.has(prop)) {
+      if (n != null) ensureToken(out.sizes, n, 'font-size', sourcePath);
+    } else if (LINE_HEIGHT_PROPS.has(prop)) {
+      const n = extractPxNumber(value);
+      if (n != null) ensureToken(out.sizes, n, 'line-height', sourcePath);
+    } else if (PADDING_PROPS.has(prop)) {
       for (const token of value.split(/\s+/)) {
         const n = extractPxNumber(token);
-        if (n != null) ensureToken(out.spacing, n, sourcePath);
+        if (n != null) ensureToken(out.spacing, n, 'padding', sourcePath);
+      }
+    } else if (MARGIN_PROPS.has(prop)) {
+      for (const token of value.split(/\s+/)) {
+        const n = extractPxNumber(token);
+        if (n != null) ensureToken(out.spacing, n, 'margin', sourcePath);
+      }
+    } else if (GAP_PROPS.has(prop)) {
+      for (const token of value.split(/\s+/)) {
+        const n = extractPxNumber(token);
+        if (n != null) ensureToken(out.spacing, n, 'gap', sourcePath);
+      }
+    } else if (BORDER_RADIUS_PROPS.has(prop)) {
+      for (const token of value.split(/\s+/)) {
+        const n = extractPxNumber(token);
+        if (n != null) ensureToken(out.borderRadii, n, 'border-radius', sourcePath);
+      }
+    } else if (BORDER_WIDTH_PROPS.has(prop)) {
+      for (const token of value.split(/\s+/)) {
+        const n = extractPxNumber(token);
+        if (n != null) ensureToken(out.borderWidths, n, 'border-width', sourcePath);
       }
     }
   }
