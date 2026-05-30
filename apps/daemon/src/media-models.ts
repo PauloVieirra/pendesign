@@ -67,6 +67,16 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
   },
   { id: 'tavily', label: 'Tavily Search', hint: 'Agent-callable web research', integrated: true, defaultBaseUrl: 'https://api.tavily.com' },
   { id: 'stub', label: 'Stub (placeholder)', hint: 'Deterministic local placeholder bytes', integrated: true },
+  {
+    id: 'pixabay',
+    label: 'Pixabay',
+    // Used by `od images search`. Free tier 5000 req/h after signup at pixabay.com/api.
+    hint: 'Stock photo search — free key required (pixabay.com/api)',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    docsUrl: 'https://pixabay.com/api/docs/',
+  },
 ];
 
 export const IMAGE_MODELS: MediaModel[] = [
