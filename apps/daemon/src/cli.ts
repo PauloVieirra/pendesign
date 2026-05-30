@@ -249,8 +249,8 @@ const first = argv.find((a) => !a.startsWith('-'));
 if (first && SUBCOMMAND_MAP[first]) {
   const idx = argv.indexOf(first);
   const rest = [...argv.slice(0, idx), ...argv.slice(idx + 1)];
-  await SUBCOMMAND_MAP[first](rest);
-  process.exit(0);
+  const subExitCode = await SUBCOMMAND_MAP[first](rest);
+  process.exit(typeof subExitCode === 'number' ? subExitCode : 0);
 }
 
 if (argv[0] === 'tools' && argv[1] === 'live-artifacts') {
