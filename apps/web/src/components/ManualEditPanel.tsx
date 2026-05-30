@@ -1158,7 +1158,7 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
             onPick={(slug) => { setOpen(false); onChange(`var(${slug})`); }}
           />
         ) : null}
-        {open && !tokenName ? (
+        {open ? (
           <ColorPickerPopover
             value={value}
             onChange={onChange}
