@@ -26916,6 +26916,73 @@ body.desktop-pet-shell .pet-task-item {
   background: var(--bg-subtle);
   color: var(--text);
 }
+/* Chevron that flips when the tree toggles between collapsed/expanded. */
+.explorer-panel__chevron-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Import-files modal launched from the explorer toolbar. */
+.modal.explorer-upload {
+  width: min(560px, 92vw);
+}
+.explorer-upload__pick-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.explorer-upload__staged {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.explorer-upload__staged-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.explorer-upload__clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.explorer-upload__clear:hover {
+  color: var(--text);
+  background: var(--bg-panel);
+}
+.explorer-upload__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}
+.explorer-upload__list li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 0;
+  color: var(--text);
+}
+.explorer-upload__list .explorer-upload__more {
+  color: var(--text-muted);
+  font-style: italic;
+}
 .explorer-panel__filters {
   display: flex;
   gap: 12px;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createProjectFolder,
   deleteProjectFile,
@@ -8,6 +8,11 @@ import {
 } from '../providers/registry';
 import type { ProjectTreeNode } from '../types';
 import { Icon } from './Icon';
+import {
+  ExplorerUploadModal,
+  importFilesIntoProject,
+  readDataTransferFiles,
+} from './ExplorerUploadModal';
 
 interface Props {
   projectId: string;
@@ -46,6 +51,7 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [bump, setBump] = useState(0); // local refresh trigger
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,26 +92,71 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
     });
   }, []);
 
-  const expandAll = useCallback(() => {
-    const collectDirs = (list: ProjectTreeNode[], acc: Set<string>) => {
+  // Every directory path in the current tree — used to compute whether the
+  // tree is fully expanded and to drive the expand/collapse-all toggle.
+  const allDirPaths = useMemo(() => {
+    const acc: string[] = [];
+    const walk = (list: ProjectTreeNode[]) => {
       for (const n of list) {
         if (n.kind === 'dir') {
-          acc.add(n.path);
-          if (n.children) collectDirs(n.children, acc);
+          acc.push(n.path);
+          if (n.children) walk(n.children);
         }
       }
     };
-    const next = new Set<string>();
-    collectDirs(nodes, next);
-    setExpanded(next);
+    walk(nodes);
+    return acc;
   }, [nodes]);
 
+  const allExpanded = allDirPaths.length > 0 && allDirPaths.every((p) => expanded.has(p));
+
+  const expandAll = useCallback(() => {
+    setExpanded(new Set(allDirPaths));
+  }, [allDirPaths]);
+
   const collapseAll = useCallback(() => setExpanded(new Set()), []);
+
+  // Single toggle behind the chevron icon: open every folder (chevron flips
+  // up) or collapse back to the root (chevron returns to its down position).
+  const toggleExpandCollapse = useCallback(() => {
+    if (allExpanded) collapseAll();
+    else expandAll();
+  }, [allExpanded, collapseAll, expandAll]);
 
   const refresh = useCallback(() => {
     setBump((n) => n + 1);
     onAfterMutate?.();
   }, [onAfterMutate]);
+
+  // Paste files copied from outside the app (Finder/Explorer, screenshots,
+  // images from the web) straight into the project. Active only while the
+  // Files panel is mounted; ignores paste when the focus is in an editable
+  // field (so Cmd/Ctrl+V still works for normal text entry) and when the
+  // clipboard carries no files.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const dt = e.clipboardData;
+      if (!dt || !dt.files || dt.files.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      const editable =
+        !!active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.isContentEditable);
+      if (editable) return;
+      e.preventDefault();
+      const picked = await readDataTransferFiles(dt);
+      if (picked.length === 0) return;
+      setActionError(null);
+      const result = await importFilesIntoProject(projectId, picked);
+      if (result.failed.length > 0) {
+        setActionError(`Could not paste ${result.failed.length} file(s).`);
+      }
+      refresh();
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [projectId, refresh]);
 
   // ── Context menu actions ────────────────────────────────────────────
   const startCreate = useCallback((kind: 'file' | 'folder', parentNode: ProjectTreeNode | null) => {
@@ -252,20 +303,26 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
           <button
             type="button"
             className="explorer-panel__icon-btn"
-            onClick={collapseAll}
-            title="Collapse all"
-            aria-label="Collapse all folders"
+            onClick={toggleExpandCollapse}
+            title={allExpanded ? 'Collapse all' : 'Expand all'}
+            aria-label={allExpanded ? 'Collapse all folders' : 'Expand all folders'}
+            aria-pressed={allExpanded}
           >
-            <Icon name="chevron-down" size={14} />
+            <span
+              className="explorer-panel__chevron-toggle"
+              style={{ transform: allExpanded ? 'rotate(180deg)' : 'none' }}
+            >
+              <Icon name="chevron-down" size={14} />
+            </span>
           </button>
           <button
             type="button"
             className="explorer-panel__icon-btn"
-            onClick={expandAll}
-            title="Expand all"
-            aria-label="Expand all folders"
+            onClick={() => setUploadOpen(true)}
+            title="Import files"
+            aria-label="Import files into project"
           >
-            <Icon name="chevron-right" size={14} />
+            <Icon name="upload" size={14} />
           </button>
           <button
             type="button"
@@ -314,6 +371,13 @@ export function FileExplorerPanel({ projectId, onOpenFile, refreshKey = 0, onAft
           />
         ) : null}
       </div>
+      {uploadOpen ? (
+        <ExplorerUploadModal
+          projectId={projectId}
+          onClose={() => setUploadOpen(false)}
+          onImported={refresh}
+        />
+      ) : null}
       {contextMenu ? (
         <ContextMenu
           x={contextMenu.x}
