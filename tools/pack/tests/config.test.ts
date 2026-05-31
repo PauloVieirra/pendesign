@@ -24,6 +24,28 @@ afterEach(() => {
   }
 });
 
+describe("resolveToolPackConfig portable default", () => {
+  it("defaults portable to true when no portable option is given", () => {
+    const config = resolveToolPackConfig("mac", { namespace: "portable-default-test" });
+    expect(config.portable).toBe(true);
+  });
+
+  it("defaults portable to true when portable option is explicitly undefined", () => {
+    const config = resolveToolPackConfig("mac", { namespace: "portable-undefined-test", portable: undefined });
+    expect(config.portable).toBe(true);
+  });
+
+  it("keeps portable true when portable option is explicitly true", () => {
+    const config = resolveToolPackConfig("mac", { namespace: "portable-true-test", portable: true });
+    expect(config.portable).toBe(true);
+  });
+
+  it("sets portable to false when --no-portable is passed (portable option is false)", () => {
+    const config = resolveToolPackConfig("mac", { namespace: "no-portable-test", portable: false });
+    expect(config.portable).toBe(false);
+  });
+});
+
 describe("resolveToolPackConfig telemetry relay", () => {
   it("reads and normalizes OPEN_DESIGN_TELEMETRY_RELAY_URL for packaged config", () => {
     process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL = "https://telemetry.open-design.ai/api/langfuse//";

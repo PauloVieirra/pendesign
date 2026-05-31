@@ -7,7 +7,7 @@ The active slice is mac-first local packaging and smoke lifecycle control:
 - `tools-pack mac build --to all`
 - `tools-pack mac build --to app|dmg|zip`
 - `tools-pack mac build --to all --signed`
-- `tools-pack mac build --to all --portable` for release artifacts that must not bake local tools-pack runtime paths
+- `tools-pack mac build --to all --no-portable` for dev-loop builds that bake local tools-pack runtime paths (portable is the default)
 - `tools-pack mac install`
 - `tools-pack mac start`
 - `tools-pack mac stop`
@@ -57,13 +57,14 @@ applying an in-place update.
 Electron-builder resources live under `tools/pack/resources/mac/`. The current logo is staged there as the mac icon/DMG
 placeholder so future design-provided assets can replace the resource files without changing packaging code.
 
-Local developer artifacts bake the tools-pack namespace runtime root so `tools-pack mac start/stop/logs/cleanup` can manage
-them from the repo. Release artifacts use `--portable` so the installed app resolves namespace data/log/runtime/user-data
-from the user's Electron `userData` root instead of the build machine's `.tmp` path.
+All build artifacts are portable by default: the installed app resolves namespace data/log/runtime/user-data
+from the user's platform default (`~/Library/Application Support/Open Design/` on macOS, `%APPDATA%/Open Design/` on Windows)
+rather than baking the build machine's `.tmp` path. Pass `--no-portable` only for dev-loop builds managed by
+`tools-pack mac start/stop/logs/cleanup` from the repo, where the workspace runtime root is expected to exist.
 
 ### macOS compatibility notes
 
-- `tools-pack mac build --portable --to zip` is the safest manual-install artifact for Intel Macs. This path was smoke-tested on macOS 12.7.6 Monterey on a 2015 Intel iMac and the app launched successfully from `/Applications`.
+- `tools-pack mac build --to zip` is the safest manual-install artifact for Intel Macs (portable by default). This path was smoke-tested on macOS 12.7.6 Monterey on a 2015 Intel iMac and the app launched successfully from `/Applications`.
 - Finder/manual launches on macOS may not inherit your shell-managed `PATH`. If packaged Open Design cannot detect agent CLIs that work in Terminal, expose those binaries to the GUI login environment or launch the packaged app from a shell session that already sees them.
 
 ## Windows
@@ -95,7 +96,7 @@ Local lifecycle commands:
 - `tools-pack linux build --to appimage` (explicit AppImage)
 - `tools-pack linux build --to dir` (unpacked output for fast iteration)
 - `tools-pack linux build --containerized` (run electron-builder inside `electronuserland/builder:base` Docker for a wider glibc compatibility target — requires Docker)
-- `tools-pack linux build --to all --portable` (release artifacts that must not bake local tools-pack runtime paths)
+- `tools-pack linux build --to all` (portable by default; pass `--no-portable` to bake local tools-pack runtime paths for dev-loop use)
 - `tools-pack linux install`
 - `tools-pack linux install --headless` (install the headless launcher script instead of the AppImage)
 - `tools-pack linux start`

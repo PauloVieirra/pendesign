@@ -215,7 +215,13 @@ export function resolveToolPackConfig(
     macCompression: resolveToolPackMacCompression(options.macCompression),
     namespace,
     platform,
-    portable: options.portable === true,
+    // Default: portable=true. Distribution builds must NOT bake the dev
+    // workspace's runtime root into the packaged config, since that path
+    // doesn't exist (or isn't writable) on the user's machine. Opt OUT
+    // with `--no-portable` ONLY when running through `tools-pack start`
+    // as part of the dev-loop test cycle (where the dev workspace IS the
+    // runtime root, by design).
+    portable: options.portable !== false,
     roots: {
       output: {
         appBuilderRoot: join(outputNamespaceRoot, "builder"),

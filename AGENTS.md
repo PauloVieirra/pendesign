@@ -236,6 +236,8 @@ pnpm tools-pack linux install
 pnpm tools-pack linux build --containerized
 ```
 
+Builds are portable by default. Pass `--no-portable` only when testing the packaged artifact through `tools-pack start` against the local workspace.
+
 # FAQ
 
 ## Why is there no root `pnpm dev` / `pnpm start`?

@@ -53,6 +53,7 @@ pnpm tools-pack linux install --headless
 pnpm tools-pack linux start --headless
 pnpm tools-pack linux stop --headless
 pnpm tools-pack linux build --containerized
+# Builds are portable by default. Pass --no-portable only when testing the packaged artifact through `tools-pack start` against the local workspace.
 pnpm tools-pr list
 pnpm tools-pr list --bucket=merge-ready,approved-blocked
 pnpm tools-pr view <num>
