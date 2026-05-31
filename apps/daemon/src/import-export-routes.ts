@@ -6,6 +6,19 @@ import {
   inlineRelativeAssets,
   type InlineAssetReader,
 } from './inline-assets.js';
+import { autoCreateDesignSystemForProject } from './static-resource-routes.js';
+
+// Build/dependency directories that are derived locally and add no design
+// value — never copied into the native project on local import. Matches the
+// SKIP_DIRS allowlist used by the file panel / archive walkers in projects.ts.
+const LOCAL_IMPORT_SKIP_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', '.next', '.nuxt', '.turbo',
+  '.cache', '.output', 'out', 'coverage', '__pycache__', '.venv',
+  'vendor', 'target', '.od', '.tmp',
+]);
+const LOCAL_IMPORT_MAX_FILES = 5000;
+const LOCAL_IMPORT_MAX_TOTAL_BYTES = 100 * 1024 * 1024; // 100 MiB
+const LOCAL_IMPORT_MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MiB
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {}
 
@@ -15,7 +28,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
   const { importUpload } = ctx.uploads;
   const { fs, path } = ctx.node;
   const { randomId } = ctx.ids;
-  const { PROJECTS_DIR, RUNTIME_DATA_DIR_CANONICAL } = ctx.paths;
+  const { PROJECTS_DIR, RUNTIME_DATA_DIR_CANONICAL, USER_DESIGN_SYSTEMS_DIR } = ctx.paths;
   const { importClaudeDesignZip, projectDir, detectEntryFile } = ctx.imports;
   const {
     consumedImportNonces,
@@ -24,9 +37,9 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
     pruneExpiredImportNonces,
     verifyDesktopImportToken,
   } = ctx.auth;
-  const { insertProject } = ctx.projectStore;
+  const { insertProject, getProject } = ctx.projectStore;
   const { insertConversation } = ctx.conversations;
-  const { setTabs } = ctx.projectFiles;
+  const { setTabs, writeProjectFile } = ctx.projectFiles;
   const { validateProjectDesignSystemId } = ctx.validation;
   app.post(
     '/api/import/claude-design',
@@ -224,6 +237,125 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       if (entryFile) setTabs(db, id, [entryFile], entryFile);
       /** @type {import('@open-design/contracts').ImportFolderResponse} */
       const body = { project, conversationId: cid, entryFile };
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  // Import a local folder by COPYING its files into the daemon as a fully
+  // native project under `.od/projects/<id>/` (no metadata.baseDir). The
+  // browser reads the dragged/picked folder, base64-encodes each file, and
+  // uploads them here. Unlike /api/import/folder, the system owns the copy
+  // and seeds the same default design system + configuration a natively
+  // created project receives, so the imported project is indistinguishable
+  // from one built from scratch.
+  app.post('/api/import/local', async (req, res) => {
+    try {
+      const { id: rawId, name, skillId, files } = req.body || {};
+      if (!Array.isArray(files) || files.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'files must be a non-empty array');
+      }
+
+      // Filter out build/dependency dirs and decode payloads up-front so the
+      // size guards fire before we touch the database or filesystem.
+      const accepted: Array<{ relPath: string; buffer: Buffer }> = [];
+      let totalBytes = 0;
+      for (const entry of files) {
+        if (!entry || typeof entry.path !== 'string' || typeof entry.contentBase64 !== 'string') {
+          continue;
+        }
+        const relPosix = entry.path.replace(/\\/g, '/').replace(/^\/+/, '');
+        const segments = relPosix.split('/').filter(Boolean);
+        if (segments.length === 0) continue;
+        if (segments.some((seg: string) => LOCAL_IMPORT_SKIP_DIRS.has(seg.toLowerCase()))) continue;
+        let buffer: Buffer;
+        try {
+          buffer = Buffer.from(entry.contentBase64, 'base64');
+        } catch {
+          continue;
+        }
+        if (buffer.byteLength > LOCAL_IMPORT_MAX_FILE_BYTES) {
+          return sendApiError(
+            res,
+            413,
+            'PAYLOAD_TOO_LARGE',
+            `file ${relPosix} exceeds the per-file size limit`,
+          );
+        }
+        totalBytes += buffer.byteLength;
+        if (totalBytes > LOCAL_IMPORT_MAX_TOTAL_BYTES) {
+          return sendApiError(res, 413, 'PAYLOAD_TOO_LARGE', 'import exceeds the total size limit');
+        }
+        accepted.push({ relPath: segments.join('/'), buffer });
+        if (accepted.length > LOCAL_IMPORT_MAX_FILES) {
+          return sendApiError(res, 413, 'PAYLOAD_TOO_LARGE', 'import exceeds the maximum file count');
+        }
+      }
+      if (accepted.length === 0) {
+        return sendApiError(
+          res,
+          400,
+          'BAD_REQUEST',
+          'no importable files (only ignored directories or empty paths were provided)',
+        );
+      }
+
+      const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : randomId();
+      if (getProject(db, id)) {
+        return sendApiError(res, 409, 'CONFLICT', 'project id already exists');
+      }
+      const now = Date.now();
+      const named = typeof name === 'string' && name.trim() ? name.trim() : '';
+      const projectName = named || 'Imported project';
+
+      const project = insertProject(db, {
+        id,
+        name: projectName,
+        skillId: skillId ?? null,
+        designSystemId: null,
+        pendingPrompt: null,
+        metadata: {
+          kind: 'prototype',
+          importedFrom: 'local',
+          nameSource: named ? 'user' : 'generated',
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      const cid = randomId();
+      insertConversation(db, {
+        id: cid,
+        projectId: id,
+        title: `Imported from ${projectName}`,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      for (const file of accepted) {
+        await writeProjectFile(PROJECTS_DIR, id, file.relPath, file.buffer);
+      }
+
+      const entryFile = await detectEntryFile(projectDir(PROJECTS_DIR, id));
+      if (entryFile) setTabs(db, id, [entryFile], entryFile);
+
+      // Seed the same default design system a native project gets. Best-effort:
+      // a failure here must not roll back the already-copied project.
+      try {
+        await autoCreateDesignSystemForProject(db, id, {
+          userDesignSystemsDir: USER_DESIGN_SYSTEMS_DIR,
+        });
+      } catch (err) {
+        console.error('[import/local] design system seed failed:', err);
+      }
+
+      /** @type {import('@open-design/contracts').ImportLocalProjectResponse} */
+      const body = {
+        project: getProject(db, id) ?? project,
+        conversationId: cid,
+        entryFile,
+        fileCount: accepted.length,
+      };
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));

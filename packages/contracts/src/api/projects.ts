@@ -273,6 +273,35 @@ export interface ImportFolderResponse {
   entryFile: string | null;
 }
 
+// POST /api/import/local — copy a local folder's files INTO the daemon and
+// create a fully native project under `.od/projects/<id>/` (no `baseDir`).
+// Unlike `/api/import/folder`, the system owns the copy and seeds the same
+// default design system and configuration a natively-created project gets.
+// Each file carries its project-relative path plus base64-encoded content so
+// binary assets survive the JSON transport. Build/dependency directories
+// (node_modules, .git, dist, ...) are filtered server-side.
+export interface ImportLocalProjectFile {
+  /** Project-relative path, POSIX-style (e.g. `src/App.tsx`). */
+  path: string;
+  /** Base64-encoded file bytes. */
+  contentBase64: string;
+}
+
+export interface ImportLocalProjectRequest {
+  files: ImportLocalProjectFile[];
+  id?: string;
+  name?: string;
+  skillId?: string | null;
+}
+
+export interface ImportLocalProjectResponse {
+  project: Project;
+  conversationId: string;
+  entryFile: string | null;
+  /** Number of files actually written after filtering. */
+  fileCount: number;
+}
+
 export interface ConversationsResponse {
   conversations: Conversation[];
 }
