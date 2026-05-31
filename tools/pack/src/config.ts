@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,6 +86,19 @@ export type ToolPackConfig = {
    */
   posthogKey?: string;
   posthogHost?: string;
+  /**
+   * Supabase cloud collaboration endpoint + anon key, sourced at packaging
+   * time from process.env.OD_CLOUD_URL / OD_CLOUD_ANON_KEY (falling back to
+   * the workspace-root .env.local, so packaging works without shell sourcing
+   * — mirrors the daemon's auto-load). Baked into open-design-config.json and
+   * forwarded to the packaged daemon as OD_CLOUD_URL / OD_CLOUD_ANON_KEY so
+   * the login gate is configured in shipped builds. The Supabase anon key is
+   * a public client-side token (RLS protects data); embedding it in the bundle
+   * is Supabase's recommended pattern. Builds without these values ship with
+   * cloud unconfigured and the gate stays invisible.
+   */
+  cloudUrl?: string;
+  cloudAnonKey?: string;
   to: ToolPackBuildOutput;
   webOutputMode: ToolPackWebOutputMode;
   workspaceRoot: string;
@@ -167,6 +181,68 @@ function resolveToolPackTelemetryRelayUrl(value: string | undefined): string | u
   return normalized.replace(/\/+$/, "");
 }
 
+// Read a single key from the workspace-root .env.local without mutating
+// process.env. Lets packaging pick up OD_CLOUD_URL / OD_CLOUD_ANON_KEY the
+// same zero-config way the daemon does at runtime; shell-supplied env still
+// wins (callers pass `process.env.X ?? readWorkspaceEnvLocal(X)`).
+let envLocalCache: Record<string, string> | null = null;
+function readWorkspaceEnvLocal(key: string): string | undefined {
+  if (envLocalCache == null) {
+    envLocalCache = {};
+    const filePath = join(WORKSPACE_ROOT, ".env.local");
+    if (existsSync(filePath)) {
+      try {
+        for (const rawLine of readFileSync(filePath, "utf8").split(/\r?\n/)) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) continue;
+          const eq = line.indexOf("=");
+          if (eq === -1) continue;
+          const k = line.slice(0, eq).trim();
+          if (!k) continue;
+          let value = line.slice(eq + 1).trim();
+          if (value.length >= 2) {
+            const first = value[0];
+            const last = value[value.length - 1];
+            if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+              value = value.slice(1, -1);
+            }
+          }
+          envLocalCache[k] = value;
+        }
+      } catch {
+        // best-effort; absent or unreadable .env.local just means no cloud config
+      }
+    }
+  }
+  return envLocalCache[key];
+}
+
+function resolveToolPackCloudUrl(value: string | undefined): string | undefined {
+  if (value == null) return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error(`OD_CLOUD_URL must be an absolute https URL: ${value}`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(`OD_CLOUD_URL must use https: ${value}`);
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
+function resolveToolPackCloudAnonKey(value: string | undefined): string | undefined {
+  if (value == null) return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0) return undefined;
+  if (/[\s\x00-\x1f]/.test(normalized)) {
+    throw new Error(`OD_CLOUD_ANON_KEY contains whitespace or control chars`);
+  }
+  return normalized;
+}
+
 function resolveElectronVersion(workspaceRoot: string): string {
   const require = createRequire(join(workspaceRoot, "apps/desktop/package.json"));
   const desktopPackage = require(join(workspaceRoot, "apps/desktop/package.json")) as {
@@ -245,6 +321,10 @@ export function resolveToolPackConfig(
     telemetryRelayUrl: resolveToolPackTelemetryRelayUrl(process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL),
     posthogKey: resolveToolPackPosthogKey(process.env.POSTHOG_KEY),
     posthogHost: resolveToolPackPosthogHost(process.env.POSTHOG_HOST),
+    cloudUrl: resolveToolPackCloudUrl(process.env.OD_CLOUD_URL ?? readWorkspaceEnvLocal("OD_CLOUD_URL")),
+    cloudAnonKey: resolveToolPackCloudAnonKey(
+      process.env.OD_CLOUD_ANON_KEY ?? readWorkspaceEnvLocal("OD_CLOUD_ANON_KEY"),
+    ),
     to: resolveToolPackBuildOutput(platform, options.to),
     webOutputMode: resolveToolPackWebOutputMode(platform, process.env.OD_WEB_OUTPUT_MODE),
     workspaceRoot: WORKSPACE_ROOT,

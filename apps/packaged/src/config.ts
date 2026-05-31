@@ -39,6 +39,14 @@ export type RawPackagedConfig = {
   // either this is absent or the user has declined Privacy → metrics.
   posthogKey?: string;
   posthogHost?: string;
+  // Supabase cloud endpoint + anon key, baked by tools/pack from
+  // OD_CLOUD_URL / OD_CLOUD_ANON_KEY at packaging time. Forwarded to the
+  // daemon sidecar so the cloud login gate is configured in shipped builds.
+  // The anon key is a public client-side token (RLS protects data); absent
+  // for builds packaged without cloud config, in which case the gate stays
+  // invisible and the app is usable locally.
+  cloudUrl?: string;
+  cloudAnonKey?: string;
   webSidecarEntryRelative?: string;
   webStandaloneRoot?: string;
   webOutputMode?: string;
@@ -60,6 +68,8 @@ export type PackagedConfig = {
   telemetryRelayUrl: string | null;
   posthogKey: string | null;
   posthogHost: string | null;
+  cloudUrl: string | null;
+  cloudAnonKey: string | null;
   webSidecarEntry: string | null;
   webStandaloneRoot: string | null;
   webOutputMode: PackagedWebOutputMode;
@@ -186,6 +196,8 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
     telemetryRelayUrl: cleanOptionalString(raw.telemetryRelayUrl),
     posthogKey: cleanOptionalString(raw.posthogKey),
     posthogHost: cleanOptionalString(raw.posthogHost),
+    cloudUrl: cleanOptionalString(raw.cloudUrl),
+    cloudAnonKey: cleanOptionalString(raw.cloudAnonKey),
     webSidecarEntry,
     webStandaloneRoot,
     webOutputMode,

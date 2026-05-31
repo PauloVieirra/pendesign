@@ -469,6 +469,8 @@ async function writeAssembledApp(
         ...(config.telemetryRelayUrl == null ? {} : { telemetryRelayUrl: config.telemetryRelayUrl }),
         ...(config.posthogKey == null ? {} : { posthogKey: config.posthogKey }),
         ...(config.posthogHost == null ? {} : { posthogHost: config.posthogHost }),
+        ...(config.cloudUrl == null ? {} : { cloudUrl: config.cloudUrl }),
+        ...(config.cloudAnonKey == null ? {} : { cloudAnonKey: config.cloudAnonKey }),
         ...(config.portable ? {} : { namespaceBaseRoot: config.roots.runtime.namespaceBaseRoot }),
       },
       null,

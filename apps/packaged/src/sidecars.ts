@@ -232,6 +232,8 @@ export type PackagedDaemonSpawnEnvOptions = {
   telemetryRelayUrl?: string | null;
   posthogKey?: string | null;
   posthogHost?: string | null;
+  cloudUrl?: string | null;
+  cloudAnonKey?: string | null;
 };
 
 /**
@@ -284,6 +286,18 @@ export function buildPackagedDaemonSpawnEnv(
     ...(options.posthogHost == null || options.posthogHost.length === 0
       ? {}
       : { POSTHOG_HOST: options.posthogHost }),
+    // Supabase cloud config, baked into the bundle at packaging time by
+    // tools/pack. The daemon reads OD_CLOUD_URL / OD_CLOUD_ANON_KEY at
+    // startup to enable the cloud login gate. Set here explicitly (not via
+    // the inherited-env allowlist) so shipped builds are configured without
+    // the user sourcing .env.local. Absent for builds packaged without cloud
+    // config — the gate then stays invisible and the app runs locally.
+    ...(options.cloudUrl == null || options.cloudUrl.length === 0
+      ? {}
+      : { OD_CLOUD_URL: options.cloudUrl }),
+    ...(options.cloudAnonKey == null || options.cloudAnonKey.length === 0
+      ? {}
+      : { OD_CLOUD_ANON_KEY: options.cloudAnonKey }),
   };
 }
 
@@ -365,6 +379,8 @@ export async function startPackagedSidecars(
     telemetryRelayUrl: string | null;
     posthogKey: string | null;
     posthogHost: string | null;
+    cloudUrl: string | null;
+    cloudAnonKey: string | null;
     /**
      * PR #974 round-5 (lefarcen P2): caller asserts whether a desktop
      * runtime is being started in this packaged process group. The
@@ -404,6 +420,8 @@ export async function startPackagedSidecars(
         telemetryRelayUrl: options.telemetryRelayUrl,
         posthogKey: options.posthogKey,
         posthogHost: options.posthogHost,
+        cloudUrl: options.cloudUrl,
+        cloudAnonKey: options.cloudAnonKey,
       }),
       nodeCommand: options.nodeCommand,
       paths,

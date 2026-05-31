@@ -65,6 +65,8 @@ function resolveHeadlessConfig(): PackagedConfig {
     telemetryRelayUrl: process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL?.trim() || null,
     posthogKey: process.env.POSTHOG_KEY?.trim() || null,
     posthogHost: process.env.POSTHOG_HOST?.trim() || null,
+    cloudUrl: process.env.OD_CLOUD_URL?.trim() || null,
+    cloudAnonKey: process.env.OD_CLOUD_ANON_KEY?.trim() || null,
     webSidecarEntry: null,
     webStandaloneRoot: null,
     webOutputMode: "server",
@@ -120,6 +122,8 @@ async function main(): Promise<void> {
     telemetryRelayUrl: config.telemetryRelayUrl,
     posthogKey: config.posthogKey,
     posthogHost: config.posthogHost,
+    cloudUrl: config.cloudUrl,
+    cloudAnonKey: config.cloudAnonKey,
     // PR #974 round-5 (lefarcen P2): headless packaged mode runs daemon
     // + web only, no Electron, no privileged shell.openPath surface.
     // Pinning OD_REQUIRE_DESKTOP_AUTH here would arm a gate no client

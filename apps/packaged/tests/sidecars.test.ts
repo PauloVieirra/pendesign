@@ -267,6 +267,32 @@ describe('buildPackagedDaemonSpawnEnv', () => {
     expect(env.POSTHOG_KEY).toBeUndefined();
     expect(env.POSTHOG_HOST).toBeUndefined();
   });
+
+  it('forwards OD_CLOUD_URL/OD_CLOUD_ANON_KEY to the daemon spawn env when baked into the bundle', () => {
+    const env = buildPackagedDaemonSpawnEnv(fakePaths(), {
+      appVersion: null,
+      daemonCliEntry: null,
+      legacyDataDir: null,
+      requireDesktopAuth: true,
+      cloudUrl: 'https://project.supabase.co',
+      cloudAnonKey: 'anon_test_key',
+    });
+    expect(env.OD_CLOUD_URL).toBe('https://project.supabase.co');
+    expect(env.OD_CLOUD_ANON_KEY).toBe('anon_test_key');
+  });
+
+  it('omits OD_CLOUD_URL/OD_CLOUD_ANON_KEY for builds packaged without cloud config', () => {
+    const env = buildPackagedDaemonSpawnEnv(fakePaths(), {
+      appVersion: null,
+      daemonCliEntry: null,
+      legacyDataDir: null,
+      requireDesktopAuth: true,
+      cloudUrl: null,
+      cloudAnonKey: null,
+    });
+    expect(env.OD_CLOUD_URL).toBeUndefined();
+    expect(env.OD_CLOUD_ANON_KEY).toBeUndefined();
+  });
 });
 
 describe('waitForStatus child-exit fast-fail', () => {
