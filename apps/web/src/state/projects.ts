@@ -11,6 +11,8 @@ import type {
   CreatePluginShareProjectResponse,
   ImportFolderRequest,
   ImportFolderResponse,
+  ImportLocalProjectRequest,
+  ImportLocalProjectResponse,
   InstalledPluginRecord,
   PluginInstallOutcome,
   PluginShareAction,
@@ -140,6 +142,29 @@ export async function importFolderProject(
     throw new Error(message);
   }
   return (await resp.json()) as ImportFolderResponse;
+}
+
+// Copy a local folder INTO the daemon as a fully native project. The caller
+// (NewProjectPanel import drop zone) has already read the dragged/picked
+// folder into base64-encoded files. Unlike importFolderProject (in-place),
+// the daemon owns the copy and seeds the default design system + config.
+export async function importLocalProject(
+  input: ImportLocalProjectRequest,
+): Promise<ImportLocalProjectResponse> {
+  const resp = await fetch('/api/import/local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!resp.ok) {
+    let message = 'Failed to import local project';
+    try {
+      const body = await resp.json();
+      if (body?.error?.message) message = body.error.message;
+    } catch { /* use default message */ }
+    throw new Error(message);
+  }
+  return (await resp.json()) as ImportLocalProjectResponse;
 }
 
 export async function importClaudeDesignZip(

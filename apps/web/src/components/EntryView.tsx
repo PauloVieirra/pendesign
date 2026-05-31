@@ -3,6 +3,7 @@ import type {
   ConnectorDetail,
   ConnectorStatusResponse,
   ImportFolderResponse,
+  ImportLocalProjectResponse,
 } from '@open-design/contracts';
 import {
   DEFAULT_AUDIO_MODEL,
@@ -101,6 +102,7 @@ interface Props {
   onImportClaudeDesign: (file: File) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: ImportFolderResponse) => Promise<void> | void;
+  onImportLocalProject?: (response: ImportLocalProjectResponse) => Promise<void> | void;
   onOpenProject: (id: string) => void;
   onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
   onDeleteProject: (id: string) => void;
@@ -256,6 +258,7 @@ export function EntryView({
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
+  onImportLocalProject,
   onOpenProject,
   onOpenLiveArtifact,
   onDeleteProject,
@@ -347,6 +350,7 @@ export function EntryView({
       onImportClaudeDesign={onImportClaudeDesign}
       {...(onImportFolder ? { onImportFolder } : {})}
       {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
+      {...(onImportLocalProject ? { onImportLocalProject } : {})}
       onOpenProject={onOpenProject}
       onOpenLiveArtifact={onOpenLiveArtifact}
       onDeleteProject={onDeleteProject}

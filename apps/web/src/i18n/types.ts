@@ -1439,6 +1439,15 @@ export interface Dict {
   'chat.importFolder': string;
   'chat.importSkills': string;
   'chat.importProject': string;
+  'importLocal.button': string;
+  'importLocal.title': string;
+  'importLocal.subtitle': string;
+  'importLocal.dropHint': string;
+  'importLocal.pick': string;
+  'importLocal.importing': string;
+  'importLocal.errorGeneric': string;
+  'importLocal.errorEmpty': string;
+  'importLocal.cancel': string;
   'chat.linkedFolderRemoveAria': string;
   'chat.linkedFolderNotFound': string;
   'chat.linkedFolderAlready': string;

@@ -987,6 +987,18 @@ export function App() {
     });
   }, []);
 
+  // Local-folder import that COPIES the folder into a fully native project
+  // (seeded design system + standard config). Same state update + navigation
+  // shape as folder/Claude imports.
+  const handleImportLocalProject = useCallback(async (result: import('@open-design/contracts').ImportLocalProjectResponse) => {
+    setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
+    navigate({
+      kind: 'project',
+      projectId: result.project.id,
+      fileName: result.entryFile,
+    });
+  }, []);
+
   const handleOpenProject = useCallback((id: string) => {
     navigate({ kind: 'project', projectId: id, fileName: null });
   }, []);
@@ -1362,6 +1374,7 @@ export function App() {
         onImportClaudeDesign={handleImportClaudeDesign}
         onImportFolder={handleImportFolder}
         onImportFolderResponse={handleImportFolderResponse}
+        onImportLocalProject={handleImportLocalProject}
         onOpenProject={handleOpenProject}
         onOpenLiveArtifact={handleOpenLiveArtifact}
         onDeleteProject={handleDeleteProject}

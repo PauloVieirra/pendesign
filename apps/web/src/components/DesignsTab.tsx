@@ -9,7 +9,9 @@ import type {
 	ProjectDisplayStatus,
 	SkillSummary,
 } from "../types";
+import type { ImportLocalProjectResponse } from "@open-design/contracts";
 import { Icon } from "./Icon";
+import { ImportLocalProjectButton } from "./ImportLocalProjectButton";
 import { LiveArtifactBadges } from "./LiveArtifactBadges";
 
 type SubTab = "recent" | "yours";
@@ -57,6 +59,7 @@ interface Props {
 	onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
 	onDelete: (id: string) => void;
 	onRename?: (id: string, name: string) => void;
+	onImportLocalProject?: (response: ImportLocalProjectResponse) => void | Promise<void>;
 }
 
 export function DesignsTab({
@@ -67,6 +70,7 @@ export function DesignsTab({
 	onOpenLiveArtifact,
 	onDelete,
 	onRename,
+	onImportLocalProject,
 }: Props) {
 	const t = useT();
 	const [filter, setFilter] = useState("");
@@ -385,6 +389,9 @@ export function DesignsTab({
 							onChange={(e) => setFilter(e.target.value)}
 						/>
 					</div>
+					{onImportLocalProject ? (
+						<ImportLocalProjectButton onImported={onImportLocalProject} />
+					) : null}
 					{view === "grid" && selectMode ? (
 						<div className="designs-select-bar" role="group">
 							<span className="designs-select-count">

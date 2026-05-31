@@ -13,6 +13,7 @@ import {
   defaultScenarioPluginIdForKind,
   type ConnectorDetail,
   type ImportFolderResponse,
+  type ImportLocalProjectResponse,
   type InstalledPluginRecord,
 } from '@open-design/contracts';
 import { useT } from '../i18n';
@@ -163,6 +164,7 @@ interface Props {
   onImportClaudeDesign: (file: File) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: ImportFolderResponse) => Promise<void> | void;
+  onImportLocalProject?: (response: ImportLocalProjectResponse) => Promise<void> | void;
   onOpenProject: (id: string) => void;
   onOpenLiveArtifact: (projectId: string, artifactId: string) => void;
   onDeleteProject: (id: string) => void;
@@ -219,6 +221,7 @@ export function EntryShell({
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
+  onImportLocalProject,
   onOpenProject,
   onOpenLiveArtifact,
   onDeleteProject,
@@ -554,6 +557,7 @@ export function EntryShell({
                     onOpenLiveArtifact={onOpenLiveArtifact}
                     onDelete={onDeleteProject}
                     onRename={onRenameProject}
+                    {...(onImportLocalProject ? { onImportLocalProject } : {})}
                   />
                 </div>
               )

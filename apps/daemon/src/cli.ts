@@ -3830,6 +3830,10 @@ async function runProject(args) {
     console.log(`Usage:
   od project create [--name "<title>"] [--skill <id>] [--design-system <id>]
                     [--plugin <id>] [--inputs <json>] [--metadata-json <path|->]
+  od project import --path <folder> [--name "<title>"] [--skill <id>]
+                                          Copy a local folder into a new
+                                          native project (seeds the default
+                                          design system + config).
   od project list                         List projects.
   od project info <id>                    Print one project.
   od project delete <id>                  Delete a project.
@@ -3916,6 +3920,72 @@ Common options:
       }
       if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
       console.log(`[project] created ${data.project?.id ?? id} (conversation ${data.conversationId})`);
+      return;
+    }
+    case 'import': {
+      const folder = typeof flags.path === 'string' && flags.path.trim()
+        ? flags.path.trim()
+        : rest.find((a) => !a.startsWith('-'));
+      if (!folder) {
+        console.error('Usage: od project import --path <folder> [--name "<title>"]');
+        process.exit(2);
+      }
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      let absRoot;
+      try {
+        absRoot = await fs.realpath(path.resolve(folder));
+        const st = await fs.stat(absRoot);
+        if (!st.isDirectory()) {
+          console.error(`not a directory: ${folder}`);
+          process.exit(2);
+        }
+      } catch {
+        console.error(`folder not found: ${folder}`);
+        process.exit(2);
+      }
+      const SKIP = new Set([
+        'node_modules', '.git', 'dist', 'build', '.next', '.nuxt', '.turbo',
+        '.cache', '.output', 'out', 'coverage', '__pycache__', '.venv',
+        'vendor', 'target', '.od', '.tmp',
+      ]);
+      const files = [];
+      const walk = async (dir, relDir) => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const e of entries) {
+          const rel = relDir ? `${relDir}/${e.name}` : e.name;
+          if (e.isDirectory()) {
+            if (SKIP.has(e.name.toLowerCase())) continue;
+            await walk(path.join(dir, e.name), rel);
+            continue;
+          }
+          if (!e.isFile()) continue;
+          const buf = await fs.readFile(path.join(dir, e.name));
+          files.push({ path: rel, contentBase64: buf.toString('base64') });
+        }
+      };
+      await walk(absRoot, '');
+      if (files.length === 0) {
+        console.error('no importable files found in folder');
+        process.exit(1);
+      }
+      const name = typeof flags.name === 'string' && flags.name.trim()
+        ? flags.name.trim()
+        : path.basename(absRoot);
+      const body = { name, files };
+      if (flags.skill) body.skillId = flags.skill;
+      const resp = await fetch(`${base}/api/import/local`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`POST /api/import/local failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[project] imported ${data.project?.id} (${data.fileCount} files, conversation ${data.conversationId})`);
       return;
     }
     case 'delete': {
