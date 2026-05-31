@@ -87,7 +87,7 @@ export function buildDesignManifestContent(opts: {
   files?: string[];
   kind?: 'html' | 'react';
 }): string {
-  const title = opts.title || 'Open Design artifact';
+  const title = opts.title || 'Vision Design artifact';
   const requestedEntryFile = opts.entryFile || 'index.html';
   const { files, htmlFiles, screenHtmlFiles, cssFiles, jsFiles, assetFiles, entryFile } = designFileMap(requestedEntryFile, opts.files);
   const screenFiles = screenHtmlFiles.length > 0 ? screenHtmlFiles : [entryFile];
@@ -178,7 +178,7 @@ export function buildDesignHandoffContent(opts: {
   files?: string[];
   kind?: 'html' | 'react';
 }): string {
-  const title = opts.title || 'Open Design artifact';
+  const title = opts.title || 'Vision Design artifact';
   const requestedEntryFile = opts.entryFile || 'index.html';
   const { files, htmlFiles, cssFiles, jsFiles, assetFiles, entryFile } = designFileMap(requestedEntryFile, opts.files);
   const accentLikelyBrandLed =
@@ -201,7 +201,7 @@ This archive is the source of truth for turning the design into production code.
 - Build production UI from the exported design, not a loose reinterpretation.
 - Preserve typography scale, spacing rhythm, color tokens, border radii, shadows, motion timing, and component states.
 - Replace static placeholders only when the target app has real data or functional equivalents.
-- Keep generated product UI free of Open Design chrome, preview labels, or design-process annotations.
+- Keep generated product UI free of Vision Design chrome, preview labels, or design-process annotations.
 - Treat this handoff as a visual contract: if implementation choices conflict, match the exported pixels and behavior first, then refactor internals.
 
 ## Source map
@@ -232,7 +232,7 @@ For responsive web exports, treat these as a modern breakpoint system for one ad
 - Preserve real copy, labels, and data shown in the export. Do not replace specific text with generic marketing filler.
 - Preserve interactive affordances: hover, focus, pressed, disabled, loading, validation, copy/share, tab/accordion, modal/sheet, and keyboard states where present.
 - Preserve accessibility semantics when converting: headings stay hierarchical, controls remain buttons/links/inputs, focus states stay visible.
-- Do not keep prototype-only annotations, frame labels, or Open Design chrome in the production UI.
+- Do not keep prototype-only annotations, frame labels, or Vision Design chrome in the production UI.
 
 ## CJX-ready UX contract
 - Use \`${DESIGN_MANIFEST_FILENAME}\` as the machine-readable map for screens, app modules, OS widgets, landing pages, tokens, interactions, and viewport checks.
@@ -577,41 +577,27 @@ export function exportReactComponentAsZip(
   triggerDownload(blob, `${slug}.zip`);
 }
 
-// Project ZIP export — asks the daemon to bundle the on-disk project tree.
-// Used by FileViewer's share menu so the user gets the full uploaded
-// project (e.g. the `ui-design/` folder with its subdirs and assets) rather
-// than just a srcdoc snapshot of the rendered HTML. `filePath` is the
-// active file's project-relative path; if it lives inside a top-level
-// directory we scope the archive to that directory, otherwise we ask the
-// daemon for the whole project. Falls back to the in-memory single-file
-// ZIP on any failure so the action never silently no-ops.
+// Streams the full project tree as a ZIP via the daemon's archive
+// endpoint. Build/install directories (node_modules, dist, .next, …)
+// are excluded server-side so the download stays lean — the user can
+// regenerate them with `npm install`. Falls back to the in-memory
+// single-file ZIP only if the daemon request fails so the action
+// never silently no-ops.
 export async function exportProjectAsZip(opts: {
   projectId: string;
-  filePath: string;
   fallbackHtml: string;
   fallbackTitle: string;
 }): Promise<void> {
-  const root = archiveRootFromFilePath(opts.filePath);
-  const url = `/api/projects/${encodeURIComponent(opts.projectId)}/archive${
-    root ? `?root=${encodeURIComponent(root)}` : ''
-  }`;
+  const url = `/api/projects/${encodeURIComponent(opts.projectId)}/archive`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`archive request failed (${resp.status})`);
     const blob = await resp.blob();
-    triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
+    triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, ''));
   } catch (err) {
     console.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
     exportAsZip(opts.fallbackHtml, opts.fallbackTitle);
   }
-}
-
-// Exported for unit tests. Pure string transform with no DOM dependency.
-export function archiveRootFromFilePath(filePath: string): string {
-  const trimmed = (filePath || '').replace(/^\/+/, '');
-  const slash = trimmed.indexOf('/');
-  if (slash <= 0) return '';
-  return trimmed.slice(0, slash);
 }
 
 // Exported for unit tests so the Content-Disposition fallback chain

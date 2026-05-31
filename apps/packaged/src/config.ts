@@ -50,6 +50,11 @@ export type PackagedConfig = {
   daemonSidecarEntry: string | null;
   namespace: string;
   namespaceBaseRoot: string;
+  /** True when namespaceBaseRoot was derived from Electron's default userData
+   *  path (i.e. raw config did not specify a custom namespaceBaseRoot).
+   *  Used by the one-shot "Open Design → Vision Design" userData migration to
+   *  skip custom-configured roots that are already in a stable location. */
+  namespaceBaseRootIsDefault: boolean;
   nodeCommand: string | null;
   resourceRoot: string;
   telemetryRelayUrl: string | null;
@@ -142,8 +147,10 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
     process.env[PACKAGED_NAMESPACE_ENV] ?? raw.namespace ?? SIDECAR_DEFAULTS.namespace,
   );
   const electronApp = await loadElectronApp();
+  const resolvedCustomNamespaceBaseRoot = resolveOptionalPath(raw.namespaceBaseRoot);
+  const namespaceBaseRootIsDefault = resolvedCustomNamespaceBaseRoot == null;
   const namespaceBaseRoot =
-    resolveOptionalPath(raw.namespaceBaseRoot) ?? join(electronApp.getPath("userData"), "namespaces");
+    resolvedCustomNamespaceBaseRoot ?? join(electronApp.getPath("userData"), "namespaces");
   const resourceRoot = resolveOptionalPath(raw.resourceRoot) ?? join(process.resourcesPath, "open-design");
   const relativeNodeCommand =
     raw.nodeCommandRelative == null || raw.nodeCommandRelative.length === 0
@@ -173,6 +180,7 @@ export async function readPackagedConfig(): Promise<PackagedConfig> {
     daemonSidecarEntry,
     namespace,
     namespaceBaseRoot,
+    namespaceBaseRootIsDefault,
     nodeCommand,
     resourceRoot,
     telemetryRelayUrl: cleanOptionalString(raw.telemetryRelayUrl),

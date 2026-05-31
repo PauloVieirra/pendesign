@@ -77,6 +77,8 @@ import { McpClientSection } from './McpClientSection';
 import { SkillsSection } from './SkillsSection';
 import { DesignSystemsSection } from './DesignSystemsSection';
 import { PrivacySection } from './PrivacySection';
+import { cloudSignOut } from '../providers/cloud';
+import { CLOUD_AUTH_CHANGED_EVENT } from './CloudLoginGate';
 import { RoutinesSection } from './RoutinesSection';
 import { ConnectorsBrowser } from './ConnectorsBrowser';
 import { MemoryModelInline } from './MemoryModelInline';
@@ -1742,6 +1744,32 @@ export function SettingsDialog({
               <span>
                 <strong>{t('settings.about')}</strong>
                 <small>{t('settings.aboutHint')}</small>
+              </span>
+            </button>
+            {/*
+              Sign-out lives at the bottom of the nav. Not a section — clicking
+              it ends the cloud session immediately, dispatches the auth-changed
+              event so CloudLoginGate re-renders, and closes this dialog.
+            */}
+            <button
+              type="button"
+              className="settings-nav-item settings-nav-item--danger"
+              onClick={async () => {
+                try {
+                  await cloudSignOut();
+                } finally {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent(CLOUD_AUTH_CHANGED_EVENT));
+                  }
+                  onClose();
+                }
+              }}
+              data-testid="settings-logout"
+            >
+              <Icon name="logout" size={18} />
+              <span>
+                <strong>Sair</strong>
+                <small>Encerra a sessão atual</small>
               </span>
             </button>
           </aside>
@@ -4517,7 +4545,7 @@ function MediaProvidersSection({
 // Important: every snippet uses absolute paths to the daemon's current
 // Node-compatible runtime and built cli.js, fetched at runtime. macOS
 // and Linux ship a system /usr/bin/od (octal-dump) that shadows any
-// `od` we might add to PATH, and most Open Design users run from
+// `od` we might add to PATH, and most Vision Design users run from
 // source where `od` is not installed globally. The installer panel
 // must NOT reference bare `od`.
 type McpClientId =

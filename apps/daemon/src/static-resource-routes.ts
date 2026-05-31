@@ -14,7 +14,7 @@ import {
 } from './skills.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
-import { readDesignSystem } from './design-systems.js';
+import { listDesignSystems, readDesignSystem } from './design-systems.js';
 import {
   LocalDesignSystemImportError,
   cleanDisplayName,
@@ -25,20 +25,28 @@ import {
 import {
   applyCreateCollection,
   applyCreateGroup,
+  applyCreateMode,
   applyCreateVariable,
   applyDeleteCollection,
   applyDeleteGroup,
+  applyDeleteMode,
   applyDeleteVariable,
+  applyUpdateMode,
   applyUpdateVariable,
+  defaultForType,
   migrateFromTokensCss,
   newCollectionId,
   newGroupId,
+  migrateV2ToV3,
+  newModeId,
   readVariables,
   saveVariables,
   VariablesError,
   withDsLock,
+  type VariableType,
   type VariablesFile,
 } from './design-system-variables.js';
+import { buildSeededVariablesFile } from './design-system-seed.js';
 import { importGitHubDesignSystemProject } from './design-system-github-import.js';
 import { FigmaImportError, importFigmaDesignSystem } from './design-system-figma.js';
 import { getFigmaPat, readMcpConfig, writeMcpConfig } from './mcp-config.js';
@@ -48,8 +56,82 @@ import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { readAppConfig } from './app-config.js';
 import { installFromTarget, uninstallById } from './library-install.js';
 import type { RouteDeps } from './server-context.js';
+import { setDefaultTokenSyncConfig } from './token-sync/index.js';
+import { resolveProjectDir } from './projects.js';
+import { getProject, updateProject } from './db.js';
 
 export interface RegisterStaticResourceRoutesDeps extends RouteDeps<'http' | 'paths' | 'resources' | 'db' | 'events'> {}
+
+/**
+ * Create and attach an empty (or seeded-defaults) design system for a project
+ * that has no DS yet. Steps 1-6 of the create-empty route, extracted so
+ * project-routes.ts can call the same logic without going through HTTP.
+ *
+ * Does NOT call patchProjectsUsingDesignSystem — that concern stays at the
+ * route layer (new projects have no HTML files to patch anyway).
+ *
+ * @returns The bare DS directory slug and the full `user:<slug>` id.
+ */
+export async function autoCreateDesignSystemForProject(
+  db: any,
+  projectId: string,
+  opts: { seed?: 'empty' | 'defaults'; userDesignSystemsDir: string },
+): Promise<{ designSystemId: string; dsDir: string }> {
+  const project = getProject(db, projectId);
+  if (!project) {
+    throw new Error(`project ${projectId} not found`);
+  }
+
+  const USER_DS_DIR = opts.userDesignSystemsDir;
+  const before = await listDesignSystems(USER_DS_DIR);
+  const baseSlug = slugify(`${project.name || 'project'}-ds`);
+  const id = await nextAvailableSlug(USER_DS_DIR, baseSlug, before.map((s: any) => s.id));
+  const outDir = path.join(USER_DS_DIR, id);
+  await fs.promises.mkdir(outDir, { recursive: true });
+
+  const displayName = cleanDisplayName(project.name ? `${project.name} DS` : 'New design system');
+  const designMd = `# ${displayName}\n\n> Category: User\n\nEmpty design system attached to project ${project.name ?? project.id}. Add color, typography, spacing, and other tokens from the Design Systems manager.\n`;
+  await fs.promises.writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
+  const manifest = {
+    id,
+    name: displayName,
+    summary: 'Empty design system — add tokens from the manager.',
+    category: 'User',
+    source: { type: 'manual', projectId, createdAt: new Date().toISOString() },
+    isEditable: true,
+  };
+  await fs.promises.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+  const seedParam = opts.seed ?? 'defaults';
+  const initial: VariablesFile = seedParam === 'empty'
+    ? { version: 3, collections: [] }
+    : buildSeededVariablesFile();
+  await saveVariables(outDir, initial);
+
+  const fullDsId = `user:${id}`;
+  try {
+    updateProject(db, projectId, { designSystemId: fullDsId });
+  } catch (err: any) {
+    // Roll back the on-disk DS so we don't leave an orphan.
+    try { await fs.promises.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    throw new Error(`failed to attach DS to project: ${String(err?.message ?? err)}`);
+  }
+
+  // Initial token-sync over any existing project files. This is what
+  // populates Cores/Spacing/Typography from the project's CSS+HTML when a
+  // DS is attached AFTER source files already exist (e.g., import flow,
+  // legacy projects, modal self-heal). Best-effort: a failure here doesn't
+  // roll back the DS attachment — the next AI write will retry via the
+  // artifact-create hook.
+  try {
+    const { syncProjectNow } = await import('./token-sync/index.js');
+    await syncProjectNow(projectId);
+  } catch (err) {
+    console.warn(`[autoCreateDs] initial token-sync failed for ${projectId}:`, err);
+  }
+
+  return { designSystemId: fullDsId, dsDir: outDir };
+}
 
 export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticResourceRoutesDeps) {
   const {
@@ -654,10 +736,11 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       if (!resolved) {
         return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found or not editable: ${req.params.id}`);
       }
-      const body = req.body as VariablesFile | undefined;
-      if (!body || body.version !== 1 || !Array.isArray(body.collections)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 1, collections: [...] }');
+      const rawBody = req.body as any;
+      if (!rawBody || (rawBody.version !== 2 && rawBody.version !== 3) || !Array.isArray(rawBody.collections)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'request body must be a VariablesFile { version: 2 or 3, collections: [...] }');
       }
+      const body: VariablesFile = rawBody.version === 2 ? migrateV2ToV3(rawBody) : rawBody as VariablesFile;
       await withDsLock(resolved.key, () => saveVariables(resolved.dir, body));
       await afterDesignSystemSave(req.params.id, resolved.dir);
       res.json({ variables: body });
@@ -678,7 +761,11 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
 
   function variablesErrorToStatus(err: unknown): { status: number; code: string; message: string } | null {
     if (err instanceof VariablesError) {
-      return { status: err.code === 'NOT_FOUND' ? 404 : 400, code: err.code, message: err.message };
+      const status =
+        err.code === 'NOT_FOUND' ? 404 :
+        err.code === 'CONFLICT' ? 409 :
+        400;
+      return { status, code: err.code, message: err.message };
     }
     return null;
   }
@@ -688,9 +775,18 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     try {
       const resolved = await resolveDsDir(req.params.id);
       if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
-      const patch = req.body as Partial<{ name: string; type: string; value: unknown }>;
+      const patch = req.body as Partial<{
+        name: string;
+        type: VariableType;
+        value: string | number | boolean;
+        valuesByMode: Record<string, string | number | boolean>;
+      }>;
       if (!patch || typeof patch !== 'object') {
         return sendApiError(res, 400, 'BAD_REQUEST', 'patch body required');
+      }
+      const hasField = ('name' in patch) || ('type' in patch) || ('value' in patch) || ('valuesByMode' in patch);
+      if (!hasField) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'patch must include at least one of: name, type, value, valuesByMode');
       }
       await withDsLock(resolved.key, async () => {
         const current = await loadOrMigrate(resolved.dir, resolved.key);
@@ -808,19 +904,18 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     try {
       const resolved = await resolveDsDir(req.params.id);
       if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
-      const { name, type, value } = req.body ?? {};
-      if (typeof name !== 'string' || !name.trim()) return sendApiError(res, 400, 'BAD_REQUEST', 'variable name required');
-      if (!['color', 'number', 'string', 'boolean'].includes(type)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'type must be color | number | string | boolean');
+      const body = req.body as { name?: string; type?: VariableType; value?: string | number | boolean };
+      if (!body || typeof body.name !== 'string' || !body.type) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'body { name: string, type: VariableType, value?: any } required');
       }
       await withDsLock(resolved.key, async () => {
         const current = await loadOrMigrate(resolved.dir, resolved.key);
         const next = applyCreateVariable(current, {
           collectionId: req.params.collectionId,
           groupId: req.params.groupId,
-          name: name.trim(),
-          type,
-          value,
+          name: body.name as string,
+          type: body.type as VariableType,
+          valueByDefault: body.value ?? defaultForType(body.type as VariableType),
         });
         await saveVariables(resolved.dir, next);
       });
@@ -829,6 +924,79 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     } catch (err) {
       const mapped = variablesErrorToStatus(err);
       if (mapped) return sendApiError(res, mapped.status, mapped.code, mapped.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.post('/api/design-systems/:id/variables/collections/:collectionId/modes', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const body = req.body as { name?: string; width?: number } | undefined;
+      if (!body || typeof body.name !== 'string') {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'body { name: string, width?: number } required');
+      }
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyCreateMode(current, {
+          collectionId: req.params.collectionId,
+          name: body.name as string,
+          ...(typeof body.width === 'number' ? { width: body.width } : {}),
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.put('/api/design-systems/:id/variables/collections/:collectionId/modes/:modeId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      const patch = req.body as { name?: string; width?: number | null };
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyUpdateMode(current, {
+          collectionId: req.params.collectionId,
+          modeId: req.params.modeId,
+          patch: patch as any,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
+      sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
+    }
+  });
+
+  app.delete('/api/design-systems/:id/variables/collections/:collectionId/modes/:modeId', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
+    try {
+      const resolved = await resolveDsDir(req.params.id);
+      if (!resolved) return sendApiError(res, 404, 'DS_NOT_FOUND', `design system not found: ${req.params.id}`);
+      await withDsLock(resolved.key, async () => {
+        const current = await loadOrMigrate(resolved.dir, resolved.key);
+        const next = applyDeleteMode(current, {
+          collectionId: req.params.collectionId,
+          modeId: req.params.modeId,
+        });
+        await saveVariables(resolved.dir, next);
+      });
+      await afterDesignSystemSave(req.params.id, resolved.dir);
+      res.json({ ok: true });
+    } catch (err) {
+      const v = variablesErrorToStatus(err);
+      if (v) return sendApiError(res, v.status, v.code, v.message);
       sendApiError(res, 500, 'INTERNAL_ERROR', String((err as any)?.message ?? err));
     }
   });
@@ -1107,7 +1275,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       try {
         const runtimeRoot = fs.realpathSync.native(RUNTIME_DATA_DIR_CANONICAL);
         if (sourceRoot === runtimeRoot || sourceRoot.startsWith(`${runtimeRoot}${path.sep}`)) {
-          return sendApiError(res, 400, 'BAD_REQUEST', 'cannot import Open Design runtime data');
+          return sendApiError(res, 400, 'BAD_REQUEST', 'cannot import Vision Design runtime data');
         }
       } catch {
         // The runtime data directory may not exist yet in first-run tests.
@@ -1391,57 +1559,28 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   app.post('/api/projects/:projectId/design-system/create-empty', async (req, res) => {
     if (!requireLocalOrigin(req, res)) return;
     try {
-      const { getProject, updateProject } = await import('./db.js');
+      // Validate project exists before delegating to the helper.
       const project = getProject(db, req.params.projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', `project ${req.params.projectId} not found`);
       }
-      const fsp = await import('node:fs/promises');
-      const before = await listAllDesignSystems();
-      const baseSlug = slugify(`${project.name || 'project'}-ds`);
-      const id = await nextAvailableSlug(USER_DESIGN_SYSTEMS_DIR, baseSlug, before.map((s) => s.id));
-      const outDir = path.join(USER_DESIGN_SYSTEMS_DIR, id);
-      await fsp.mkdir(outDir, { recursive: true });
 
-      const displayName = cleanDisplayName(project.name ? `${project.name} DS` : 'New design system');
-      const designMd = `# ${displayName}\n\n> Category: User\n\nEmpty design system attached to project ${project.name ?? project.id}. Add color, typography, spacing, and other tokens from the Design Systems manager.\n`;
-      await fsp.writeFile(path.join(outDir, 'DESIGN.md'), designMd, 'utf8');
-      const manifest = {
-        id,
-        name: displayName,
-        summary: 'Empty design system — add tokens from the manager.',
-        category: 'User',
-        source: { type: 'manual', projectId: req.params.projectId, createdAt: new Date().toISOString() },
-        isEditable: true,
-      };
-      await fsp.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-
-      // Seed an empty variables.json so the Manager's fetch hits the
-      // already-migrated fast path (no tokens.css to parse). saveVariables
-      // also regenerates tokens.css to keep the two derived artifacts in
-      // lock-step.
-      await saveVariables(outDir, {
-        version: 1,
-        collections: [
-          {
-            id: newCollectionId(),
-            name: 'Default',
-            groups: [{ id: newGroupId(), name: 'Default', variables: [] }],
-          },
-        ],
-      });
-
-      // Attach the new DS to the project.
-      const fullDsId = `user:${id}`;
+      // Steps 1-6: scaffold DS on disk and attach to project.
+      const seedParam = (req.body as { seed?: 'empty' | 'defaults' } | undefined)?.seed ?? 'defaults';
+      let fullDsId: string;
+      let outDir: string;
       try {
-        updateProject(db, req.params.projectId, { designSystemId: fullDsId });
+        const result = await autoCreateDesignSystemForProject(db, req.params.projectId, {
+          seed: seedParam,
+          userDesignSystemsDir: USER_DESIGN_SYSTEMS_DIR,
+        });
+        fullDsId = result.designSystemId;
+        outDir = result.dsDir;
       } catch (err: any) {
-        // Roll back the on-disk DS so we don't leave an orphan.
-        try { await fsp.rm(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        return sendApiError(res, 500, 'ATTACH_FAILED', `failed to attach DS to project: ${String(err?.message ?? err)}`);
+        return sendApiError(res, 500, 'ATTACH_FAILED', String(err?.message ?? err));
       }
 
-      // Patch the project's HTML files NOW so the `<style data-od-ds-tokens>`
+      // Step 7: Patch the project's HTML files NOW so the `<style data-od-ds-tokens>`
       // element lands in the source immediately — otherwise Preview mode
       // wouldn't see any DS tokens until the user edited a variable.
       try {
@@ -1518,12 +1657,35 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     }
   });
 
+  // Register the production TokenSyncConfig so that scheduleTokenSync (fired
+  // from createProjectArtifactFile after every AI write) can resolve the
+  // project directory and DS directory without needing extra arguments.
+  const PROJECTS_DIR = ctx.paths.PROJECTS_DIR;
+  if (db && PROJECTS_DIR) {
+    setDefaultTokenSyncConfig({
+      resolveProjectDir: async (projectId: string) => {
+        const { getProject } = await import('./db.js');
+        const project = getProject(db, projectId);
+        return resolveProjectDir(PROJECTS_DIR, projectId, project?.metadata);
+      },
+      resolveDsDir: async (designSystemId: string) => {
+        const resolved = await resolveDsDir(designSystemId);
+        return resolved?.dir ?? null;
+      },
+      getDesignSystemId: async (projectId: string) => {
+        const { getProject } = await import('./db.js');
+        const project = getProject(db, projectId);
+        return project?.designSystemId ?? null;
+      },
+    });
+  }
+
 }
 
 function assembleExample(templateHtml: string, slidesHtml: string, title: string) {
   return templateHtml
     .replace('<!-- SLIDES_HERE -->', slidesHtml)
-    .replace(/<title>.*?<\/title>/, `<title>${title} | Open Design Example</title>`);
+    .replace(/<title>.*?<\/title>/, `<title>${title} | Vision Design Example</title>`);
 }
 
 function rewriteSkillAssetUrls(html: string, skillId: string) {

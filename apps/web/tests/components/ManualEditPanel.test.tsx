@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
 import { JSDOM } from 'jsdom';
 import { ManualEditPanel, emptyManualEditDraft, manualEditPatchSummary, normalizeManualEditStyles, type ManualEditDraft } from '../../src/components/ManualEditPanel';
-import { emptyManualEditStyles, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
+import { emptyManualEditStyles, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 
 const target: ManualEditTarget = {
   id: 'hero-title',
@@ -55,9 +55,8 @@ describe('ManualEditPanel', () => {
   it('renders the style inspector without the advanced editor entry', () => {
     renderPanel();
 
-    expect(host.textContent).toContain('TYPOGRAPHY');
+    expect(host.textContent).toContain('Typography');
     expect(host.textContent).not.toContain('Advanced');
-    expect(host.textContent).not.toContain('Content');
   });
 
   it('allows returning from an element inspector to the page inspector', () => {
@@ -89,7 +88,8 @@ describe('ManualEditPanel', () => {
       },
     });
 
-    const fontSelect = host.querySelector('select') as HTMLSelectElement | null;
+    const fontSelect = Array.from(host.querySelectorAll('.cc-row select'))
+      .find((el) => el.closest('.cc-row')?.querySelector('.cc-label')?.textContent === 'Font') as HTMLSelectElement | null;
     if (!fontSelect) throw new Error('Font select not found');
     expect(fontSelect.value).toBe('Roboto, Arial, sans-serif');
 
@@ -361,63 +361,350 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('renders layout as inactive for non-layout single targets', () => {
-    const onStyleChange = vi.fn();
+  it('renders Flex sub-section with a hint when target is not a layout container', () => {
     renderPanel({
-      onStyleChange,
-      styles: {
-        ...emptyManualEditStyles(),
-        gap: 'normal',
-        flexDirection: 'row',
-      },
+      selectedTarget: { ...target, isLayoutContainer: false },
+      styles: emptyManualEditStyles(),
     });
 
-    const layoutSection = sectionByTitle('LAYOUT');
-    expect(layoutSection.classList.contains('cc-section-inactive')).toBe(true);
-    expect(layoutSection.textContent).toContain('Select a container or group to edit layout.');
-    const gapInput = layoutSection.querySelector('input') as HTMLInputElement | null;
-    const directionSelect = layoutSection.querySelector('select') as HTMLSelectElement | null;
-    if (!gapInput || !directionSelect) throw new Error('Layout controls not found');
+    const flexSub = Array.from(host.querySelectorAll('.cc-section-sub'))
+      .find((el) => el.textContent?.trim() === 'Flex') as HTMLElement | undefined;
+    if (!flexSub) throw new Error('Flex sub-section not found');
 
-    expect(gapInput.disabled).toBe(true);
-    expect(directionSelect.disabled).toBe(true);
-    expect(normalizeManualEditStyles({ gap: '12', flexDirection: 'column' }, { layoutEnabled: false })).toEqual({
-      ok: true,
-      styles: {},
-    });
+    // The hint about needing a container should be inside the Flex sub block.
+    const hint = flexSub.parentElement?.querySelector('.cc-section-hint');
+    expect(hint?.textContent).toContain('Select a container');
   });
 
-  it('enables layout controls for flex or grid containers', () => {
+  it('enables Flex controls when target is a layout container', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const flexSub = Array.from(host.querySelectorAll('.cc-section-sub'))
+      .find((el) => el.textContent?.trim() === 'Flex') as HTMLElement | undefined;
+    if (!flexSub) throw new Error('Flex sub-section not found');
+
+    // No hint when layout is enabled
+    expect(flexSub.parentElement?.querySelector('.cc-section-hint')).toBeNull();
+    // Gap input should not be disabled
+    const inputs = Array.from(flexSub.parentElement?.querySelectorAll('input') ?? []) as HTMLInputElement[];
+    const enabledGap = inputs.find((i) => !i.disabled);
+    expect(enabledGap).toBeDefined();
+  });
+
+  it('renders Width and Height as always-visible inputs + mode buttons', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!widthGroup || !heightGroup) throw new Error('Width/Height groups not found');
+
+    const widthInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    const heightInput = heightGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(widthInput?.value).toBe('120');
+    expect(heightInput?.value).toBe('80');
+
+    const widthModeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    const heightModeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(widthModeBtn?.getAttribute('data-mode')).toBe('fixed');
+    expect(heightModeBtn?.getAttribute('data-mode')).toBe('fixed');
+  });
+
+  it('cycling the Width mode from Fixed lands on Fill (100%)', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
-      selectedTarget: { ...target, isLayoutContainer: true },
-      styles: {
-        ...emptyManualEditStyles(),
-        gap: '8px',
-        flexDirection: 'row',
-      },
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
     });
 
-    const layoutSection = sectionByTitle('LAYOUT');
-    expect(layoutSection.classList.contains('cc-section-inactive')).toBe(false);
-    expect(layoutSection.textContent).not.toContain('Select a container or group to edit layout.');
-    const gapInput = layoutSection.querySelector('input') as HTMLInputElement | null;
-    const directionSelect = layoutSection.querySelector('select') as HTMLSelectElement | null;
-    const gapIncrease = layoutSection.querySelector('button[aria-label="Gap increase"]') as HTMLButtonElement | null;
-    if (!gapInput || !directionSelect) throw new Error('Layout controls not found');
-    expect(gapInput.disabled).toBe(false);
-    expect(directionSelect.disabled).toBe(false);
-    if (!gapIncrease) throw new Error('Gap increase control not found');
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn) throw new Error('Width mode button not found');
 
     act(() => {
-      gapIncrease.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      directionSelect.value = 'column';
-      directionSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      modeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     });
 
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { gap: '9px' }, 'Style: Hero Title');
-    expect(onStyleChange).toHaveBeenCalledWith('hero-title', { flexDirection: 'column' }, 'Style: Hero Title');
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '100%' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('cycling the Height mode twice from Fixed lands on Hug (fit-content)', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup) throw new Error('Height group not found');
+    const modeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn) throw new Error('Height mode button not found');
+
+    // First click: Fixed → Fill
+    act(() => {
+      modeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    // Re-render with updated height to reflect fill state
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '100%' },
+    });
+    const heightGroup2 = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup2) throw new Error('Height group not found after re-render');
+    const modeBtn2 = heightGroup2.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    if (!modeBtn2) throw new Error('Height mode button not found after re-render');
+
+    // Second click: Fill → Hug
+    act(() => {
+      modeBtn2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    const calls = onStyleChange.mock.calls.map((c) => c[1]);
+    expect(calls).toEqual([
+      expect.objectContaining({ height: '100%' }),
+      expect.objectContaining({ height: 'fit-content' }),
+    ]);
+  });
+
+  it('Fixed mode reveals a px input that emits onStyleChange on blur', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px', height: '80px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    // Fixed is the default for "120px"; the decimal input should be present.
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width fixed px input not found');
+    expect(numberInput.value).toBe('120');
+
+    act(() => {
+      numberInput.value = '240';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      Simulate.blur(numberInput);
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '240px' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('renders a clear-token chip when width is a var() token (no data loss)', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: 'var(--container-max)' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+
+    const tokenChip = widthGroup.querySelector('.manual-edit-size-token') as HTMLElement | null;
+    if (!tokenChip) throw new Error('Width token chip not found');
+    expect(tokenChip.textContent).toBe('var(--container-max)');
+    // Mode button must NOT be rendered when the value is a token — that's the data-loss
+    // surface this fix closes.
+    expect(widthGroup.querySelector('button[data-mode]')).toBeNull();
+    expect(widthGroup.querySelector('input[inputmode="decimal"]')).toBeNull();
+
+    const clearButton = widthGroup.querySelector('button[aria-label="Clear token"]') as HTMLButtonElement | null;
+    if (!clearButton) throw new Error('Clear token button not found');
+
+    act(() => {
+      clearButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('shows empty input and Fixed mode button when width is unset', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), width: '' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('');
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('fixed');
+  });
+
+  it('shows 100% read-only in the input when width is Fill', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), width: '100%' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('100%');
+    expect(input?.readOnly).toBe(true);
+    const modeBtn = widthGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('fill');
+  });
+
+  it('shows auto read-only in the input when height is Hug', () => {
+    renderPanel({
+      styles: { ...emptyManualEditStyles(), height: 'fit-content' },
+    });
+
+    const heightGroup = host.querySelector('div[role="group"][aria-label="height"]') as HTMLElement | null;
+    if (!heightGroup) throw new Error('Height group not found');
+    const input = heightGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input?.value).toBe('auto');
+    expect(input?.readOnly).toBe(true);
+    const modeBtn = heightGroup.querySelector('button[data-mode]') as HTMLButtonElement | null;
+    expect(modeBtn?.getAttribute('data-mode')).toBe('hug');
+  });
+
+  it('Fixed mode emits once on blur, not on every keystroke', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width fixed px input not found');
+
+    // Simulate the three keystrokes of typing "240" — each change event should
+    // only update the local draft, NOT call onStyleChange.
+    act(() => {
+      numberInput.value = '2';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      numberInput.value = '24';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      numberInput.value = '240';
+      Simulate.change(numberInput);
+    });
+
+    const widthCalls = onStyleChange.mock.calls.filter((call) =>
+      Object.prototype.hasOwnProperty.call(call[1] ?? {}, 'width'),
+    );
+    expect(widthCalls.length).toBe(0);
+
+    act(() => {
+      Simulate.blur(numberInput);
+    });
+
+    const widthCallsAfterBlur = onStyleChange.mock.calls.filter((call) =>
+      Object.prototype.hasOwnProperty.call(call[1] ?? {}, 'width'),
+    );
+    expect(widthCallsAfterBlur.length).toBe(1);
+    expect(widthCallsAfterBlur[0]).toEqual([
+      'hero-title',
+      expect.objectContaining({ width: '240px' }),
+      'Style: Hero Title',
+    ]);
+  });
+
+  it('Fixed mode preserves up to 4 decimal places on blur', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const numberInput = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!numberInput) throw new Error('Width decimal input not found');
+
+    act(() => {
+      numberInput.value = '120.5050';
+      Simulate.change(numberInput);
+    });
+    act(() => {
+      Simulate.blur(numberInput);
+    });
+
+    expect(onStyleChange).toHaveBeenCalledWith(
+      'hero-title',
+      expect.objectContaining({ width: '120.5050px' }),
+      'Style: Hero Title',
+    );
+  });
+
+  it('Width round-trip preserves trailing zeros (typed 120.5050 stays 120.5050 after re-render)', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!input) throw new Error('Width decimal input not found');
+
+    act(() => {
+      input.value = '120.5050';
+      Simulate.change(input);
+    });
+    act(() => {
+      Simulate.blur(input);
+    });
+
+    // Simulate the parent re-rendering with the new width value
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120.5050px' },
+    });
+
+    const widthGroup2 = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    const input2 = widthGroup2?.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    expect(input2?.value).toBe('120.5050');
+  });
+
+  it('Width Fixed mode rejects negative px values on commit', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({
+      onStyleChange,
+      styles: { ...emptyManualEditStyles(), width: '120px' },
+    });
+
+    const widthGroup = host.querySelector('div[role="group"][aria-label="width"]') as HTMLElement | null;
+    if (!widthGroup) throw new Error('Width group not found');
+    const input = widthGroup.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null;
+    if (!input) throw new Error('Width decimal input not found');
+
+    // Negative shouldn't even enter the draft via the change guard, but
+    // pre-populate the value and blur to confirm it gets reset.
+    act(() => {
+      input.value = '-5';
+      Simulate.change(input);
+    });
+    // The acceptDraft regex should have refused, so the input value should
+    // still be '120' (unchanged).
+    expect(input.value).toBe('120');
   });
 
   it('summarizes full-source history entries without rendering the full file', () => {
@@ -427,6 +714,94 @@ describe('ManualEditPanel', () => {
       JSON.stringify({ kind: 'set-full-source', bytes: source.length }),
     );
     expect(manualEditPatchSummary({ kind: 'set-full-source', source })).not.toContain('x'.repeat(100));
+  });
+
+  it('does not render Delete button when no element is selected', () => {
+    renderPanel({ selectedTarget: null });
+    const deleteButton = host.querySelector('.manual-edit-delete');
+    expect(deleteButton).toBeNull();
+  });
+
+  it('renders Delete button when an element is selected and click opens modal', () => {
+    const onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>();
+    renderPanel({ onDeleteConfirmOpenChange });
+    const deleteButton = host.querySelector('.manual-edit-delete') as HTMLButtonElement | null;
+    if (!deleteButton) throw new Error('Delete button not found');
+
+    act(() => {
+      deleteButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onDeleteConfirmOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('confirming delete emits delete-element patch and clears selection', () => {
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    const onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>();
+    const onClearSelection = vi.fn<OnClearSelection>();
+    renderPanel({
+      onApplyPatch,
+      onDeleteConfirmOpenChange,
+      onClearSelection,
+      deleteConfirmOpen: true,
+    });
+
+    const confirmButton = dom.window.document.querySelector('.delete-confirm-confirm') as HTMLButtonElement | null;
+    if (!confirmButton) throw new Error('Confirm button not found');
+
+    act(() => {
+      confirmButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'delete-element', id: 'hero-title' }, 'Delete element');
+    expect(onDeleteConfirmOpenChange).toHaveBeenCalledWith(false);
+    expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders sections in Layout → Typography → Appearance → Fill → Stroke order', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const headers = Array.from(inspector.querySelectorAll('.cc-section > .cc-section-head'))
+      .map((el) => el.textContent?.trim());
+    expect(headers).toEqual(['Layout', 'Typography', 'Appearance', 'Fill', 'Stroke']);
+  });
+
+  it('renders Size / Flex / Spacing mini-sub-sections inside Layout', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const layoutSection = Array.from(inspector.querySelectorAll('.cc-section'))
+      .find((s) => s.querySelector('.cc-section-head')?.textContent?.trim() === 'Layout') as HTMLElement | undefined;
+    if (!layoutSection) throw new Error('Layout section not found');
+
+    const subs = Array.from(layoutSection.querySelectorAll('.cc-section-sub'))
+      .map((el) => el.textContent?.trim());
+    expect(subs).toEqual(['Size', 'Flex', 'Spacing']);
+  });
+
+  it('renders Stroke section with color, style, width quad cells, and radius', () => {
+    renderPanel({
+      selectedTarget: { ...target, isLayoutContainer: true },
+      styles: emptyManualEditStyles(),
+    });
+
+    const inspector = host.querySelector('.cc-inspector') as HTMLElement | null;
+    if (!inspector) throw new Error('.cc-inspector not found');
+    const sections = Array.from(inspector.querySelectorAll('.cc-section')) as HTMLElement[];
+    const stroke = sections.find((s) => s.querySelector('.cc-section-head')?.textContent?.trim() === 'Stroke');
+    if (!stroke) throw new Error('Stroke section not found');
+
+    expect(stroke.querySelectorAll('select').length).toBeGreaterThanOrEqual(1); // Style dropdown
+    expect(stroke.querySelectorAll('.cc-quad-cell').length).toBeGreaterThanOrEqual(4); // T/R/B/L
   });
 
   function sectionByTitle(title: string): HTMLElement {
@@ -443,10 +818,12 @@ describe('ManualEditPanel', () => {
     onStyleChange = vi.fn<OnStyleChange>(),
     onInvalidStyle = vi.fn<OnInvalidStyle>(),
     onClearSelection = vi.fn<OnClearSelection>(),
+    onDeleteConfirmOpenChange = vi.fn<(open: boolean) => void>(),
     attributesText = '{}',
     selectedTarget = target,
     styles = emptyManualEditStyles(),
     pageStylesEnabled = true,
+    deleteConfirmOpen = false,
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
@@ -454,10 +831,12 @@ describe('ManualEditPanel', () => {
     onStyleChange?: OnStyleChange;
     onInvalidStyle?: OnInvalidStyle;
     onClearSelection?: OnClearSelection;
+    onDeleteConfirmOpenChange?: (open: boolean) => void;
     attributesText?: string;
     selectedTarget?: ManualEditTarget | null;
     styles?: ReturnType<typeof emptyManualEditStyles>;
     pageStylesEnabled?: boolean;
+    deleteConfirmOpen?: boolean;
   } = {}) {
     const draft = {
       ...emptyManualEditDraft('<html></html>'),
@@ -487,6 +866,8 @@ describe('ManualEditPanel', () => {
           onCancelDraft={vi.fn<() => void>()}
           onUndo={vi.fn<() => void>()}
           onRedo={vi.fn<() => void>()}
+          deleteConfirmOpen={deleteConfirmOpen}
+          onDeleteConfirmOpenChange={onDeleteConfirmOpenChange}
         />,
       );
     });

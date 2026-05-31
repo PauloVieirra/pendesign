@@ -177,6 +177,15 @@ import { createJsonEventStreamHandler } from './json-event-stream.js';
 import { classifyAgentAuthFailure, cursorAuthGuidance } from './runtimes/auth.js';
 import { createQoderStreamHandler } from './qoder-stream.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
+import {
+  getDevServerStatus,
+  getProjectSetupStatus,
+  setupSpaSingleFileProject,
+  startDevServer,
+  startProjectSetup,
+  stopAllDevServers,
+  stopDevServer,
+} from './project-setup.js';
 import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
@@ -264,12 +273,16 @@ import { buildMcpInstallPayload } from './mcp-install-info.js';
 import {
   buildProjectArchive,
   buildBatchArchive,
+  createProjectFolder,
   decodeMultipartFilename,
+  /* react-setup helpers — separate module so the spawn/child-process
+     dependency stays out of the projects.ts hot path. */
   deleteProjectFile,
   detectEntryFile,
   ensureProject,
   isSafeId,
   listFiles,
+  listProjectTree,
   mimeFor,
   parseByteRange,
   projectDir,
@@ -345,11 +358,17 @@ import { LiveArtifactRefreshUnavailableError, refreshLiveArtifact } from './live
 import { LiveArtifactRefreshAbortError } from './live-artifacts/refresh.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { registerActiveContextRoutes } from './active-context-routes.js';
+import { registerCloudAuthRoutes } from './cloud/cloud-auth-routes.js';
+import { registerCloudProjectsRoutes } from './cloud/cloud-projects-routes.js';
+import { registerCloudShareRoutes } from './cloud/cloud-share-routes.js';
+import { registerCloudProposalsRoutes } from './cloud/cloud-proposals-routes.js';
+import { registerCloudNotificationsRoutes } from './cloud/cloud-notifications-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerXaiRoutes } from './xai-routes.js';
 import { registerLiveArtifactRoutes } from './live-artifact-routes.js';
 import { registerDeployRoutes, registerDeploymentCheckRoutes } from './deploy-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
+import { registerLeanInceptionRoutes } from './lean-inception-routes.js';
 import { registerProjectRoutes, registerProjectArtifactRoutes, registerProjectFileRoutes, registerProjectUploadRoutes } from './project-routes.js';
 import { registerFinalizeRoutes, registerImportRoutes, registerProjectExportRoutes } from './import-export-routes.js';
 import { registerChatRoutes } from './chat-routes.js';
@@ -1419,7 +1438,7 @@ export function createAgentRuntimeToolPrompt(
     '',
     `- Daemon URL: \`${daemonUrl}\` (also available as \`OD_DAEMON_URL\`).`,
     '- `OD_NODE_BIN` is the absolute path to the Node-compatible runtime that started the daemon; packaged desktop installs provide this even when the user has no system `node` on PATH.',
-    '- `OD_BIN` is the absolute path to the Open Design CLI script. On POSIX shells run wrappers with `"$OD_NODE_BIN" "$OD_BIN" tools ...`; do not call bare `od`, which may resolve to the system octal-dump command on Unix-like systems.',
+    '- `OD_BIN` is the absolute path to the Vision Design CLI script. On POSIX shells run wrappers with `"$OD_NODE_BIN" "$OD_BIN" tools ...`; do not call bare `od`, which may resolve to the system octal-dump command on Unix-like systems.',
     '- On PowerShell use `& $env:OD_NODE_BIN $env:OD_BIN tools ...`; on cmd.exe use `"%OD_NODE_BIN%" "%OD_BIN%" tools ...`.',
     tokenLine,
     '- Prefer project wrapper commands through `OD_NODE_BIN` + `OD_BIN` over raw HTTP. The wrappers read these environment values automatically.',
@@ -1660,7 +1679,7 @@ function githubRepoNameFromPluginName(name) {
 
 const PLUGIN_SHARE_ACTION_LABELS = {
   'publish-github': 'Publish to GitHub',
-  'contribute-open-design': 'Contribute to Open Design',
+  'contribute-open-design': 'Contribute to Vision Design',
 };
 
 const USER_PLUGIN_SOURCE_KINDS = new Set([
@@ -1707,10 +1726,10 @@ function renderPluginSharePrompt({ action, sourcePlugin, stagedPath }) {
   const title = sourcePlugin.title || sourcePlugin.id;
   if (action === 'publish-github') {
     return [
-      `Publish the local Open Design plugin "${title}" as a new public GitHub repository.`,
+      `Publish the local Vision Design plugin "${title}" as a new public GitHub repository.`,
       '',
       `The plugin source files have been copied into this project at \`${stagedPath}\`.`,
-      'Use the local daemon share endpoint so the publish flow runs through Open Design\'s validated GitHub path:',
+      'Use the local daemon share endpoint so the publish flow runs through Vision Design\'s validated GitHub path:',
       '',
       '```bash',
       `curl -sS -X POST "$OD_DAEMON_URL/api/projects/$OD_PROJECT_ID/plugins/publish-github" \\`,
@@ -1724,10 +1743,10 @@ function renderPluginSharePrompt({ action, sourcePlugin, stagedPath }) {
     ].join('\n');
   }
   return [
-    `Open a pull request to add the local Open Design plugin "${title}" to the Open Design repository.`,
+    `Open a pull request to add the local Vision Design plugin "${title}" to the Vision Design repository.`,
     '',
     `The plugin source files have been copied into this project at \`${stagedPath}\`.`,
-    'Use the local daemon share endpoint so the contribution flow runs through Open Design\'s validated GitHub path:',
+    'Use the local daemon share endpoint so the contribution flow runs through Vision Design\'s validated GitHub path:',
     '',
     '```bash',
     `curl -sS -X POST "$OD_DAEMON_URL/api/projects/$OD_PROJECT_ID/plugins/contribute-open-design" \\`,
@@ -2139,7 +2158,7 @@ function renderOAuthResultPage(opts) {
   const title = ok ? 'Connected' : 'Authorization failed';
   const heading = ok ? '✅ Connected' : '⚠️ Authorization failed';
   const body = ok
-    ? `Your MCP server <code>${escapeHtml(opts.serverId ?? '')}</code> is now connected. You can close this tab and return to Open Design.`
+    ? `Your MCP server <code>${escapeHtml(opts.serverId ?? '')}</code> is now connected. You can close this tab and return to Vision Design.`
     : escapeHtml(opts.message ?? 'Authorization could not be completed.');
   const accent = ok ? '#1a7f37' : '#cf222e';
   const payload = ok
@@ -2149,7 +2168,7 @@ function renderOAuthResultPage(opts) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>${escapeHtml(title)} — Open Design</title>
+<title>${escapeHtml(title)} — Vision Design</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root { color-scheme: light dark; }
@@ -2814,13 +2833,12 @@ export async function startServer({
         message: 'design system not found',
       };
     }
-    if (!isProjectUsableDesignSystem(summary)) {
-      return {
-        ok: false,
-        code: 'DESIGN_SYSTEM_NOT_PUBLISHED',
-        message: 'draft design systems cannot be used by projects',
-      };
-    }
+    // Draft design systems are allowed at project create time. The user
+    // typically iterates the DS alongside the project; refusing to bind a
+    // draft DS forced them to publish prematurely (or pick a published one
+    // they did not want). Downstream surfaces that need a publish-only
+    // guarantee can still call isProjectUsableDesignSystem(summary)
+    // directly — only project creation no longer enforces it.
     return { ok: true, id };
   }
 
@@ -3978,7 +3996,15 @@ export async function startServer({
   };
   const projectFileDeps = {
     ensureProject,
+    createProjectFolder,
+    getProjectSetupStatus,
+    startProjectSetup,
+    setupSpaSingleFileProject,
+    getDevServerStatus,
+    startDevServer,
+    stopDevServer,
     listFiles,
+    listProjectTree,
     searchProjectFiles,
     readProjectFile,
     resolveProjectDir,
@@ -4144,6 +4170,33 @@ export async function startServer({
     http: httpDeps,
     projectStore: projectStoreDeps,
   });
+  // Cloud collaboration (Supabase-backed). Gated by OD_CLOUD_URL — when unset,
+  // /api/cloud/auth/status returns { configured: false } and the rest 503.
+  registerCloudAuthRoutes(app, {
+    db,
+    http: httpDeps,
+  });
+  registerCloudProjectsRoutes(app, {
+    db,
+    http: httpDeps,
+    paths: {
+      PROJECTS_DIR: pathDeps.PROJECTS_DIR,
+      RUNTIME_DATA_DIR: pathDeps.RUNTIME_DATA_DIR,
+    },
+  });
+  registerCloudShareRoutes(app, {
+    db,
+    http: httpDeps,
+  });
+  registerCloudProposalsRoutes(app, {
+    db,
+    http: httpDeps,
+    paths: { RUNTIME_DATA_DIR: pathDeps.RUNTIME_DATA_DIR },
+  });
+  registerCloudNotificationsRoutes(app, {
+    db,
+    http: httpDeps,
+  });
   registerProjectRoutes(app, {
     db,
     design,
@@ -4256,6 +4309,12 @@ export async function startServer({
     projectFiles: projectFileDeps,
     conversations: conversationDeps,
     research: researchDeps,
+  });
+
+  registerLeanInceptionRoutes(app, {
+    db,
+    storageRoot: RUNTIME_DATA_DIR,
+    defaultRuntime: 'claude',
   });
 
   app.delete('/api/projects/:id', async (req, res) => {
@@ -7412,7 +7471,7 @@ export async function startServer({
       for (const [cmd, args] of [
         ['git', ['init']],
         ['git', ['add', '.']],
-        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Publish ${meta.title}`]],
+        ['git', ['-c', 'user.name=Vision Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Publish ${meta.title}`]],
       ]) {
         const result = await execFileBuffered(cmd, args, { cwd: work });
         log.push(result.stdout || result.stderr);
@@ -7485,7 +7544,7 @@ export async function startServer({
       const branch = `plugin/${repoName}-${Date.now()}`;
       const dest = path.join(work, 'plugins', 'community', repoName);
       const bodyText = [
-        `Adds ${meta.title} as a community Open Design plugin.`,
+        `Adds ${meta.title} as a community Vision Design plugin.`,
         '',
         '## Source',
         '',
@@ -7515,7 +7574,7 @@ export async function startServer({
           /already exists/i.test(String(result.stderr || result.stdout));
         if (!result.ok && !toleratedExistingFork && !toleratedExistingRemote) {
           await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Vision Design PR.`, log });
           return;
         }
       }
@@ -7523,14 +7582,14 @@ export async function startServer({
       await fs.promises.cp(folder, dest, { recursive: true });
       for (const [cmd, args] of [
         ['git', ['add', `plugins/community/${repoName}`]],
-        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Add ${meta.title} plugin`]],
+        ['git', ['-c', 'user.name=Vision Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Add ${meta.title} plugin`]],
         ['git', ['push', '-u', 'fork', branch]],
       ]) {
         const result = await execFileBuffered(cmd, args, { cwd: work });
         log.push(result.stdout || result.stderr);
         if (!result.ok) {
           await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Vision Design PR.`, log });
           return;
         }
       }
@@ -7551,12 +7610,12 @@ export async function startServer({
       log.push(pr.stdout || pr.stderr);
       await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
       if (!pr.ok) {
-        res.status(500).json({ ok: false, code: 'gh-pr-create-failed', message: 'Open Design PR creation failed.', log });
+        res.status(500).json({ ok: false, code: 'gh-pr-create-failed', message: 'Vision Design PR creation failed.', log });
         return;
       }
       res.json({
         ok: true,
-        message: `Created Open Design PR for ${meta.title}.`,
+        message: `Created Vision Design PR for ${meta.title}.`,
         url: pr.stdout || undefined,
         log,
       });
@@ -7583,85 +7642,6 @@ export async function startServer({
       res.json({ query, matches });
     } catch (err) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
-    }
-  });
-
-  // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
-  // share menu can hand the user the actual files they uploaded — e.g. the
-  // imported `ui-design/` folder — instead of a one-file snapshot of the
-  // rendered HTML. `root` scopes the archive to a subdirectory; without
-  // it, the whole project is packed.
-  app.get('/api/projects/:id/archive', async (req, res) => {
-    try {
-      const root = typeof req.query?.root === 'string' ? req.query.root : '';
-      const project = getProject(db, req.params.id);
-      const { buffer, baseName } = await buildProjectArchive(
-        PROJECTS_DIR,
-        req.params.id,
-        root,
-        project?.metadata,
-      );
-      const fallbackName = project?.name || req.params.id;
-      const fileSlug = sanitizeArchiveFilename(baseName || fallbackName) || 'project';
-      const filename = `${fileSlug}.zip`;
-      // RFC 5987 dance: legacy `filename=` carries an ASCII fallback, while
-      // `filename*=UTF-8''…` lets modern browsers pick up project names
-      // with non-ASCII characters (accents, CJK, etc.) without mojibake.
-      const asciiFallback =
-        filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'project.zip';
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      );
-      res.send(buffer);
-    } catch (err) {
-      const code = err && err.code;
-      const status = code === 'ENOENT' || code === 'ENOTDIR' ? 404 : 400;
-      sendApiError(
-        res,
-        status,
-        status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
-        String(err?.message || err),
-      );
-    }
-  });
-
-  // Batch archive: accepts a list of file names and returns a ZIP of just
-  // those files. Used by the Design Files panel multi-select download.
-  app.post('/api/projects/:id/archive/batch', async (req, res) => {
-    try {
-      const { files } = req.body || {};
-      if (!Array.isArray(files) || files.length === 0) {
-        sendApiError(res, 400, 'BAD_REQUEST', 'files must be a non-empty array');
-        return;
-      }
-      const project = getProject(db, req.params.id);
-      const { buffer } = await buildBatchArchive(
-        PROJECTS_DIR,
-        req.params.id,
-        files,
-        project?.metadata,
-      );
-      const fileSlug = sanitizeArchiveFilename(project?.name || req.params.id) || 'project';
-      const filename = `${fileSlug}.zip`;
-      const asciiFallback =
-        filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '_') || 'project.zip';
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      );
-      res.send(buffer);
-    } catch (err) {
-      const code = err && err.code;
-      const status = code === 'ENOENT' ? 404 : 400;
-      sendApiError(
-        res,
-        status,
-        status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
-        String(err?.message || err),
-      );
     }
   });
 
@@ -9117,7 +9097,7 @@ export async function startServer({
     });
 
     // External MCP servers configured by the user in Settings → External MCP.
-    // Open Design relays them to the agent so the model can call those tools.
+    // Vision Design relays them to the agent so the model can call those tools.
     // Two delivery shapes today:
     //   - Claude Code: write a `.mcp.json` into the project cwd. Claude Code
     //     auto-loads that file at spawn (same format the CLI accepts via
@@ -10182,7 +10162,7 @@ export async function startServer({
       systemPrompt: [
         renderOrbitTemplateSystemPrompt(template),
         systemPrompt,
-        'You are Orbit, an autonomous activity-summary agent inside Open Design.',
+        'You are Orbit, an autonomous activity-summary agent inside Vision Design.',
         'You must discover connectors and connector tools yourself through the OD CLI; the daemon has not chosen tools for you.',
         'You must create and register a Live Artifact as the final deliverable. Do not merely describe what you would do.',
         'Do not ask follow-up questions, do not emit <question-form>, and do not wait for user input. This run is unattended; pick reasonable defaults and complete the artifact.',
@@ -10750,6 +10730,11 @@ export async function startServer({
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
       routineService?.stop();
+      // Kill every Vite dev server we spawned. Without this, restarting
+      // the daemon would orphan node/Vite processes that keep holding
+      // their ports — the next dev server start would pick a different
+      // port and the user would lose preview continuity.
+      stopAllDevServers();
     };
     const shutdownDaemonRuns = async () => {
       if (daemonShutdownStarted) return;
@@ -10825,7 +10810,7 @@ function assembleExample(templateHtml, slidesHtml, title) {
     .replace('<!-- SLIDES_HERE -->', slidesHtml)
     .replace(
       /<title>.*?<\/title>/,
-      `<title>${title} | Open Design Example</title>`,
+      `<title>${title} | Vision Design Example</title>`,
     );
 }
 

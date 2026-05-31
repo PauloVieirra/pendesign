@@ -38,6 +38,7 @@ import {
 import { DesignFilesPanel } from './DesignFilesPanel';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { FileViewer, LiveArtifactViewer } from './FileViewer';
+import { ReactDevPreview } from './ReactDevPreview';
 import { Icon } from './Icon';
 import { LiveArtifactBadges } from './LiveArtifactBadges';
 import { PasteTextDialog } from './PasteTextDialog';
@@ -49,10 +50,16 @@ import {
   parseSketchWorkspaceDocument,
   type SketchItem,
 } from './sketch-model';
+import { LEAN_INCEPTION_TAB } from './lean-inception/constants';
+import { LeanInceptionCanvas } from './lean-inception/LeanInceptionCanvas';
 
 interface Props {
   projectId: string;
   projectKind: TrackingProjectKind;
+  /** Forwarded project metadata so the workspace can branch on
+   * stack-specific behaviour (e.g. show the React dev preview when
+   * stack === 'react-vite' and the workspace has no file tab active). */
+  projectMetadata?: { stack?: 'react-vite' } | null;
   files: ProjectFile[];
   liveArtifacts: LiveArtifactSummary[];
   filesRefreshKey?: number;
@@ -182,6 +189,7 @@ const DESIGN_SYSTEM_IMAGE_OR_FONT_EXTENSIONS = /\.(svg|png|jpe?g|gif|webp|avif|i
 export function FileWorkspace({
   projectId,
   projectKind,
+  projectMetadata,
   files,
   liveArtifacts,
   filesRefreshKey = 0,
@@ -265,13 +273,23 @@ export function FileWorkspace({
   // back to the last remaining tab. Skip transient activeTab values
   // (DESIGN_FILES_TAB, pending sketches) since those aren't in persistedTabs.
   useEffect(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return;
     if (sketches[activeTab] && !sketches[activeTab]!.persisted) return;
     if (!persistedTabs.includes(activeTab)) {
       setPersistedActive(persistedTabs[persistedTabs.length - 1] ?? null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistedTabs, activeTab]);
+
+  // Lean Inception "Criar agora" — switch away from the LI tab so the chat
+  // composer becomes visible and picks up the pending prompt.
+  useEffect(() => {
+    const onStart = () => {
+      setActiveTab(DESIGN_FILES_TAB);
+    };
+    window.addEventListener('lean-inception:start-creation', onStart);
+    return () => window.removeEventListener('lean-inception:start-creation', onStart);
+  }, []);
 
   // External open requests from chat (tool cards, produced-file chips,
   // deep-linked URL, or the parent's auto-open after an agent Write) —
@@ -429,7 +447,7 @@ export function FileWorkspace({
   // The Design Files entry is already sticky-pinned, so we only scroll
   // for real workspace tabs. Issue #775.
   useEffect(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return;
     const tabBar = tabsBarRef.current;
     if (!tabBar) return;
     const el = tabBar.querySelector<HTMLElement>('.ws-tab.active');
@@ -691,7 +709,7 @@ export function FileWorkspace({
   }
 
   const activeFile = useMemo<ProjectFile | null>(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return null;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return null;
     const onDisk = visibleFiles.find((f) => f.name === activeTab);
     if (onDisk) return onDisk;
     if (isSketchName(activeTab) && sketches[activeTab]) {
@@ -707,7 +725,7 @@ export function FileWorkspace({
   }, [activeTab, visibleFiles, sketches]);
 
   const activeLiveArtifact = useMemo<LiveArtifactWorkspaceEntry | null>(() => {
-    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB) return null;
+    if (activeTab === DESIGN_FILES_TAB || activeTab === DESIGN_SYSTEM_TAB || activeTab === LEAN_INCEPTION_TAB) return null;
     return liveArtifactEntries.find((entry) => entry.tabId === activeTab) ?? null;
   }, [activeTab, liveArtifactEntries]);
 
@@ -763,6 +781,21 @@ export function FileWorkspace({
             clearTabDragState();
           }}
         >
+          <button
+            type="button"
+            className={`ws-tab lean-inception-tab ${activeTab === LEAN_INCEPTION_TAB ? 'active' : ''}`}
+            role="tab"
+            aria-selected={activeTab === LEAN_INCEPTION_TAB}
+            tabIndex={0}
+            data-testid="lean-inception-tab"
+            onClick={() => setActiveTab(LEAN_INCEPTION_TAB)}
+            title="Lean Inception"
+          >
+            <span className="tab-icon" aria-hidden>
+              <Icon name="kanban" size={13} />
+            </span>
+            <span className="ws-tab-label">{t('lean_inception.tab.title')}</span>
+          </button>
           {designSystemProject ? (
             <button
               type="button"
@@ -780,21 +813,11 @@ export function FileWorkspace({
               <span className="ws-tab-label">Design System</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className={`ws-tab design-files-tab ${activeTab === DESIGN_FILES_TAB ? 'active' : ''}`}
-            role="tab"
-            aria-selected={activeTab === DESIGN_FILES_TAB}
-            tabIndex={0}
-            data-testid="design-files-tab"
-            onClick={() => setActiveTab(DESIGN_FILES_TAB)}
-            title={t('workspace.designFiles')}
-          >
-            <span className="tab-icon" aria-hidden>
-              <Icon name="grid" size={13} />
-            </span>
-            <span className="ws-tab-label">{t('workspace.designFiles')}</span>
-          </button>
+          {/* Design Files tab (cards view) replaced by the Files Explorer
+              in the left side panel (Chat | Files toggle). The button is
+              hidden but the underlying panel stays mounted so internal
+              setActiveTab(DESIGN_FILES_TAB) call sites (e.g. delete-last-
+              file fallback) still resolve to a valid view. */}
           {tabNames.map((name) => {
             const sketchEntry = sketches[name];
             const dirtyMark =
@@ -877,7 +900,9 @@ export function FileWorkspace({
             </button>
           </div>
         ) : null}
-        {activeTab === DESIGN_SYSTEM_TAB && designSystemProject ? (
+        {activeTab === LEAN_INCEPTION_TAB ? (
+          <LeanInceptionCanvas projectId={projectId} />
+        ) : activeTab === DESIGN_SYSTEM_TAB && designSystemProject ? (
           <DesignSystemProjectPanel
             projectId={projectId}
             system={designSystemProject}
@@ -895,25 +920,14 @@ export function FileWorkspace({
             onUseDesignSystem={onUseDesignSystem}
           />
         ) : activeTab === DESIGN_FILES_TAB ? (
-          <DesignFilesPanel
-            key={projectId}
-            projectId={projectId}
-            files={visibleFiles}
-            liveArtifacts={liveArtifactEntries}
-            onRefreshFiles={onRefreshFiles}
-            onOpenFile={openFile}
-            onOpenLiveArtifact={(tabId) => openFile(tabId)}
-            onRenameFile={handleRename}
-            onDeleteFile={(name) => void handleDelete(name)}
-            onDeleteFiles={handleDeleteMany}
-            onUpload={() => fileInputRef.current?.click()}
-            onUploadFiles={(picked) => void uploadFiles(picked)}
-            onPaste={() => setShowPasteDialog(true)}
-            onNewSketch={startNewSketch}
-            uploadError={uploadError}
-            onClearUploadError={() => setUploadError(null)}
-            onPluginFolderAgentAction={onPluginFolderAgentAction}
-          />
+          projectMetadata?.stack === 'react-vite' ? (
+            <ReactDevPreview projectId={projectId} />
+          ) : (
+            <div className="viewer-empty viewer-empty--explorer-hint">
+              <strong>{t('workspace.openFromDesignFiles')}</strong>
+              <span>Open the Files tab in the left panel and click a file to start editing.</span>
+            </div>
+          )
         ) : isActiveSketch && activeSketch && activeFile ? (
           activeSketch.loaded ? (
             <SketchEditor
@@ -939,6 +953,14 @@ export function FileWorkspace({
             liveArtifactEvents={liveArtifactEvents}
             onRefreshArtifacts={onRefreshFiles}
           />
+        ) : projectMetadata?.stack === 'react-vite' && activeFile?.name === 'index.html' ? (
+          // In a React-Vite project, index.html is the Vite entry — opening
+          // it through the static preview gives a blank page (the `/src/
+          // main.tsx` reference only resolves through the dev server).
+          // Render the dev preview instead so the user sees the React app
+          // running. To edit the markup, open the file via the Explorer's
+          // raw view (a future M4 task).
+          <ReactDevPreview projectId={projectId} />
         ) : activeFile ? (
           <FileViewer
             projectId={projectId}
@@ -1434,7 +1456,7 @@ function DesignSystemProjectPanel({
             <Icon name="help-circle" size={16} />
             <span>
               <strong>Missing brand fonts</strong>
-              <small>Open Design is rendering typography with substitute web fonts.</small>
+              <small>Vision Design is rendering typography with substitute web fonts.</small>
             </span>
             <button type="button" className="ghost compact" onClick={onUploadAssets}>
               <Icon name="upload" size={13} />
@@ -2270,7 +2292,7 @@ function designSystemSectionRunningNotice(
   activity: DesignSystemSectionActivity,
 ): string {
   if (activity.phase === 'reading') {
-    return `Open Design is reading ${section.title} context for this section.`;
+    return `Vision Design is reading ${section.title} context for this section.`;
   }
   return `${designSystemSectionPhaseLabel(section, activity)} now.`;
 }

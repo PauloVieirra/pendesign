@@ -19,6 +19,7 @@ export type IconName =
   | 'external-link'
   | 'eye'
   | 'eye-off'
+  | 'logout'
   | 'file'
   | 'file-code'
   | 'folder'
@@ -63,7 +64,15 @@ export type IconName =
   | 'upload'
   | 'trash'
   | 'zoom-in'
-  | 'zoom-out';
+  | 'zoom-out'
+  | 'sidebar'
+  | 'maximize'
+  | 'minimize'
+  | 'filter'
+  | 'color'
+  | 'hash'
+  | 'text'
+  | 'circle';
 
 interface Props extends Omit<SVGProps<SVGSVGElement>, 'name'> {
   name: IconName;
@@ -219,6 +228,14 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <path d="M15 3h6v6" />
           <path d="M10 14 21 3" />
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        </svg>
+      );
+    case 'logout':
+      return (
+        <svg {...common}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
       );
     case 'file':
@@ -591,6 +608,67 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <path d="M3 6h18" />
           <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
           <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        </svg>
+      );
+    case 'sidebar':
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
+      );
+    case 'maximize':
+      return (
+        <svg {...common}>
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+          <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      );
+    case 'minimize':
+      return (
+        <svg {...common}>
+          <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+          <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+          <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+          <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+        </svg>
+      );
+    case 'filter':
+      return (
+        <svg {...common}>
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+      );
+    case 'color':
+      return (
+        <svg {...common}>
+          <path d="M12 2a5 5 0 0 1 5 5c0 2.76-2.24 7-5 10C9.24 14 7 9.76 7 7a5 5 0 0 1 5-5z" />
+          <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'hash':
+      return (
+        <svg {...common}>
+          <line x1="4" y1="9" x2="20" y2="9" />
+          <line x1="4" y1="15" x2="20" y2="15" />
+          <line x1="10" y1="3" x2="8" y2="21" />
+          <line x1="16" y1="3" x2="14" y2="21" />
+        </svg>
+      );
+    case 'text':
+      return (
+        <svg {...common}>
+          <path d="M4 7V4h16v3" />
+          <path d="M9 20h6" />
+          <path d="M12 4v16" />
+        </svg>
+      );
+    case 'circle':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
         </svg>
       );
     default:

@@ -64,3 +64,56 @@ export interface RenameProjectFileResponse {
   oldName: string;
   newName: string;
 }
+
+// Hierarchical view of a project's files. Used by the Explorer sidebar.
+// Paths are forward-slash, relative to the project root. A directory's
+// `children` is omitted (not present in JSON at all) when the node is
+// known to be a directory but its contents have not been loaded yet —
+// callers should treat that state as "expandable but unloaded".
+export interface ProjectTreeNode {
+  path: string;
+  name: string;
+  kind: 'file' | 'dir';
+  size?: number;
+  mtime?: number;
+  fileKind?: ProjectFileKind;
+  mime?: string;
+  children?: ProjectTreeNode[];
+  /** Number of children inside a directory, including hidden ones — useful
+   * for showing a hint when the directory was elided (e.g. node_modules
+   * collapsed by default). */
+  childCount?: number;
+}
+
+export interface ProjectTreeResponse {
+  /** The path the tree was rooted at, relative to project root.
+   * Empty string means project root. */
+  root: string;
+  nodes: ProjectTreeNode[];
+}
+
+// React project setup status. After creating a kind:'react-vite' project,
+// the daemon extracts the template and runs `<pm> install` in the
+// background. The frontend polls /api/projects/:id/setup-status to render
+// a friendly loading screen with rotating copy.
+export type ProjectSetupPhase = 'extracting' | 'installing' | 'ready' | 'error';
+
+export interface ProjectSetupStatusResponse {
+  phase: ProjectSetupPhase;
+  startedAt: number;
+  packageManager?: 'pnpm' | 'npm';
+  recentLog: string[];
+  error?: string;
+}
+
+export type DevServerPhase = 'idle' | 'starting' | 'running' | 'stopped' | 'error';
+
+export interface DevServerStatusResponse {
+  phase: DevServerPhase;
+  port?: number;
+  url?: string;
+  pid?: number;
+  startedAt?: number;
+  recentLog: string[];
+  error?: string;
+}

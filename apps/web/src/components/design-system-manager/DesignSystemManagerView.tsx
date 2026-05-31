@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../../i18n';
 import {
   createCollection,
+  createEmptyDesignSystemForProject,
   createGroup,
+  createMode,
   createVariable,
   deleteCollection,
   deleteGroup,
+  deleteMode,
   deleteVariable,
   fetchVariables,
+  updateMode,
   updateVariable,
   type Variable,
+  type VariableType,
   type VariablesFile,
 } from '../../providers/design-system-variables';
-import { navigate } from '../../router';
 import { CollectionsSidebar } from './CollectionsSidebar';
 import { VariablesTable } from './VariablesTable';
+import { SearchAndFilter } from './SearchAndFilter';
 import { Icon } from '../Icon';
 
 interface Props {
@@ -21,8 +27,15 @@ interface Props {
   designSystemId: string | null;
   projectName: string;
   onAttachDsRequested: (kind: 'create' | 'figma' | 'library') => void;
-  onCreateEmpty: () => Promise<void> | void;
+  // Modal chrome props (Phase 6)
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+  maximized: boolean;
+  onToggleMaximize: () => void;
+  onClose: () => void;
 }
+
+const LS_ACTIVE_COLLECTION = (id: string) => `ds-modal:active-collection:${id}`;
 
 function isDsLocked(error: string | null): boolean {
   return error != null && /not editable|DS_NOT_FOUND/i.test(error);
@@ -31,23 +44,81 @@ function isDsLocked(error: string | null): boolean {
 export function DesignSystemManagerView({
   projectId,
   designSystemId,
-  projectName,
-  onAttachDsRequested,
-  onCreateEmpty,
+  projectName: _projectName,
+  onAttachDsRequested: _onAttachDsRequested,
+  sidebarCollapsed,
+  onToggleSidebar,
+  maximized,
+  onToggleMaximize,
+  onClose,
 }: Props) {
+  const t = useT();
+  // Local mirror of the DS id. Initially comes from the prop, but if the
+  // project arrives without a DS (e.g., legacy project created before
+  // auto-attach landed), we self-heal by calling create-empty here and
+  // tracking the new id locally. Parent state catches up on the next
+  // navigation; the modal does not need to wait for it.
+  const [localDsId, setLocalDsId] = useState<string | null>(designSystemId);
+  const [attaching, setAttaching] = useState(false);
   const [variables, setVariables] = useState<VariablesFile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<Set<VariableType>>(new Set());
+  const [activeGroupId, setActiveGroupId] = useState<string | 'all'>('all');
 
   useEffect(() => {
-    if (!designSystemId) {
+    setLocalDsId(designSystemId);
+  }, [designSystemId]);
+
+  // Self-heal: project has no DS attached OR the attached DS is a read-only
+  // brand (e.g. `cisco`, `vercel`) that can't be edited → swap to a fresh
+  // user-editable DS via create-empty. The brand association is intentionally
+  // dropped — the variables panel is for project-specific tokens, not for
+  // editing shared brand systems.
+  //
+  // The in-flight guard uses a ref (not state) because React 18 StrictMode
+  // mounts effects twice in dev; a state-based guard re-fires before the
+  // first setState batches in, causing the request to be sent to the daemon
+  // twice (and TWO new DSes created on disk). A ref persists across the
+  // intentional remount and reliably prevents the second call.
+  const needsAttach = !localDsId || isDsLocked(loadError);
+  const attachInFlight = useRef(false);
+  useEffect(() => {
+    if (!needsAttach) return;
+    if (attachInFlight.current) return;
+    attachInFlight.current = true;
+    setAttaching(true);
+    let cancelled = false;
+    void createEmptyDesignSystemForProject(projectId).then((result) => {
+      attachInFlight.current = false;
+      if (cancelled) return;
+      setAttaching(false);
+      if ('error' in result) {
+        setLoadError(result.error.message);
+        return;
+      }
+      setLoadError(null);
+      setLocalDsId(result.designSystemId);
+    });
+    return () => { cancelled = true; };
+  }, [needsAttach, projectId]);
+
+  // Reset activeGroupId when the active collection changes
+  useEffect(() => {
+    setActiveGroupId('all');
+  }, [activeCollectionId]);
+
+  // Load variables when DS id changes
+  useEffect(() => {
+    if (!localDsId) {
       setVariables(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    void fetchVariables(designSystemId).then((result) => {
+    void fetchVariables(localDsId).then((result) => {
       if (cancelled) return;
       setLoading(false);
       if ('error' in result) {
@@ -55,10 +126,21 @@ export function DesignSystemManagerView({
         return;
       }
       setVariables(result.variables);
-      setActiveCollectionId(result.variables.collections[0]?.id ?? null);
+      setActiveCollectionId((prev) => prev ?? result.variables.collections[0]?.id ?? null);
     });
     return () => { cancelled = true; };
-  }, [designSystemId]);
+  }, [localDsId]);
+
+  // Persist / hydrate activeCollectionId per DS id
+  useEffect(() => {
+    if (!localDsId) return;
+    const stored = localStorage.getItem(LS_ACTIVE_COLLECTION(localDsId));
+    if (stored) setActiveCollectionId(stored);
+  }, [localDsId]);
+  useEffect(() => {
+    if (!localDsId || !activeCollectionId) return;
+    try { localStorage.setItem(LS_ACTIVE_COLLECTION(localDsId), activeCollectionId); } catch { /* ignore */ }
+  }, [localDsId, activeCollectionId]);
 
   const activeCollection = useMemo(
     () => variables?.collections.find((c) => c.id === activeCollectionId) ?? null,
@@ -66,18 +148,19 @@ export function DesignSystemManagerView({
   );
 
   const refetch = useCallback(async () => {
-    if (!designSystemId) return;
-    const result = await fetchVariables(designSystemId);
+    if (!localDsId) return;
+    const result = await fetchVariables(localDsId);
     if ('error' in result) {
       setLoadError(result.error.message);
       return;
     }
     setVariables(result.variables);
-  }, [designSystemId]);
+  }, [localDsId]);
 
-  const handleUpdateVariable = useCallback(
-    (variableId: string, patch: Partial<Pick<Variable, 'name' | 'type' | 'value'>>) => {
-      if (!designSystemId || !variables) return;
+  // Handler: per-mode value update — optimistic + POST patch
+  const handleUpdateValueForMode = useCallback(
+    (variableId: string, modeId: string, value: string | number | boolean) => {
+      if (!localDsId) return;
       setVariables((prev) => {
         if (!prev) return prev;
         return {
@@ -87,143 +170,180 @@ export function DesignSystemManagerView({
             groups: c.groups.map((g) => ({
               ...g,
               variables: g.variables.map((v) =>
-                v.id === variableId ? { ...v, ...patch } as Variable : v,
+                v.id === variableId ? { ...v, valuesByMode: { ...v.valuesByMode, [modeId]: value } } : v,
               ),
             })),
           })),
         };
       });
-      void updateVariable(designSystemId, variableId, patch).then((result) => {
-        if ('error' in result) {
-          setLoadError(result.error.message);
-          void refetch();
-        }
+      void updateVariable(localDsId, variableId, { valuesByMode: { [modeId]: value } }).then((r) => {
+        if ('error' in r) { setLoadError(r.error.message); void refetch(); }
       });
     },
-    [designSystemId, variables, refetch],
+    [localDsId, refetch],
   );
 
-  const handleClose = useCallback(() => {
-    navigate({ kind: 'project', projectId, conversationId: null, fileName: null });
-  }, [projectId]);
+  // Handler: rename variable — optimistic + POST patch
+  const handleRenameVariable = useCallback(
+    (variableId: string, name: string) => {
+      if (!localDsId) return;
+      setVariables((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          collections: prev.collections.map((c) => ({
+            ...c,
+            groups: c.groups.map((g) => ({
+              ...g,
+              variables: g.variables.map((v) =>
+                v.id === variableId ? { ...v, name } as Variable : v,
+              ),
+            })),
+          })),
+        };
+      });
+      void updateVariable(localDsId, variableId, { name }).then((r) => {
+        if ('error' in r) { setLoadError(r.error.message); void refetch(); }
+      });
+    },
+    [localDsId, refetch],
+  );
 
-  useEffect(() => {
-    function onKey(ev: KeyboardEvent) {
-      if (ev.key === 'Escape') handleClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [handleClose]);
+  // Handler: create variable
+  const handleCreateVariable = useCallback(
+    async (groupId: string, body: { name: string; type: VariableType }) => {
+      if (!localDsId || !activeCollection) return;
+      await createVariable(localDsId, activeCollection.id, groupId, body);
+      await refetch();
+    },
+    [localDsId, activeCollection, refetch],
+  );
 
-  // Treat a missing or locked DS as "no DS attached" — show the empty
-  // banner inside the table area instead of the raw error string.
-  const dsMissingOrLocked = !designSystemId || isDsLocked(loadError);
-  const showBanner = dsMissingOrLocked || !variables || !activeCollection;
-  const bannerErrorMessage = loadError && !isDsLocked(loadError) ? loadError : null;
+  // Mode handlers
+  const handleCreateMode = useCallback(
+    async (body: { name: string; width?: number }) => {
+      if (!localDsId || !activeCollection) return;
+      await createMode(localDsId, activeCollection.id, body);
+      await refetch();
+    },
+    [localDsId, activeCollection, refetch],
+  );
+
+  const handleRenameMode = useCallback(
+    async (modeId: string, name: string) => {
+      if (!localDsId || !activeCollection) return;
+      await updateMode(localDsId, activeCollection.id, modeId, { name });
+      await refetch();
+    },
+    [localDsId, activeCollection, refetch],
+  );
+
+  const handleSetModeWidth = useCallback(
+    async (modeId: string, width: number | null) => {
+      if (!localDsId || !activeCollection) return;
+      await updateMode(localDsId, activeCollection.id, modeId, { width });
+      await refetch();
+    },
+    [localDsId, activeCollection, refetch],
+  );
+
+  const handleDeleteMode = useCallback(
+    async (modeId: string) => {
+      if (!localDsId || !activeCollection) return;
+      await deleteMode(localDsId, activeCollection.id, modeId);
+      await refetch();
+    },
+    [localDsId, activeCollection, refetch],
+  );
+
+  // Treat a missing or locked DS as a transient state — the daemon auto-creates
+  // a DS on project creation, so we just show a loading indicator.
+  const dsMissingOrLocked = !localDsId || isDsLocked(loadError);
+  const showLoadingState = dsMissingOrLocked || !variables || !activeCollection;
 
   return (
-    <div className="ds-mgr-wrapper">
-      <header className="ds-mgr-topbar">
-        <h2 className="ds-mgr-topbar__title">Design system — {projectName}</h2>
-        <button
-          type="button"
-          className="ds-mgr-topbar__close"
-          aria-label="Close design system manager"
-          onClick={handleClose}
-          data-testid="ds-mgr-close"
-        >
-          <Icon name="close" size={14} />
-        </button>
+    <div className="ds-modal-body">
+      <header className="ds-modal__header">
+        <div className="ds-modal__title">
+          <h2>{t('ds.modal.title')}</h2>
+          <button type="button" className="ds-modal__icon-btn" onClick={onToggleSidebar} aria-label="Toggle sidebar">
+            <Icon name="sidebar" size={14} />
+          </button>
+        </div>
+        <SearchAndFilter
+          query={query}
+          onQueryChange={setQuery}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
+        />
+        <div className="ds-modal__actions">
+          <button type="button" className="ds-modal__icon-btn" onClick={onToggleMaximize} aria-label={maximized ? 'Restore' : 'Maximize'}>
+            <Icon name={maximized ? 'minimize' : 'maximize'} size={14} />
+          </button>
+          <button type="button" className="ds-modal__icon-btn" onClick={onClose} aria-label="Close" data-testid="ds-mgr-close">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
       </header>
-      <div className="ds-mgr">
+      <div className={`ds-modal__body${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
         <CollectionsSidebar
           collections={dsMissingOrLocked ? [] : variables?.collections ?? []}
           activeCollectionId={activeCollectionId}
-          onSelect={setActiveCollectionId}
-          onCreate={async (name) => {
-            if (!designSystemId || dsMissingOrLocked) return;
-            await createCollection(designSystemId, name);
+          activeGroupId={activeGroupId}
+          onSelectCollection={setActiveCollectionId}
+          onSelectGroup={setActiveGroupId}
+          onCreateCollection={async (name) => {
+            if (!localDsId || dsMissingOrLocked) return;
+            await createCollection(localDsId, name);
             await refetch();
           }}
-          onDelete={async (collectionId) => {
-            if (!designSystemId || dsMissingOrLocked) return;
-            await deleteCollection(designSystemId, collectionId);
+          onDeleteCollection={async (collectionId) => {
+            if (!localDsId || dsMissingOrLocked) return;
+            await deleteCollection(localDsId, collectionId);
             await refetch();
           }}
+          onCreateGroup={async (name) => {
+            if (!localDsId || dsMissingOrLocked || !activeCollectionId) return;
+            await createGroup(localDsId, activeCollectionId, name);
+            await refetch();
+          }}
+          onDeleteGroup={async (groupId) => {
+            if (!localDsId || dsMissingOrLocked || !activeCollectionId) return;
+            await deleteGroup(localDsId, activeCollectionId, groupId);
+            await refetch();
+          }}
+          collapsed={sidebarCollapsed}
         />
-        {!showBanner && designSystemId && variables && activeCollection ? (
-          <VariablesTable
-            collection={activeCollection}
-            onUpdateVariable={handleUpdateVariable}
-            onDeleteVariable={async (variableId) => {
-              await deleteVariable(designSystemId, variableId);
-              await refetch();
-            }}
-            onCreateVariable={async (groupId, body) => {
-              await createVariable(designSystemId, activeCollection.id, groupId, body);
-              await refetch();
-            }}
-            onCreateGroup={async (name) => {
-              await createGroup(designSystemId, activeCollection.id, name);
-              await refetch();
-            }}
-            onDeleteGroup={async (groupId) => {
-              await deleteGroup(designSystemId, activeCollection.id, groupId);
-              await refetch();
-            }}
-          />
-        ) : (
-          <DesignSystemEmptyBanner
-            onCreate={onCreateEmpty}
-            onImport={() => onAttachDsRequested('figma')}
-            isLoading={loading}
-            errorMessage={bannerErrorMessage}
-          />
-        )}
-        {loadError && !dsMissingOrLocked && variables ? (
-          <p className="ds-mgr-toast">{loadError}</p>
-        ) : null}
+        <main className="ds-modal__main">
+          {!showLoadingState && localDsId && variables && activeCollection ? (
+            <VariablesTable
+              collection={activeCollection}
+              activeGroupId={activeGroupId}
+              query={query}
+              typeFilter={typeFilter}
+              onUpdateVariableValueForMode={handleUpdateValueForMode}
+              onRenameVariable={handleRenameVariable}
+              onDeleteVariable={async (variableId) => {
+                await deleteVariable(localDsId, variableId);
+                await refetch();
+              }}
+              onCreateVariable={handleCreateVariable}
+              onCreateMode={handleCreateMode}
+              onRenameMode={handleRenameMode}
+              onSetModeWidth={handleSetModeWidth}
+              onDeleteMode={handleDeleteMode}
+            />
+          ) : (
+            <div className="ds-modal__loading">
+              <p>{attaching ? 'Setting up design system…' : 'Loading design system…'}</p>
+            </div>
+          )}
+          {loadError && !dsMissingOrLocked && variables ? (
+            <p className="ds-mgr-toast">{loadError}</p>
+          ) : null}
+        </main>
       </div>
     </div>
   );
 }
 
-function DesignSystemEmptyBanner({
-  onCreate,
-  onImport,
-  isLoading,
-  errorMessage,
-}: {
-  onCreate: () => Promise<void> | void;
-  onImport: () => void;
-  isLoading: boolean;
-  errorMessage: string | null;
-}) {
-  return (
-    <section className="ds-mgr-empty-banner">
-      <div className="ds-mgr-empty-banner__inner">
-        <h3>Start your design system</h3>
-        <p>Create an empty system and add tokens manually, or import from an existing source.</p>
-        <div className="ds-mgr-empty-banner__actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={() => { void onCreate(); }}
-            data-testid="ds-mgr-empty-create"
-          >
-            Create empty
-          </button>
-          <button
-            type="button"
-            onClick={onImport}
-            data-testid="ds-mgr-empty-import"
-          >
-            Import from Figma / repo / disk
-          </button>
-        </div>
-        {isLoading ? <p className="ds-mgr-empty-banner__hint">Loading…</p> : null}
-        {errorMessage ? <p className="ds-mgr-empty-banner__error">{errorMessage}</p> : null}
-      </div>
-    </section>
-  );
-}

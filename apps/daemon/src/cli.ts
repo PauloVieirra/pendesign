@@ -7,6 +7,9 @@ import { runConnectorsToolCli } from './tools-connectors-cli.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
+import { runLeanInception } from './lean-inception-cli.js';
+import { runCloud } from './cli-cloud.js';
+import { runImages } from './images-cli.js';
 
 const argv = process.argv.slice(2);
 
@@ -145,12 +148,14 @@ const LIBRARY_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 const PROJECT_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'skill', 'design-system', 'plugin', 'metadata-json',
   'pending-prompt', 'project', 'conversation', 'message', 'path', 'as',
-  'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps',
+  'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps', 'root', 'depth',
 ]);
-const PROJECT_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow']);
+const PROJECT_BOOLEAN_FLAGS = new Set([
+  'help', 'h', 'json', 'follow', 'show-hidden', 'show-build-dirs',
+]);
 // `od automation …` mirrors the Automations tab. Same surface, same
 // /api/routines store. The CLI form is the embeddability contract:
-// external agents (hermes-agent, openclaw, etc.) can drive Open Design
+// external agents (hermes-agent, openclaw, etc.) can drive Vision Design
 // automations headlessly without going through the web UI.
 const AUTOMATION_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'prompt', 'prompt-file', 'schedule', 'target',
@@ -224,6 +229,9 @@ const SUBCOMMAND_MAP = {
   version: runVersion,
   doctor: runDoctor,
   config: runConfig,
+  'lean-inception': runLeanInception,
+  cloud: runCloud,
+  images: runImages,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -241,8 +249,8 @@ const first = argv.find((a) => !a.startsWith('-'));
 if (first && SUBCOMMAND_MAP[first]) {
   const idx = argv.indexOf(first);
   const rest = [...argv.slice(0, idx), ...argv.slice(idx + 1)];
-  await SUBCOMMAND_MAP[first](rest);
-  process.exit(0);
+  const subExitCode = await SUBCOMMAND_MAP[first](rest);
+  process.exit(typeof subExitCode === 'number' ? subExitCode : 0);
 }
 
 if (argv[0] === 'tools' && argv[1] === 'live-artifacts') {
@@ -314,9 +322,9 @@ function printRootHelp() {
 
   od mcp [--daemon-url <url>]
       Run a stdio MCP server that proxies project tool calls to a
-      running Open Design daemon. Wire it into a coding agent
+      running Vision Design daemon. Wire it into a coding agent
       (Claude Code, Cursor, VS Code, Zed, Windsurf) in another repo
-      to pull files from a local Open Design project and create
+      to pull files from a local Vision Design project and create
       project-scoped artifacts without exporting a zip.
 
 Options:
@@ -404,7 +412,7 @@ function printResearchHelp() {
   console.log(`Usage:
   od research search --query <text> [--max-sources 5] [--daemon-url <url>]
 
-Runs Tavily-backed shallow research through the local Open Design daemon.
+Runs Tavily-backed shallow research through the local Vision Design daemon.
 Output is JSON only on stdout:
   { "query": "...", "summary": "...", "sources": [...], "provider": "tavily", "depth": "shallow", "fetchedAt": 0 }
 
@@ -665,7 +673,7 @@ function surfaceFetchError(err, daemonUrl) {
     console.error(
       'hint: outbound connect was denied by a sandbox. If you launched ' +
         'this command from a code agent, check the agent\'s sandbox / ' +
-        'network policy. The Open Design daemon itself is unaffected - it can be ' +
+        'network policy. The Vision Design daemon itself is unaffected - it can be ' +
         'reached from a regular shell.',
     );
   }
@@ -799,13 +807,13 @@ function printMcpHelp() {
   console.log(`Usage: od mcp [--daemon-url <url>]
 
 Run a stdio MCP (Model Context Protocol) server that proxies project
-tool calls to a running Open Design daemon. Wire it into a coding agent
-in another repo so the agent can pull files from a local Open Design
+tool calls to a running Vision Design daemon. Wire it into a coding agent
+in another repo so the agent can pull files from a local Vision Design
 project and create project-scoped artifacts without exporting a zip
 every iteration.
 
 Options:
-  --daemon-url <url>   Open Design daemon HTTP base URL. Resolution
+  --daemon-url <url>   Vision Design daemon HTTP base URL. Resolution
                        order: this flag, OD_DAEMON_URL, OD_SIDECAR_IPC_PATH,
                        then http://127.0.0.1:7456. Each new MCP spawn
                        discovers the live daemon URL at startup, so
@@ -816,7 +824,7 @@ Options:
                        new port.
 
 Tools exposed:
-  list_projects                  list every Open Design project
+  list_projects                  list every Vision Design project
   get_active_context             what project/file the user has open right now
   get_artifact([project, entry]) bundle: entry file + every referenced sibling
   get_project([project])         single project metadata
@@ -827,13 +835,13 @@ Tools exposed:
 
 When project is omitted, get_artifact / get_project / get_file /
 search_files / list_files / create_artifact default to the project the
-user has open in Open Design; get_artifact and get_file additionally
+user has open in Vision Design; get_artifact and get_file additionally
 default to the active file. The response stamps usedActiveContext so
 callers can see which project/file got resolved.
 
 For the copy-paste, per-client snippet (with absolute paths resolved
 for your machine, plus a one-click deeplink for Cursor), open Settings
-→ MCP server in the Open Design app. The daemon must be running locally
+→ MCP server in the Vision Design app. The daemon must be running locally
 for tool calls to succeed.`);
 }
 
@@ -989,7 +997,7 @@ function printFigmaHelp() {
       reusable component library.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON instead of human-readable output.
 
 Token resolution order at run time: this command's --token, the
@@ -1312,7 +1320,7 @@ async function runPluginLogin(rest) {
     console.log(`Usage:
   od plugin login [--host github.com]
 
-Wraps GitHub CLI auth for Open Design registry publishing. The token stays in gh.`);
+Wraps GitHub CLI auth for Vision Design registry publishing. The token stays in gh.`);
     return;
   }
   const host = typeof flags.host === 'string' ? flags.host : 'github.com';
@@ -1334,7 +1342,7 @@ async function runPluginWhoami(rest) {
     console.log(`Usage:
   od plugin whoami [--host github.com] [--json]
 
-Shows the GitHub account gh will use for Open Design registry publishing.`);
+Shows the GitHub account gh will use for Vision Design registry publishing.`);
     return;
   }
   const host = typeof flags.host === 'string' ? flags.host : 'github.com';
@@ -1490,7 +1498,7 @@ async function runMarketplace(args) {
                                                               Update the marketplace trust tier.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
+  --daemon-url <url>   Vision Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
   --json               Emit raw JSON (suitable for scripts).`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -1637,7 +1645,7 @@ Common options:
         console.error('[marketplace login] GitHub CLI is required. Install gh from https://cli.github.com/ and retry.');
         process.exit(1);
       }
-      console.log(`[marketplace login] authenticating gh for ${host}. Tokens stay in gh, not Open Design.`);
+      console.log(`[marketplace login] authenticating gh for ${host}. Tokens stay in gh, not Vision Design.`);
       const result = await spawnPassthrough('gh', ['auth', 'login', '--hostname', host, '--web']);
       process.exit(result.code ?? 0);
     }
@@ -3741,7 +3749,7 @@ function printUiHelp() {
                                                      Pre-answer a surface so the run never broadcasts it.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
+  --daemon-url <url>   Vision Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
   --json               Emit raw JSON (suitable for scripts) instead of human-readable output.`);
 }
 
@@ -3784,7 +3792,7 @@ function printPluginHelp() {
   od plugin whoami [--host github.com]     Show the gh account used for publishing.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
+  --daemon-url <url>   Vision Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
   --json               Emit raw JSON (suitable for scripts) instead of human-readable output.
 
 Installs support local folders, github:owner/repo refs, HTTPS .tgz archives,
@@ -3797,7 +3805,7 @@ and bare marketplace names resolved through configured registry sources.`);
 // Plan §6 Phase 1 follow-up + Phase 2C: thin CLI wrappers over the
 // existing daemon HTTP endpoints (POST /api/projects, POST /api/runs,
 // GET /api/projects/:id/files, …). The §12.5 walkthrough relies on
-// these so a code agent can drive Open Design end-to-end without
+// these so a code agent can drive Vision Design end-to-end without
 // hitting `/api/*` directly. Spec §11.7 invariant: every UI feature is
 // reachable via the CLI; we wrap rather than duplicate.
 // ---------------------------------------------------------------------------
@@ -3827,7 +3835,7 @@ async function runProject(args) {
   od project delete <id>                  Delete a project.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -3939,7 +3947,7 @@ async function runRun(args) {
   od run info   <runId>                     One run's status.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -4092,15 +4100,20 @@ async function runFiles(args) {
   if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
     console.log(`Usage:
   od files list   <projectId>                  List files in a project.
+  od files tree   <projectId> [--root <path>] [--depth <n>]
+                  [--show-hidden] [--show-build-dirs]
+                                               Print the project tree.
   od files read   <projectId> <relpath>        Stream file bytes to stdout.
   od files write  <projectId> <relpath> [< stdin]
                                                Write content from stdin.
   od files upload <projectId> <localpath> [--as <relpath>]
                                                Upload a local file.
-  od files delete <projectId> <name>           Delete a project file.
+  od files delete <projectId> <name>           Delete a project file or folder.
+  od files mkdir  <projectId> <relpath>        Create a folder (nested ok).
+  od files mv     <projectId> <from> <to>      Rename or move a file/folder.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -4121,6 +4134,45 @@ Common options:
       if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
       const files = Array.isArray(data?.files) ? data.files : [];
       for (const f of files) console.log(`${f.size}\t${f.name ?? f.path}`);
+      return;
+    }
+    case 'tree': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od files tree <projectId> [--root <path>] [--depth <n>] [--show-hidden] [--show-build-dirs]');
+        process.exit(2);
+      }
+      const qs = new URLSearchParams();
+      if (typeof flags.root === 'string' && flags.root.length > 0) qs.set('root', flags.root);
+      if (typeof flags.depth === 'string' && flags.depth.length > 0) qs.set('depth', flags.depth);
+      if (flags['show-hidden']) qs.set('showHidden', 'true');
+      if (flags['show-build-dirs']) qs.set('showBuildDirs', 'true');
+      const query = qs.toString();
+      const url = `${base}/api/projects/${encodeURIComponent(id)}/tree${query ? `?${query}` : ''}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+      const printTree = (list, prefix) => {
+        for (let i = 0; i < list.length; i++) {
+          const node = list[i];
+          const isLast = i === list.length - 1;
+          const branch = isLast ? '└── ' : '├── ';
+          const trail = node.kind === 'dir' ? '/' : '';
+          const hint = node.kind === 'dir' && (!node.children || node.children.length === 0) && node.childCount
+            ? ` (${node.childCount})`
+            : '';
+          console.log(`${prefix}${branch}${node.name}${trail}${hint}`);
+          if (node.kind === 'dir' && Array.isArray(node.children) && node.children.length > 0) {
+            const childPrefix = prefix + (isLast ? '    ' : '│   ');
+            printTree(node.children, childPrefix);
+          }
+        }
+      };
+      const rootLabel = data?.root || '.';
+      console.log(`${rootLabel}/`);
+      printTree(nodes, '');
       return;
     }
     case 'read': {
@@ -4205,9 +4257,48 @@ Common options:
         console.error('Usage: od files delete <projectId> <name>');
         process.exit(2);
       }
-      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      // Use the /raw/* route so paths with subdirectories work (the
+      // legacy /files/:name route only matches single-segment names).
+      const segments = name.split('/').map(encodeURIComponent).join('/');
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/raw/${segments}`, { method: 'DELETE' });
       if (!resp.ok) return structuredHttpFailure(resp);
       console.log(`[files] deleted ${name}`);
+      return;
+    }
+    case 'mkdir': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, rel] = positional;
+      if (!id || !rel) {
+        console.error('Usage: od files mkdir <projectId> <relpath>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/folders`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: rel }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] mkdir ${data?.folder?.path ?? rel}`);
+      return;
+    }
+    case 'mv': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, from, to] = positional;
+      if (!id || !from || !to) {
+        console.error('Usage: od files mv <projectId> <from> <to>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ from, to }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] moved ${from} -> ${data?.newName ?? to}`);
       return;
     }
     default:
@@ -4223,7 +4314,7 @@ async function runConversation(args) {
   od conversation info <conversationId>      Print one conversation.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -4291,7 +4382,7 @@ async function runDaemon(args) {
   od daemon db     vacuum                 Run SQLite VACUUM to reclaim space after deletes.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --headless           No browser auto-open; aliased --no-open.
   --serve-web          Serve the web UI over the existing port (no electron).
   --json               Emit raw JSON.`);
@@ -4518,7 +4609,7 @@ async function runAtoms(args) {
   od atoms info <id>        Print metadata + the bundled SKILL.md body.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -4802,7 +4893,7 @@ async function runConfig(args) {
   od config unset <key>               Remove a top-level key.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.
+  --daemon-url <url>   Vision Design daemon HTTP base.
   --json               Emit raw JSON.`);
     process.exit(args.length === 0 ? 2 : 0);
   }
@@ -4929,7 +5020,7 @@ function printMemoryHelp() {
       Move an entry node to a different memory bucket while preserving its id.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.`);
+  --daemon-url <url>   Vision Design daemon HTTP base.`);
 }
 
 function memoryPositionals(values) {
@@ -5347,7 +5438,7 @@ Output:
   can drive the full automation lifecycle headlessly.
 
 Common options:
-  --daemon-url <url>   Open Design daemon HTTP base.`);
+  --daemon-url <url>   Vision Design daemon HTTP base.`);
 }
 
 async function runAutomation(args) {

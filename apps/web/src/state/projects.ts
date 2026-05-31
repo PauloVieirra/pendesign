@@ -51,6 +51,13 @@ export async function getProject(id: string): Promise<Project | null> {
   }
 }
 
+// Latest error message captured from a failed POST /api/projects. App.tsx
+// reads this after a null return so the failure surfaces to the user with
+// the daemon's reason (DESIGN_SYSTEM_NOT_PUBLISHED, invalid id, etc.)
+// instead of disappearing silently — which read as "create button is
+// broken" to the user.
+export let lastCreateProjectError: string | null = null;
+
 export async function createProject(input: {
   name: string;
   skillId: string | null;
@@ -76,9 +83,10 @@ export async function createProject(input: {
     failed: Array<{ name: string; reason: string }>;
   };
 } | null> {
+  lastCreateProjectError = null;
   try {
     // `randomUUID` falls back to `crypto.getRandomValues` / `Math.random`
-    // when `crypto.randomUUID` is unavailable. Open Design served over
+    // when `crypto.randomUUID` is unavailable. Vision Design served over
     // plain HTTP on a LAN IP (Docker / unRAID self-hosting) is a
     // non-secure context, where `crypto.randomUUID` is undefined and
     // calling it directly throws — the surrounding try/catch then turns
@@ -89,7 +97,17 @@ export async function createProject(input: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...input }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      try {
+        const body = await resp.json() as { error?: { code?: string; message?: string } };
+        lastCreateProjectError = body?.error?.message
+          ?? body?.error?.code
+          ?? `HTTP ${resp.status}`;
+      } catch {
+        lastCreateProjectError = `HTTP ${resp.status}`;
+      }
+      return null;
+    }
     return (await resp.json()) as {
       project: Project;
       conversationId: string;
@@ -99,7 +117,8 @@ export async function createProject(input: {
         failed: Array<{ name: string; reason: string }>;
       };
     };
-  } catch {
+  } catch (err: any) {
+    lastCreateProjectError = String(err?.message ?? err ?? 'unknown error');
     return null;
   }
 }

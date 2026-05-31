@@ -302,6 +302,12 @@ export function NewProjectPanel({
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [tabScroll, setTabScroll] = useState({ left: false, right: false });
   const [name, setName] = useState('');
+  // Project stack — three lanes mapped to the three rendering models the
+  // canvas supports. 'html' is the legacy static path; 'spa-single-file'
+  // copies a one-file React+Babel-CDN template ideal for the snapshot
+  // edit flow; 'react-vite' extracts a multi-file Vite project and runs
+  // an install. Only meaningful on the prototype/other tabs.
+  const [projectStack, setProjectStack] = useState<'html' | 'spa-single-file' | 'react-vite'>('html');
   // Design-system selection is now an *array* internally so the same
   // component can drive both single-select and multi-select modes without
   // duplicating state. Single-select coerces to length 0/1.
@@ -796,6 +802,9 @@ export function NewProjectPanel({
           metadata: {
             ...metadata,
             nameSource: trimmedName ? 'user' : 'generated',
+            ...((tab === 'prototype' || tab === 'other') && projectStack !== 'html'
+              ? { stack: projectStack }
+              : {}),
           },
           requestId,
           docs: docs.length > 0 ? docs : undefined,
@@ -900,6 +909,41 @@ export function NewProjectPanel({
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+        ) : null}
+
+        {step === 1 && (tab === 'prototype' || tab === 'other') ? (
+          <div className="newproj-stack" role="radiogroup" aria-label="Project stack">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={projectStack === 'html'}
+              className={`newproj-stack__option${projectStack === 'html' ? ' newproj-stack__option--active' : ''}`}
+              onClick={() => setProjectStack('html')}
+            >
+              <span className="newproj-stack__title">Static HTML</span>
+              <span className="newproj-stack__hint">All markup lives in the source file. Drag &amp; drop persists naturally.</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={projectStack === 'spa-single-file'}
+              className={`newproj-stack__option${projectStack === 'spa-single-file' ? ' newproj-stack__option--active' : ''}`}
+              onClick={() => setProjectStack('spa-single-file')}
+            >
+              <span className="newproj-stack__title">SPA single-file</span>
+              <span className="newproj-stack__hint">One HTML file with React + Babel via CDN. The visual editor snapshot-replaces the body when you reorder.</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={projectStack === 'react-vite'}
+              className={`newproj-stack__option${projectStack === 'react-vite' ? ' newproj-stack__option--active' : ''}`}
+              onClick={() => setProjectStack('react-vite')}
+            >
+              <span className="newproj-stack__title">React (Vite)</span>
+              <span className="newproj-stack__hint">Vite + React + TypeScript. We&apos;ll install dependencies after creating.</span>
+            </button>
+          </div>
         ) : null}
 
         {step === 1 && showDesignSystemPicker ? (
@@ -2431,9 +2475,11 @@ function DesignSystemPicker({
                     avatar={<DesignSystemAvatar system={d} />}
                     title={d.title}
                     badge={
-                      d.id === defaultDesignSystemId
-                        ? t('newproj.dsBadgeDefault')
-                        : undefined
+                      d.status === 'draft'
+                        ? 'draft'
+                        : d.id === defaultDesignSystemId
+                          ? t('newproj.dsBadgeDefault')
+                          : undefined
                     }
                     subtitle={d.summary || d.category || ''}
                   />
@@ -2495,7 +2541,13 @@ function DsPickerItem({
       <span className="ds-picker-item-text">
         <span className="ds-picker-item-title">
           {title}
-          {badge ? <span className="ds-picker-item-badge">{badge}</span> : null}
+          {badge ? (
+            <span
+              className={`ds-picker-item-badge${badge === 'draft' ? ' ds-picker-item-badge--draft' : ''}`}
+            >
+              {badge}
+            </span>
+          ) : null}
         </span>
         <span className="ds-picker-item-sub">{subtitle}</span>
       </span>

@@ -372,7 +372,7 @@ const entryFromMarketplace = (
   const title = asString(rawEntry.title) ?? titleize(id.split('/').at(-1) ?? id);
   const description =
     asString(rawEntry.description) ??
-    'Agent-native Open Design workflow packaged as a portable plugin.';
+    'Agent-native Vision Design workflow packaged as a portable plugin.';
   const tags = asStringArray(rawEntry.tags);
   const capabilities = asStringArray(rawEntry.capabilitiesSummary);
   const version = asString(rawEntry.version) ?? '0.1.0';
@@ -493,7 +493,7 @@ const officialEntryFromManifest = (manifestPath: string): PublicPluginEntry | un
   const title = asString(manifest?.title) ?? titleize(pluginName);
   const description =
     asString(manifest?.description) ??
-    'First-party Open Design workflow packaged as a portable plugin.';
+    'First-party Vision Design workflow packaged as a portable plugin.';
   const detailHref = detailHrefFor(id);
   const mode = asString(od?.mode);
   const taskKind = asString(od?.taskKind);

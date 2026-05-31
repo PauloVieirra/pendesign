@@ -43,16 +43,20 @@ export type Route =
        */
       conversationId?: string | null;
       fileName: string | null;
+      /** When present, the Design System modal opens on load. */
+      ds?: 'open';
     }
   | { kind: 'marketplace' }
   | { kind: 'marketplace-detail'; pluginId: string };
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   if (parts.length === 0) return { kind: 'home', view: 'home' };
   if (parts[0] === 'projects') {
     if (parts[1]) {
       const projectId = decodeURIComponent(parts[1]);
+      const ds = search?.get('ds') === 'open' ? ('open' as const) : undefined;
       // /projects/:id/conversations/:cid[/files/...]
       if (parts[2] === 'conversations' && parts[3]) {
         const conversationId = decodeURIComponent(parts[3]);
@@ -62,9 +66,10 @@ export function parseRoute(pathname: string): Route {
             projectId,
             conversationId,
             fileName: decodeURIComponent(parts.slice(5).join('/')),
+            ...(ds ? { ds } : {}),
           };
         }
-        return { kind: 'project', projectId, conversationId, fileName: null };
+        return { kind: 'project', projectId, conversationId, fileName: null, ...(ds ? { ds } : {}) };
       }
       // /projects/:id/files/...
       if (parts[2] === 'files' && parts[3]) {
@@ -73,9 +78,10 @@ export function parseRoute(pathname: string): Route {
           projectId,
           conversationId: null,
           fileName: decodeURIComponent(parts.slice(3).join('/')),
+          ...(ds ? { ds } : {}),
         };
       }
-      return { kind: 'project', projectId, conversationId: null, fileName: null };
+      return { kind: 'project', projectId, conversationId: null, fileName: null, ...(ds ? { ds } : {}) };
     }
     return { kind: 'home', view: 'projects' };
   }
@@ -136,13 +142,14 @@ export function buildPath(route: Route): string {
   const file = route.fileName
     ? route.fileName.split('/').map((s) => encodeURIComponent(s)).join('/')
     : null;
+  const dsSuffix = route.ds === 'open' ? '?ds=open' : '';
   if (route.conversationId) {
     const cid = encodeURIComponent(route.conversationId);
     return file
-      ? `/projects/${id}/conversations/${cid}/files/${file}`
-      : `/projects/${id}/conversations/${cid}`;
+      ? `/projects/${id}/conversations/${cid}/files/${file}${dsSuffix}`
+      : `/projects/${id}/conversations/${cid}${dsSuffix}`;
   }
-  return file ? `/projects/${id}/files/${file}` : `/projects/${id}`;
+  return file ? `/projects/${id}/files/${file}${dsSuffix}` : `/projects/${id}${dsSuffix}`;
 }
 
 // Centralized navigation. Components call this instead of mutating
@@ -150,7 +157,7 @@ export function buildPath(route: Route): string {
 // `useRoute()` subscriber via a custom event.
 export function navigate(route: Route, opts: { replace?: boolean } = {}): void {
   const target = buildPath(route);
-  const current = window.location.pathname;
+  const current = window.location.pathname + window.location.search;
   if (target === current) return;
   if (opts.replace) {
     window.history.replaceState(null, '', target);

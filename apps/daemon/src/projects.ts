@@ -100,6 +100,123 @@ export async function detectEntryFile(dir: string): Promise<string | null> {
   return null;
 }
 
+// Builds a hierarchical tree for the Explorer sidebar. Unlike listFiles
+// (which returns a flat list filtered by skipDirs), this preserves
+// directory structure and lets the caller opt back into showing build
+// folders. Directories are sorted before files at every level, and each
+// level is alphabetical so two reloads paint the same way.
+export async function listProjectTree(
+  projectsRoot,
+  projectId,
+  opts: {
+    metadata?: any;
+    root?: string;
+    showHidden?: boolean;
+    showBuildDirs?: boolean;
+    maxDepth?: number;
+  } = {},
+) {
+  const metadata = opts.metadata;
+  const projectRoot = resolveProjectDir(projectsRoot, projectId, metadata);
+  let startDir = projectRoot;
+  let startRel = '';
+  if (typeof opts.root === 'string' && opts.root.length > 0) {
+    const cleaned = opts.root.replace(/^\/+|\/+$/g, '');
+    if (cleaned) {
+      startDir = path.join(projectRoot, cleaned);
+      startRel = cleaned;
+    }
+  }
+  const showHidden = !!opts.showHidden;
+  const showBuildDirs = !!opts.showBuildDirs;
+  const maxDepth = Number.isInteger(opts.maxDepth) && opts.maxDepth! > 0
+    ? opts.maxDepth!
+    : Number.POSITIVE_INFINITY;
+  const nodes = await collectTreeNodes(startDir, startRel, 0, {
+    projectRoot,
+    showHidden,
+    showBuildDirs,
+    maxDepth,
+  });
+  return { root: startRel, nodes };
+}
+
+async function collectTreeNodes(
+  dir: string,
+  relDir: string,
+  depth: number,
+  ctx: { projectRoot: string; showHidden: boolean; showBuildDirs: boolean; maxDepth: number },
+) {
+  let entries: any[] = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err: any) {
+    if (err && err.code === 'ENOENT') return [];
+    throw err;
+  }
+  const out: any[] = [];
+  for (const e of entries) {
+    if (!ctx.showHidden && e.name.startsWith('.')) continue;
+    if (e.name.endsWith('.artifact.json')) continue;
+    const rel = relDir ? `${relDir}/${e.name}` : e.name;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      const isBuildDir = SKIP_DIRS.has(e.name.toLowerCase());
+      if (isBuildDir && !ctx.showBuildDirs) {
+        // Surface the directory but elide its content; the UI shows it
+        // greyed-out with a hint, and callers can re-fetch with
+        // showBuildDirs=true to expand it on demand.
+        let childCount = 0;
+        try {
+          const inner = await readdir(full);
+          childCount = inner.length;
+        } catch { /* ignore */ }
+        out.push({
+          path: rel,
+          name: e.name,
+          kind: 'dir',
+          childCount,
+        });
+        continue;
+      }
+      const children = depth + 1 < ctx.maxDepth
+        ? await collectTreeNodes(full, rel, depth + 1, ctx)
+        : undefined;
+      out.push({
+        path: rel,
+        name: e.name,
+        kind: 'dir',
+        children,
+        childCount: children ? children.length : undefined,
+      });
+      continue;
+    }
+    if (!e.isFile()) continue;
+    let size = 0;
+    let mtime = 0;
+    try {
+      const st = await stat(full);
+      size = st.size;
+      mtime = st.mtimeMs;
+    } catch { /* dangling symlink, ignore */ }
+    out.push({
+      path: rel,
+      name: e.name,
+      kind: 'file',
+      size,
+      mtime,
+      fileKind: kindFor(rel),
+      mime: mimeFor(rel),
+    });
+  }
+  // Stable order: directories first (alpha), then files (alpha).
+  out.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
 async function collectFiles(dir, relDir, out, skipDirs?: Set<string>, projectRoot = dir) {
   let entries = [];
   try {
@@ -113,7 +230,11 @@ async function collectFiles(dir, relDir, out, skipDirs?: Set<string>, projectRoo
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (skipDirs && skipDirs.has(e.name)) continue;
+      // Case-insensitive match — macOS APFS and Windows are case-insensitive
+      // by default, so a folder named "Node_Modules" is the same on-disk
+      // as "node_modules" and should be skipped too. Mirrors the symmetric
+      // check in collectArchiveEntries so the file panel and archive agree.
+      if (skipDirs && skipDirs.has(e.name.toLowerCase())) continue;
       await collectFiles(full, rel, out, skipDirs, projectRoot);
       continue;
     }
@@ -338,6 +459,11 @@ async function collectArchiveEntries(dir, relDir, out) {
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
+      // Skip install/build dirs that npm/yarn/etc. regenerate locally.
+      // Case-insensitive match — macOS APFS and Windows are case-insensitive
+      // by default, so a folder named "Node_Modules" is the same on-disk
+      // as "node_modules" and should be skipped too.
+      if (SKIP_DIRS.has(e.name.toLowerCase())) continue;
       await collectArchiveEntries(full, rel, out);
       continue;
     }
@@ -395,7 +521,7 @@ function buildDesignManifest(entries, projectLabel) {
   const screenFiles = screenHtmlFiles.length > 0 ? screenHtmlFiles : [entryFile];
   return JSON.stringify({
     schema: 'open-design.design-manifest.v1',
-    title: projectLabel || 'Open Design project',
+    title: projectLabel || 'Vision Design project',
     entryFile,
     sourceFiles: {
       all: files,
@@ -484,7 +610,7 @@ function buildDesignHandoff(entries, projectLabel) {
     files.some((name) => /(screens?|pages?|components?|app|src)\//i.test(name));
   const list = (items) => items.length > 0 ? items.map((name) => `- \`${name}\``).join('\n') : '- None detected';
 
-  return `# ${projectLabel || 'Open Design project'} implementation handoff
+  return `# ${projectLabel || 'Vision Design project'} implementation handoff
 
 This archive is the source of truth for turning the design into production code. Start from \`${entryFile}\`, then preserve the visual system, responsive behavior, and interactions found in the exported files.
 
@@ -492,7 +618,7 @@ This archive is the source of truth for turning the design into production code.
 - Build production UI from the exported design, not a loose reinterpretation.
 - Preserve typography scale, spacing rhythm, color tokens, border radii, shadows, motion timing, and component states.
 - Replace static placeholders only when the target app has real data or functional equivalents.
-- Keep generated product UI free of Open Design chrome, preview labels, or design-process annotations.
+- Keep generated product UI free of Vision Design chrome, preview labels, or design-process annotations.
 - Treat this handoff as a visual contract: if implementation choices conflict, match the exported pixels and behavior first, then refactor internals.
 
 ## Source map
@@ -523,7 +649,7 @@ For responsive web exports, treat these as a modern breakpoint system for one ad
 - Preserve real copy, labels, and data shown in the export. Do not replace specific text with generic marketing filler.
 - Preserve interactive affordances: hover, focus, pressed, disabled, loading, validation, copy/share, tab/accordion, modal/sheet, and keyboard states where present.
 - Preserve accessibility semantics when converting: headings stay hierarchical, controls remain buttons/links/inputs, focus states stay visible.
-- Do not keep prototype-only annotations, frame labels, or Open Design chrome in the production UI.
+- Do not keep prototype-only annotations, frame labels, or Vision Design chrome in the production UI.
 
 ## CJX-ready UX contract
 - Use \`${DESIGN_MANIFEST_FILENAME}\` as the machine-readable map for screens, app modules, OS widgets, landing pages, tokens, interactions, and viewport checks.
@@ -725,8 +851,40 @@ function parseManifest(raw) {
 
 export async function deleteProjectFile(projectsRoot, projectId, name, metadata?) {
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  await unlink(file);
+  const target = await resolveSafeReal(dir, name);
+  const info = await stat(target);
+  if (info.isDirectory()) {
+    // Recursive delete for the Explorer "Delete folder" action. The
+    // recursive flag is the only way Node will remove a non-empty directory,
+    // and `force` swallows ENOENT if a race already cleaned it up.
+    await rm(target, { recursive: true, force: true });
+    return;
+  }
+  await unlink(target);
+}
+
+// Creates a directory anywhere inside the project. Used by the Explorer's
+// "New folder" action. Path is sanitised the same way file writes are, so
+// nested paths like `src/components/ui` work and `..` segments are rejected.
+export async function createProjectFolder(projectsRoot, projectId, name, metadata?) {
+  const dir = await ensureProject(projectsRoot, projectId, metadata);
+  const safeName = sanitizePath(name);
+  if (!safeName) {
+    const err = new Error('folder name is required');
+    err.code = 'EINVAL';
+    throw err;
+  }
+  const target = path.join(dir, safeName);
+  // The "real path" resolver guards against symlink escapes by following the
+  // chain — pass it the segment that is sure to already exist (the project
+  // root) and join the new segment afterwards. We cannot resolveSafeReal()
+  // directly because the target does not exist yet.
+  await mkdir(target, { recursive: true });
+  return {
+    path: safeName,
+    name: path.basename(safeName),
+    kind: 'dir' as const,
+  };
 }
 
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {
@@ -745,13 +903,32 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
   }
   const source = await resolveSafeReal(dir, oldName);
   const sourceStat = await stat(source);
-  if (!sourceStat.isFile()) {
-    const err = new Error('source is not a regular file');
-    err.code = 'EISDIR';
+  // Allow directory renames too — the Explorer's rename / move-between-
+  // folders gesture is the same call as file rename. We special-case the
+  // result shape so the caller can tell file vs dir.
+  const isDirectory = sourceStat.isDirectory();
+  if (!sourceStat.isFile() && !isDirectory) {
+    const err = new Error('source is neither a file nor a directory');
+    err.code = 'ENOTSUP';
     throw err;
   }
 
   if (oldName === newName) {
+    if (isDirectory) {
+      return {
+        file: {
+          name: oldName,
+          path: oldName,
+          type: 'dir' as const,
+          size: 0,
+          mtime: sourceStat.mtimeMs,
+          kind: 'binary' as const,
+          mime: 'inode/directory',
+        },
+        oldName,
+        newName: oldName,
+      };
+    }
     const manifest = await readManifestForPath(dir, oldName);
     return {
       file: {
@@ -781,6 +958,28 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     } catch (err) {
       if (!err || err.code !== 'ENOENT') throw err;
     }
+  }
+
+  if (isDirectory) {
+    // Directories can't be hardlinked, so the file rename helper (which
+    // uses link+unlink as a no-overwrite shim) won't work. A plain rename
+    // is safe because we already verified the destination is empty.
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await rename(source, targetPath);
+    const st = await stat(targetPath);
+    return {
+      file: {
+        name: newName,
+        path: newName,
+        type: 'dir' as const,
+        size: 0,
+        mtime: st.mtimeMs,
+        kind: 'binary' as const,
+        mime: 'inode/directory',
+      },
+      oldName,
+      newName,
+    };
   }
 
   const manifestRename = await prepareArtifactManifestRename(dir, oldName, newName);

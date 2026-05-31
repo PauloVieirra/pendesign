@@ -1,0 +1,758 @@
+/* ============================================================
+   Lean Inception — dark theme stylesheet
+   All colors must use CSS vars + color-mix; no hardcoded hex/rgb.
+   ============================================================ */
+
+/* ---- Canvas shell ---- */
+.li-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Force dark surface independent of app theme. */
+  background: var(--text-strong);
+  color: var(--bg-panel);
+  /* Establish a local dark color context so children inherit it. */
+  color-scheme: dark;
+}
+
+/* ---- Board ---- */
+.li-board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* react-zoom-pan-pinch wrappers — only the OUTER wrapper needs to fill the
+   viewport. We do NOT target .react-transform-component with a higher
+   specificity selector because it shares its DOM node with .li-board__grid
+   and would clobber our flex-row rules. */
+.li-board .react-transform-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* This class is applied alongside react-zoom-pan-pinch's hashed `.content`
+   class (which defaults to `display: flex; flex-wrap: wrap`). Our overrides
+   force a single horizontal row that can overflow horizontally. */
+.li-board__grid {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  width: max-content !important;
+  min-width: 100%;
+  gap: 24px;
+  padding: 24px 48px 32px 48px;
+  align-items: flex-start;
+}
+
+/* Gestalt continuity: right-edge fade hints that more columns exist when
+   horizontal scroll/zoom-out can reveal them. Sits above the board, below
+   the action icons. */
+.li-board::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 72px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--text-strong) 0%, transparent) 0%,
+    var(--text-strong) 100%
+  );
+  z-index: 10;
+}
+
+/* ---- Column ---- */
+.li-column {
+  flex: 0 0 280px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.li-column__label {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: var(--bg-panel);
+  margin: 0 0 0 2px;
+  letter-spacing: -0.005em;
+}
+
+.li-column__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 64vh;
+  background: color-mix(in srgb, var(--bg-panel) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.li-column__empty {
+  min-height: 100%;
+}
+
+/* ---- Card ---- */
+/* All `.li-*` button rules below are prefixed with `.li-canvas` so they win
+   over the global `button:hover:not(:disabled)` rule in index.css
+   (specificity 0,0,2,1) which would otherwise paint hovers with
+   `var(--bg-subtle)` — almost-black in dark mode. */
+.li-canvas .li-card {
+  width: 100%;
+  background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+              border-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+              transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  animation: li-card-enter 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-card:hover {
+  background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 24%, transparent);
+}
+
+.li-card__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--bg-panel);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.li-card__content {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--bg-panel) 78%, transparent);
+}
+
+.li-card__meta {
+  margin: 4px 0 0 0;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  font-size: 0.6875rem;
+  color: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+}
+
+.li-card__line {
+  color: color-mix(in srgb, var(--bg-panel) 40%, transparent);
+}
+
+@keyframes li-card-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Skeleton (loading) ---- */
+.li-skeleton {
+  height: 76px;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-panel) 6%, transparent) 0%,
+    color-mix(in srgb, var(--bg-panel) 12%, transparent) 50%,
+    color-mix(in srgb, var(--bg-panel) 6%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: li-skeleton-shimmer 1400ms ease-in-out infinite;
+}
+
+.li-skeleton--short {
+  height: 52px;
+}
+
+@keyframes li-skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- Status (kept for contract compat, not rendered) ---- */
+.li-status--complete      { color: var(--green); }
+.li-status--partial       { color: var(--amber); }
+.li-status--insufficient  { color: var(--amber); }
+.li-status--not_identified { color: color-mix(in srgb, var(--bg-panel) 40%, transparent); }
+
+/* ---- Drop bar ---- */
+.li-canvas .li-dropbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px 24px;
+  background: color-mix(in srgb, var(--bg-panel) 3%, transparent);
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--bg-panel) 6%, transparent);
+  cursor: pointer;
+  color: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  transition: background-color 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-dropbar:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-panel) 6%, transparent);
+}
+
+.li-canvas .li-dropbar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.li-dropbar__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+.li-dropbar__sub {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.li-dropbar__input {
+  display: none;
+}
+
+/* ---- Top-right group (readiness badge + action icons) ----
+   Sits in normal flow as the FIRST child of .li-canvas (flex column) so it
+   occupies its own vertical band at the top. This guarantees breathing room
+   between the controls and the column headers below, without depending on
+   the .li-board__grid padding-top which can be defeated by
+   react-zoom-pan-pinch's inner transform. */
+.li-top-right {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px;
+  flex-shrink: 0;
+}
+
+.li-actions {
+  /* no longer positioned absolutely — sits inside .li-top-right */
+  position: relative;
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- Readiness indicator ---- */
+.li-readiness {
+  position: relative;
+}
+
+.li-canvas .li-readiness__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  color: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-readiness__pill:hover {
+  background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 20%, transparent);
+}
+
+.li-readiness__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.li-readiness__dot--ready        { background: var(--green); }
+.li-readiness__dot--partial      { background: var(--amber); }
+.li-readiness__dot--insufficient { background: var(--red); }
+
+.li-readiness__label {
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.li-readiness__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 280px;
+  background: color-mix(in srgb, var(--text-strong) 90%, var(--bg-panel) 10%);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  color: var(--bg-panel);
+  padding: 12px 14px;
+}
+
+.li-readiness__popover-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  margin-bottom: 8px;
+}
+
+.li-readiness__popover-body {
+  margin: 0 0 8px 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+}
+
+.li-readiness__list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+}
+
+.li-readiness__list-item {
+  padding: 2px 0;
+}
+
+.li-readiness__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+}
+
+.li-canvas .li-readiness__cta {
+  background: var(--accent);
+  color: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-readiness__cta:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.li-canvas .li-readiness__cta:disabled {
+  background: color-mix(in srgb, var(--bg-panel) 18%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 18%, transparent);
+  color: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+  cursor: not-allowed;
+}
+
+.li-canvas .li-actions__btn {
+  background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
+  color: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-actions__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-panel) 14%, transparent);
+  border-color: color-mix(in srgb, var(--bg-panel) 20%, transparent);
+}
+
+.li-actions__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.li-actions__btn--danger {
+  color: var(--red);
+}
+
+.li-actions__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 240px;
+  background: color-mix(in srgb, var(--text-strong) 90%, var(--bg-panel) 10%);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  color: var(--bg-panel);
+  padding: 8px 0;
+}
+
+/* ---- Column settings ---- */
+.li-column-settings__title {
+  padding: 8px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+.li-column-settings__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.li-column-settings__item {
+  padding: 0;
+}
+
+.li-column-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.li-column-settings__row:hover {
+  background: color-mix(in srgb, var(--bg-panel) 6%, transparent);
+}
+
+/* ---- Documents list (dark override) ---- */
+.li-documents-list {
+  padding: 4px 0;
+}
+
+.li-documents-list__empty {
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+}
+
+.li-documents-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  color: var(--bg-panel);
+}
+
+.li-documents-list__item:hover {
+  background: color-mix(in srgb, var(--bg-panel) 6%, transparent);
+}
+
+.li-documents-list__icon {
+  color: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+}
+
+.li-documents-list__filename {
+  color: var(--bg-panel);
+}
+
+.li-documents-list__count {
+  color: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+}
+
+.li-documents-list__remove {
+  background: transparent;
+  border: none;
+  color: color-mix(in srgb, var(--bg-panel) 50%, transparent);
+  cursor: pointer;
+}
+
+.li-documents-list__remove:hover:not(:disabled) {
+  color: var(--red);
+}
+
+/* ---- Detail drawer ---- */
+.li-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in srgb, black 30%, transparent);
+}
+
+.li-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 420px;
+  z-index: 50;
+  background: color-mix(in srgb, var(--text-strong) 92%, var(--bg-panel) 8%);
+  color: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: li-drawer-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes li-drawer-enter {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.li-drawer__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+}
+
+.li-drawer__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--bg-panel);
+  margin: 0;
+}
+
+.li-drawer__close {
+  background: transparent;
+  color: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  border: none;
+  cursor: pointer;
+}
+
+.li-drawer__close:hover {
+  color: var(--bg-panel);
+}
+
+.li-drawer__body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+}
+
+.li-drawer__section {
+  margin-top: 16px;
+}
+
+.li-drawer__section-title {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  margin-bottom: 8px;
+}
+
+.li-drawer__quote {
+  border-left: 2px solid color-mix(in srgb, var(--bg-panel) 30%, transparent);
+  padding-left: 12px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  margin: 0;
+}
+
+.li-drawer__meta {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--bg-panel) 55%, transparent);
+}
+
+/* ---- Drawer footer + delete confirmation ---- */
+.li-drawer__footer {
+  border-top: 1px solid color-mix(in srgb, var(--bg-panel) 12%, transparent);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.li-canvas .li-drawer__delete {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 50%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.li-canvas .li-drawer__delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.li-drawer__confirm {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.li-drawer__confirm-msg {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+}
+
+.li-drawer__confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.li-canvas .li-drawer__confirm-cancel {
+  background: transparent;
+  color: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 22%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.li-canvas .li-drawer__confirm-cancel:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-panel) 8%, transparent);
+}
+
+.li-canvas .li-drawer__confirm-delete {
+  background: var(--red);
+  color: var(--bg-panel);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.li-canvas .li-drawer__confirm-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---- Confirm modal ---- */
+.li-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, black 40%, transparent);
+}
+
+.li-modal {
+  background: color-mix(in srgb, var(--text-strong) 92%, var(--bg-panel) 8%);
+  color: var(--bg-panel);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+}
+
+.li-modal__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--bg-panel);
+}
+
+.li-modal__desc {
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  margin: 0 0 16px 0;
+}
+
+.li-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.li-modal__cancel {
+  background: transparent;
+  color: var(--bg-panel);
+  border: 1px solid color-mix(in srgb, var(--bg-panel) 20%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.li-modal__confirm {
+  background: var(--red);
+  color: var(--bg-panel);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+/* ---- Loading / error states ---- */
+.li-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  background: color-mix(in srgb, var(--text-strong) 95%, var(--bg) 5%);
+}
+
+.li-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--bg-panel);
+  background: color-mix(in srgb, var(--text-strong) 95%, var(--bg) 5%);
+}
+
+.li-error__msg {
+  color: var(--red);
+  margin: 0;
+}
+
+.li-error__retry {
+  background: var(--bg-panel);
+  color: var(--text-strong);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+/* ---- Error toast ---- */
+.li-toast {
+  position: absolute;
+  bottom: 90px;
+  right: 16px;
+  max-width: 360px;
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  box-shadow: var(--shadow-md);
+}

@@ -9,6 +9,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { migrateCritique } from './critique/persistence.js';
+import { migrateLeanInception } from './lean-inception/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 
@@ -293,6 +294,7 @@ function migrate(db: SqliteDb): void {
   `);
 
   migrateCritique(db);
+  migrateLeanInception(db);
   migrateMediaTasks(db);
   migratePlugins(db);
 }
@@ -420,6 +422,17 @@ export function deleteProjectDoc(
   const result = db
     .prepare(`DELETE FROM project_docs WHERE project_id = ? AND doc_id = ?`)
     .run(projectId, docId);
+  return Number(result.changes ?? 0);
+}
+
+export function deleteProjectDocsByName(
+  db: SqliteDb,
+  projectId: string,
+  docName: string,
+): number {
+  const result = db
+    .prepare(`DELETE FROM project_docs WHERE project_id = ? AND doc_name = ?`)
+    .run(projectId, docName);
   return Number(result.changes ?? 0);
 }
 

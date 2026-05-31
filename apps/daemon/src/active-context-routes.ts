@@ -10,7 +10,7 @@ export function registerActiveContextRoutes(app: Express, ctx: RegisterActiveCon
   const { getProject } = ctx.projectStore;
   const getResolvedPort = () => resolvedPortRef.current;
 
-  // Soft "what is the user looking at right now in Open Design?" channel. The
+  // Soft "what is the user looking at right now in Vision Design?" channel. The
   // web UI POSTs the current project + file on every route change; the MCP
   // surface reads it so a coding agent in another repo can resolve "the design
   // I have open" without the user typing the project id. In-memory only -

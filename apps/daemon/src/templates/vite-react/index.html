@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>React app</title>
+    <!-- Open Design edit bridge. Served from public/edit-bridge.js by Vite
+         so the iframe loads it first-party. The script self-installs on
+         the document and waits for the host to flip Edit mode on via
+         postMessage; harmless when running standalone outside of the
+         Open Design canvas. -->
+    <link rel="stylesheet" href="/edit-bridge.css" />
+    <script src="/edit-bridge.js" defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

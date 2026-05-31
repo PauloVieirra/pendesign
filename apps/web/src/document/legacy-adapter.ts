@@ -14,7 +14,7 @@
 
 import type { ODDocumentOp, ODStyleDeclaration } from '@open-design/contracts';
 
-import type { ManualEditPatch, ManualEditStyles } from '../edit-mode/types';
+import type { ManualEditPatch, ManualEditStyles } from '@open-design/edit-bridge';
 import { createDocumentStore } from './store';
 
 export interface ManualEditPatchResult {

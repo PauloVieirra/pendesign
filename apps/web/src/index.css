@@ -1,8 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
 @import './styles/design-system-flow.css';
+@import './components/lean-inception/lean-inception.css';
 
 /* ============================================================
-   Open Design — neutral product workspace
+   Vision Design — neutral product workspace
    ============================================================ */
 :root {
   /* Surface palette — neutral app chrome that does not bias generated artifacts.
@@ -24,7 +25,7 @@
   --text-soft: #989590;
   --text-faint: #b3b0a8;
 
-  /* Accent — Open Design action color for app chrome only. */
+  /* Accent — Vision Design action color for app chrome only. */
   --accent: #c96442;
   --accent-strong: #b45a3b;
   --accent-soft: #f5d8cb;
@@ -520,6 +521,39 @@ code {
 }
 .workspace-tabs-chrome .workspace-tabs-traffic {
   margin-right: calc(var(--app-chrome-traffic-margin) + 8px);
+}
+
+/* Vision Design brand button — leftmost in the top chrome, always visible,
+   click navigates to home. Marked as non-draggable so the title bar drag
+   gesture (-webkit-app-region: drag on parent) still works on the rest of
+   the bar but not on this clickable button. */
+.workspace-tabs-chrome .workspace-tabs-brand {
+  -webkit-app-region: no-drag;
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.workspace-tabs-chrome .workspace-tabs-brand:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.workspace-tabs-chrome .workspace-tabs-brand__img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  pointer-events: none;
 }
 .workspace-tabs-new-btn {
   width: 24px;
@@ -3205,6 +3239,21 @@ a.avatar-item:visited {
 }
 .settings-nav-item small {
   display: none;
+}
+/* Sign-out variant: separated from the section list with a hairline and
+   tinted to read as a destructive action without screaming. */
+.settings-nav-item--danger {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: #dc2626;
+}
+.settings-nav-item--danger svg {
+  opacity: 0.85;
+}
+.settings-nav-item--danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
 }
 .settings-content {
   min-width: 0;
@@ -6972,6 +7021,12 @@ a.avatar-item:visited {
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 4px;
+  text-transform: uppercase;
+}
+.ds-picker-item-badge--draft {
+  color: rgb(168, 95, 30);
+  border-color: rgba(168, 95, 30, 0.4);
+  background: rgba(245, 158, 11, 0.08);
 }
 .ds-picker-item-sub {
   font-size: 11px;
@@ -20618,7 +20673,7 @@ body.desktop-pet-shell .pet-task-item {
 /* Manual edit mode */
 .manual-edit-workspace {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) 280px;
+  grid-template-columns: minmax(420px, 1fr) 300px;
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -20657,13 +20712,35 @@ body.desktop-pet-shell .pet-task-item {
   color: var(--text);
   background: var(--bg-subtle);
 }
-.cc-section { display: flex; flex-direction: column; gap: 6px; }
-.cc-section-inactive { opacity: 0.58; }
-.cc-section-head {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-  color: var(--text-muted); padding: 4px 0 2px;
+.cc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
-.cc-section-body { display: flex; flex-direction: column; gap: 4px; }
+.cc-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+.cc-section-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text);
+  padding: 0 0 2px;
+  text-transform: none;
+}
+.cc-section-body { display: flex; flex-direction: column; gap: 6px; }
+.cc-sub { display: flex; flex-direction: column; gap: 4px; }
+.cc-section-sub {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 0 2px;
+}
 .cc-section-hint {
   margin: -1px 0 2px;
   color: var(--text-muted);
@@ -26495,9 +26572,9 @@ body.desktop-pet-shell .pet-task-item {
 .ds-var-picker__list li button {
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -26523,74 +26600,1223 @@ body.desktop-pet-shell .pet-task-item {
   border-radius: 3px;
   flex: 0 0 auto;
 }
-.ds-var-picker__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
+.ds-var-picker__label { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 1px; color: var(--text, inherit); }
+.ds-var-picker__label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-var-picker__path { font-size: 10px; color: var(--text-faint, #9ca3af); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-var-picker__empty { padding: 12px; color: var(--text-muted, #6a6a6a); font-size: 12px; }
 
-/* ---- DS Manager top bar (close + title) ------------------------- */
-.ds-mgr-wrapper {
+/* ============================================================================
+   Design System Variables Modal
+   ============================================================================ */
+.ds-modal__backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  animation: ds-modal-backdrop-in 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes ds-modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ds-modal {
+  width: min(1120px, calc(100vw - 64px));
+  height: min(680px, calc(100vh - 96px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: ds-modal-pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes ds-modal-pop-in {
+  from { transform: scale(0.96); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.ds-modal.is-max {
+  width: calc(100vw - 16px);
+  height: calc(100vh - 16px);
+}
+
+.ds-modal-body { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ds-modal__header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  height: 48px;
+}
+.ds-modal__title { display: inline-flex; align-items: center; gap: 6px; }
+.ds-modal__title h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.ds-modal__icon-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: transparent; border: 0; color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ds-modal__icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.ds-modal__actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.ds-modal__placeholder-search { flex: 1; }
+
+.ds-modal__body {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  flex: 1; min-height: 0;
+}
+.ds-modal__body.is-sidebar-collapsed { grid-template-columns: 0 1fr; }
+.ds-modal__main { overflow: auto; min-width: 0; }
+
+@media (max-width: 768px) {
+  .ds-modal__backdrop { background: transparent; }
+  .ds-modal {
+    width: 100vw; height: 100vh; border-radius: 0; border: 0;
+  }
+  .ds-modal__body { grid-template-columns: 1fr; }
+}
+
+/* ---- Sidebar (Collections + Groups) ------------------------------ */
+.ds-sidebar {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px 0;
+  font-size: 12px;
+}
+.ds-sidebar__section { padding: 6px 0 12px; }
+.ds-sidebar__section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: none;
+}
+.ds-sidebar__section + .ds-sidebar__section { border-top: 1px solid var(--border-soft); }
+.ds-sidebar__row {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px;
+  background: transparent; border: 0; color: var(--text);
+  font-size: 12px; cursor: pointer;
+}
+.ds-sidebar__row:hover { background: var(--bg-subtle); }
+.ds-sidebar__row.is-active { background: var(--accent-tint); color: var(--text-strong); }
+.ds-sidebar__row-count { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.ds-sidebar__row-input {
+  display: block; width: calc(100% - 24px); margin: 4px 12px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 8px; font-size: 12px; color: var(--text);
+}
+
+/* ---- SearchAndFilter -------------------------------------------- */
+.ds-search-filter { display: inline-flex; align-items: center; gap: 4px; flex: 1; max-width: 360px; position: relative; }
+.ds-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: 1; min-width: 0; height: 28px;
+  padding: 0 8px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-muted);
+}
+.ds-search input { background: transparent; border: 0; outline: 0; flex: 1; color: var(--text); font-size: 12px; min-width: 0; }
+.ds-search input::placeholder { color: var(--text-faint); }
+.ds-filter-btn {
+  position: relative; width: 28px; height: 28px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent; color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ds-filter-btn:hover, .ds-filter-btn.has-active { border-color: var(--border); color: var(--text); }
+.ds-filter-btn__badge {
+  position: absolute; top: -2px; right: -2px;
+  background: var(--accent); color: #fff;
+  font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 8px;
+}
+.ds-filter-popover {
+  position: absolute; top: 36px; right: 0; z-index: 5;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px; display: flex; flex-direction: column; gap: 4px;
+  min-width: 140px; box-shadow: var(--shadow-md);
+}
+.ds-filter-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.ds-filter-chip:hover { background: var(--bg-subtle); }
+.ds-filter-chip.is-on { color: var(--text-strong); }
+
+/* ---- ModeColumnHeader + AddModeButton --------------------------- */
+.ds-col-header, .ds-add-mode { position: relative; }
+.ds-col-header__btn, .ds-add-mode__btn {
+  background: transparent; border: 0; color: var(--text-muted);
+  font-size: 12px; padding: 6px 8px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline;
+}
+.ds-col-header__btn:hover, .ds-add-mode__btn:hover { color: var(--text); }
+.ds-col-header__name { font-weight: 600; color: var(--text); }
+.ds-col-header__width { color: var(--text-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ds-col-header__popover, .ds-add-mode__popover {
+  position: absolute; top: 28px; left: 0; z-index: 6;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px; min-width: 200px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ds-col-header__field, .ds-add-mode__popover label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted); }
+.ds-col-header__field input, .ds-add-mode__popover input {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; color: var(--text); font-size: 12px;
+}
+.ds-col-header__actions, .ds-add-mode__actions { display: flex; gap: 6px; justify-content: flex-end; padding-top: 4px; border-top: 1px solid var(--border-soft); }
+.ds-col-header__actions .danger { color: var(--danger, #e54); }
+
+/* ---- CreateVariableButton --------------------------------------- */
+.ds-create-var { position: relative; padding: 8px 12px; border-top: 1px solid var(--border); }
+.ds-create-var__btn {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  background: transparent; border: 0; color: var(--text-muted); padding: 6px 8px; border-radius: 4px; cursor: pointer;
+}
+.ds-create-var__btn:hover { background: var(--bg-subtle); color: var(--text); }
+.ds-create-var__popover {
+  position: absolute; bottom: 36px; left: 12px; z-index: 6;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px; min-width: 140px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column;
+}
+.ds-create-var__item {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px;
+  background: transparent; border: 0; color: var(--text); font-size: 12px; cursor: pointer;
+}
+.ds-create-var__item:hover { background: var(--bg-subtle); }
+
+/* ---- VariablesTable + VariableRow ------------------------------- */
+.ds-table { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ds-table__head, .ds-row {
+  display: grid; grid-template-columns: var(--ds-grid);
+  align-items: center; column-gap: 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ds-table__head { background: var(--bg-subtle); position: sticky; top: 0; z-index: 1; }
+.ds-table__th { font-size: 11px; color: var(--text-muted); padding: 8px 12px; }
+.ds-table__body { flex: 1; overflow-y: auto; }
+.ds-group__head { font-size: 12px; font-weight: 600; padding: 12px 12px 6px; color: var(--text-muted); }
+.ds-row__name { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
+.ds-row__name input { background: transparent; border: 0; outline: 0; color: var(--text); font-size: 12px; flex: 1; min-width: 0; }
+.ds-cell {
+  width: 100%; height: 32px;
+  background: transparent; border: 1px solid transparent;
+  padding: 0 8px; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.ds-cell:hover { background: var(--bg-subtle); }
+.ds-cell:focus { background: var(--bg-panel); border-color: var(--accent); outline: 0; }
+.ds-cell--bool { text-align: left; cursor: pointer; }
+.ds-cell--color { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; width: 100%; height: 32px; }
+.ds-cell--color input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ds-cell__swatch {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+}
+.ds-cell__swatch:hover { border-color: var(--accent); }
+.ds-row__delete {
+  background: transparent; border: 0; color: var(--text-faint); padding: 4px; cursor: pointer; opacity: 0;
+}
+.ds-row:hover .ds-row__delete { opacity: 1; }
+.ds-table__empty { padding: 24px; text-align: center; color: var(--text-muted); }
+
+.ds-modal__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  color: var(--text-muted, #6a6a6a);
+  font-size: 13px;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * FileExplorerPanel — VS Code-style tree shown in the left side panel
+ * as a toggleable tab next to Chat. Compact rows, monospaced-feel
+ * indent, file/dir icons inline.
+ * ────────────────────────────────────────────────────────────────── */
+.explorer-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  height: 100%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
 }
-.ds-mgr-topbar {
+.explorer-panel__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
 }
-.ds-mgr-topbar__title {
+.explorer-panel__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.explorer-panel__actions {
+  display: flex;
+  gap: 4px;
+}
+.explorer-panel__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.explorer-panel__icon-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.explorer-panel__filters {
+  display: flex;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.explorer-panel__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.explorer-panel__filter input { margin: 0; }
+.explorer-panel__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+}
+.explorer-panel__placeholder {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.explorer-panel__placeholder--error { color: rgb(170, 30, 30); }
+.explorer-tree {
+  list-style: none;
   margin: 0;
+  padding: 0;
+}
+.explorer-row {
+  list-style: none;
+  margin: 0;
+}
+.explorer-row__hit {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explorer-row__hit:hover { background: var(--bg-subtle); }
+.explorer-row__hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.explorer-row__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex: 0 0 14px;
+  color: var(--text-muted);
+}
+.explorer-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: 0 0 18px;
+  color: var(--text-muted);
+}
+.explorer-row__hit--dir > .explorer-row__icon { color: var(--accent, #2563eb); }
+.explorer-row__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explorer-row__hint {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Tabs at the top of the left side panel (Chat | Files). */
+.split-chat-slot { display: flex; flex-direction: column; min-height: 0; }
+.chat-pane-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+/* The global `button:focus-visible` rule (apps/web/src/index.css ~line 204)
+   draws an offset accent-coloured outline that wraps the radius — for the
+   side-panel tabs this reads as an orange "halo" under the active tab.
+   We zero it out here and rely on the bottom border alone for affordance. */
+.chat-pane-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 120ms ease, border-color 120ms ease;
+  margin-bottom: -1px;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.chat-pane-tab:hover { color: var(--text); background: transparent !important; }
+.chat-pane-tab:focus,
+.chat-pane-tab:focus-visible,
+.chat-pane-tab:active {
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.chat-pane-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent, #2563eb) !important;
+}
+/* Ensure the body (chat or explorer) fills the remaining height. */
+.split-chat-slot > .chat-pane-tabs + * { flex: 1 1 auto; min-height: 0; }
+
+.viewer-empty--explorer-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+.viewer-empty--explorer-hint strong { font-size: 14px; color: var(--text); }
+.viewer-empty--explorer-hint span { font-size: 12px; color: var(--text-muted); max-width: 320px; text-align: center; }
+
+/* Inline edit row for new-file / new-folder / rename. */
+.explorer-row--inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+}
+.explorer-row__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 6px;
+  background: var(--bg-canvas, #fff);
+  border: 1px solid var(--accent, #2563eb);
+  border-radius: 3px;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+}
+.explorer-row__input:focus { border-color: var(--accent, #2563eb); }
+
+/* Floating context menu fired by right-click. */
+.explorer-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.12);
+  font-size: 13px;
+}
+.explorer-context-menu li { margin: 0; padding: 0; }
+.explorer-context-menu li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12.5px;
+  border-radius: 0 !important;
+}
+.explorer-context-menu li button:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.explorer-context-menu__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+.explorer-context-menu__danger { color: rgb(180, 50, 50) !important; }
+.explorer-context-menu__danger:hover { background: rgba(180, 50, 50, 0.08) !important; }
+
+/* New project — HTML / React stack radio shown above the design system
+ * picker on the prototype / other tabs. */
+.newproj-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.newproj-stack__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.newproj-stack__option:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.newproj-stack__option--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-panel));
+}
+.newproj-stack__title { font-size: 13px; font-weight: 600; color: var(--text); }
+.newproj-stack__hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
+
+/* Full-screen overlay shown while a React project is being prepared. */
+.project-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: project-setup-fade-in 200ms ease-out;
+}
+@keyframes project-setup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.project-setup-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 44px;
+  max-width: 460px;
+  text-align: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.32);
+}
+.project-setup-overlay__spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: project-setup-spin 0.9s linear infinite;
+}
+@keyframes project-setup-spin { to { transform: rotate(360deg); } }
+.project-setup-overlay__error-mark {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(220, 60, 60, 0.12);
+  color: rgb(190, 50, 50);
+  border: 2px solid rgb(190, 50, 50);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 20px;
+}
+.project-setup-overlay__title {
   font-size: 18px;
   font-weight: 600;
+  margin: 0;
+  color: var(--text);
 }
-.ds-mgr-topbar__close {
+.project-setup-overlay__message {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+  min-height: 22px;
+  animation: project-setup-message-fade 320ms ease-out;
+}
+@keyframes project-setup-message-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.project-setup-overlay__phase {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  min-height: 18px;
+}
+
+/* React dev preview shown in the FileWorkspace when no file tab is
+ * active and the project's stack is 'react-vite'. */
+.react-dev-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+}
+.react-dev-preview__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.react-dev-preview__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.react-dev-preview__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.react-dev-preview__status--running .react-dev-preview__dot { background: rgb(40, 180, 100); }
+.react-dev-preview__status--starting .react-dev-preview__dot { background: rgb(220, 160, 40); animation: react-dev-pulse 0.9s ease-in-out infinite; }
+.react-dev-preview__status--error .react-dev-preview__dot { background: rgb(220, 60, 60); }
+.react-dev-preview__status--stopped .react-dev-preview__dot { background: var(--border-strong); }
+@keyframes react-dev-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.react-dev-preview__port { color: var(--text); font-variant-numeric: tabular-nums; }
+.react-dev-preview__actions { display: inline-flex; gap: 6px; }
+.react-dev-preview__btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+.react-dev-preview__btn:hover { background: var(--bg-subtle); }
+.react-dev-preview__btn--primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.react-dev-preview__btn--primary:hover { background: var(--accent-hover, var(--accent)); }
+.react-dev-preview__btn--primary:disabled { opacity: 0.6; cursor: progress; }
+.react-dev-preview__body {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Stage uses the same checkered "drafting table" backdrop as the HTML
+ * canvas (see .preview-viewport rules in this file) when a fixed
+ * viewport is chosen, and a flat white background for the Web preset.
+ * The classes preview-viewport + preview-viewport-{id} are reused
+ * verbatim so both canvases look identical. */
+.react-dev-preview__stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+.react-dev-preview__stage.preview-viewport-web {
+  background: #ffffff;
+}
+.react-dev-preview__frame {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  background: #ffffff;
+}
+.react-dev-preview__stage:not(.preview-viewport-web) .react-dev-preview__frame {
+  width: var(--preview-viewport-width, 100%);
+  height: var(--preview-viewport-height, 100%);
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  align-self: center;
+}
+.react-dev-preview__iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background: #ffffff;
+}
+.react-dev-preview__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.react-dev-preview__placeholder strong { color: var(--text); font-size: 14px; }
+.react-dev-preview__placeholder--error strong { color: rgb(190, 50, 50); }
+.react-dev-preview__placeholder code {
+  background: var(--bg-subtle);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.react-dev-preview__spinner {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border, #d4d4d4);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--surface, #fff);
-  color: var(--text, inherit);
+  border: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: react-dev-spin 0.9s linear infinite;
+}
+@keyframes react-dev-spin { to { transform: rotate(360deg); } }
+.react-dev-preview__log {
+  max-width: 560px;
+  max-height: 200px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  border-radius: 4px;
+  text-align: left;
+  white-space: pre;
+}
+
+.insert-toolbar {
+  position: fixed;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+  animation: insert-toolbar-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.insert-toolbar-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;
+}
+
+.insert-toolbar-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.insert-toolbar-tool:hover {
+  background: var(--bg-subtle);
+}
+
+.insert-toolbar-tool.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.insert-toolbar-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@keyframes insert-toolbar-enter {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.manual-edit-size-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2, #f6f6f7);
+  border: 1px solid var(--border, #e4e4e7);
+  border-radius: 4px;
+  padding: 0 4px 0 8px;
+  height: 26px;
+  font-size: 12px;
+  min-width: 0;
+}
+.manual-edit-size-row:focus-within { border-color: var(--accent, #2563eb); }
+.manual-edit-size-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  padding-right: 4px;
+}
+.manual-edit-size-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  text-align: right;
+  padding: 0;
+  outline: none;
+}
+.manual-edit-size-input[readonly] {
+  color: var(--accent, #2563eb);
+  cursor: default;
+}
+.manual-edit-size-mode-btn {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-.ds-mgr-topbar__close:hover { background: var(--bg-subtle, #f7f7f7); }
-
-/* ---- In-pane empty banner --------------------------------------- */
-.ds-mgr-empty-banner {
+.manual-edit-size-mode-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-subtle);
+}
+.manual-edit-size-mode-btn[data-mode="fill"],
+.manual-edit-size-mode-btn[data-mode="hug"] {
+  color: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+}
+.manual-edit-size-token {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manual-edit-size-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.manual-edit-size-clear:hover {
+  color: var(--text);
+}
+.delete-confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  z-index: 1000;
+  animation: insert-toolbar-enter 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.ds-mgr-empty-banner__inner {
-  max-width: 420px;
-  text-align: center;
-  border: 1px dashed var(--border, #d4d4d4);
-  border-radius: var(--radius-sm, 8px);
-  padding: 24px;
+.delete-confirm-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 360px;
+  box-shadow: var(--shadow-md);
+  color: var(--text);
 }
-.ds-mgr-empty-banner__inner h3 { margin: 0 0 8px; font-size: 16px; }
-.ds-mgr-empty-banner__inner p { margin: 0 0 16px; color: var(--text-muted, #6a6a6a); font-size: 13px; }
-.ds-mgr-empty-banner__actions {
+.delete-confirm-modal-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.delete-confirm-modal-body {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.delete-confirm-modal-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
-.ds-mgr-empty-banner__actions button {
-  padding: 8px 14px;
-  border-radius: var(--radius-sm, 6px);
-  border: 1px solid var(--border, #d4d4d4);
-  background: var(--surface, #fff);
-  font: inherit;
+.delete-confirm-cancel, .delete-confirm-confirm {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
   cursor: pointer;
+  font-size: 13px;
 }
-.ds-mgr-empty-banner__actions button.primary {
-  background: var(--accent, #2563eb);
-  color: var(--accent-on, #fff);
-  border-color: var(--accent, #2563eb);
+.delete-confirm-cancel {
+  background: var(--bg-subtle);
+  color: var(--text);
 }
-.ds-mgr-empty-banner__hint { margin: 12px 0 0; color: var(--text-muted, #6a6a6a); font-size: 12px; }
-.ds-mgr-empty-banner__error { margin: 12px 0 0; color: rgb(170, 30, 30); font-size: 12px; }
+.delete-confirm-cancel:hover {
+  background: var(--bg-muted);
+}
+.delete-confirm-confirm {
+  background: #dc2626;
+  color: #ffffff;
+}
+.delete-confirm-confirm:hover {
+  background: #b91c1c;
+}
+.manual-edit-panel-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+.manual-edit-delete {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  background: var(--bg-panel);
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 13px;
+}
+.manual-edit-delete:hover {
+  background: #fef2f2;
+}
+
+/* ============================================================================
+   Cloud auth card (Phase 0). Minimal sign-in / sign-up UI; mount anywhere
+   cloud features need gating behind authentication.
+   ============================================================================ */
+.cloud-auth-card {
+  max-width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text);
+}
+.cloud-auth-card-loading,
+.cloud-auth-card-disabled {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.cloud-auth-card-disabled code {
+  background: var(--bg-subtle);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.cloud-auth-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.cloud-auth-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cloud-auth-card-tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cloud-auth-card-tabs button {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+.cloud-auth-card-tabs button.active {
+  background: var(--accent, #c96442);
+  color: #fff;
+}
+.cloud-auth-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cloud-auth-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.cloud-auth-card-field > span {
+  color: var(--text-muted);
+}
+.cloud-auth-card-field input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.cloud-auth-card-field input:focus {
+  outline: none;
+  border-color: var(--accent, #c96442);
+}
+.cloud-auth-card-helptext {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: normal;
+}
+.cloud-auth-card-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.cloud-auth-card-btn {
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cloud-auth-card-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cloud-auth-card-btn-primary {
+  background: var(--accent, #c96442);
+  color: #fff;
+}
+.cloud-auth-card-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.cloud-auth-card-btn-secondary {
+  background: var(--bg-subtle);
+  border-color: var(--border);
+  color: var(--text);
+}
+.cloud-auth-card-line {
+  font-size: 13px;
+  margin: 0;
+}
+.cloud-auth-card-email {
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   CloudLoginGate — full-screen sign-in gate shown before the workspace shell.
+   ============================================================================ */
+.cloud-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 32px;
+  background: var(--bg, #1a1a1a);
+  color: var(--text, #f0f0f0);
+  z-index: 10000;
+}
+.cloud-gate-loading {
+  gap: 12px;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+}
+.cloud-gate-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border, #333);
+  border-top-color: var(--accent, #c96442);
+  border-radius: 50%;
+  animation: cloud-gate-spin 700ms linear infinite;
+}
+@keyframes cloud-gate-spin {
+  to { transform: rotate(360deg); }
+}
+.cloud-gate-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.cloud-gate-brand {
+  flex-direction: column;
+  text-align: center;
+  gap: 14px;
+}
+.cloud-gate-logo,
+.cloud-gate-logo-img {
+  display: inline-block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 14px;
+}
+.cloud-gate-brand h1 {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.cloud-gate-tagline {
+  margin: 0;
+  max-width: 360px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cloud-gate-footer {
+  margin-top: 24px;
+  max-width: 360px;
+  text-align: center;
+}
+.cloud-gate-footer small {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+}
+.cloud-gate-footer code {
+  background: var(--bg-subtle, #2a2a2a);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10.5px;
+}
+
+/* ============================================================================
+   WelcomeBanner (chip) — greeting pill aligned with `.inline-switcher__chip`
+   on the entry topbar. Pushes itself to the left via margin-right: auto so
+   the existing right-aligned chips/cog stay in place.
+   ============================================================================ */
+.welcome-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 4px;
+  margin-right: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: var(--shadow-xs);
+  max-width: 280px;
+}
+.welcome-chip__avatar {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent, #c96442), color-mix(in oklab, var(--accent, #c96442) 60%, #fff));
+  color: #fff;
+}
+.welcome-chip__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.welcome-chip__avatar-placeholder {
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+.welcome-chip__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.welcome-chip__hello {
+  color: var(--text-muted);
+}
+.welcome-chip__name {
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

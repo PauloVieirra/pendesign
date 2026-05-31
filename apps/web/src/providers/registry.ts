@@ -47,7 +47,10 @@ import type {
   ProjectDeploymentsResponse,
   PromptTemplateDetail,
   PromptTemplateSummary,
+  DevServerStatusResponse,
   ProjectFile,
+  ProjectSetupStatusResponse,
+  ProjectTreeResponse,
   RenameProjectFileResponse,
   SkillDetail,
   SkillSummary,
@@ -806,7 +809,7 @@ export interface ConnectorActionResult {
 }
 
 function popupBlockedMessage(): string {
-  return 'Popup blocked. Allow popups for Open Design and try again.';
+  return 'Popup blocked. Allow popups for Vision Design and try again.';
 }
 
 async function decodeConnectorError(resp: Response): Promise<string> {
@@ -1247,6 +1250,105 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
     return json.files ?? [];
   } catch {
     return [];
+  }
+}
+
+export async function setupSpaSingleFileProject(projectId: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-spa`, {
+      method: 'POST',
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function startProjectReactSetup(projectId: string): Promise<ProjectSetupStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-react`, {
+      method: 'POST',
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectSetupStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchProjectSetupStatus(projectId: string): Promise<ProjectSetupStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/setup-status`);
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectSetupStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDevServerStatus(projectId: string): Promise<DevServerStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server`);
+    if (!resp.ok) return null;
+    return (await resp.json()) as DevServerStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function startProjectDevServer(projectId: string): Promise<DevServerStatusResponse | null> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server/start`, {
+      method: 'POST',
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as DevServerStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function stopProjectDevServer(projectId: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/dev-server/stop`, {
+      method: 'POST',
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function createProjectFolder(projectId: string, folderPath: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/folders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: folderPath }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchProjectTree(
+  projectId: string,
+  opts: { root?: string; showHidden?: boolean; showBuildDirs?: boolean; depth?: number } = {},
+): Promise<ProjectTreeResponse | null> {
+  try {
+    const qs = new URLSearchParams();
+    if (opts.root) qs.set('root', opts.root);
+    if (opts.showHidden) qs.set('showHidden', 'true');
+    if (opts.showBuildDirs) qs.set('showBuildDirs', 'true');
+    if (Number.isFinite(opts.depth) && opts.depth! > 0) qs.set('depth', String(opts.depth));
+    const query = qs.toString();
+    const url = `/api/projects/${encodeURIComponent(projectId)}/tree${query ? `?${query}` : ''}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return (await resp.json()) as ProjectTreeResponse;
+  } catch {
+    return null;
   }
 }
 

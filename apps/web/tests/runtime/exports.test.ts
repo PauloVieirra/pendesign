@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   archiveFilenameFrom,
-  archiveRootFromFilePath,
   buildDesignHandoffContent,
   buildDesignManifestContent,
   buildSandboxedPreviewDocument,
@@ -16,28 +15,6 @@ import {
 function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
-
-describe('archiveRootFromFilePath', () => {
-  it('returns the top-level directory name when present', () => {
-    expect(archiveRootFromFilePath('ui-design/index.html')).toBe('ui-design');
-    expect(archiveRootFromFilePath('ui-design/src/app.css')).toBe('ui-design');
-  });
-
-  it('returns empty for files at the project root', () => {
-    expect(archiveRootFromFilePath('index.html')).toBe('');
-    expect(archiveRootFromFilePath('README.md')).toBe('');
-  });
-
-  it('strips a leading slash before scanning', () => {
-    expect(archiveRootFromFilePath('/ui-design/index.html')).toBe('ui-design');
-    expect(archiveRootFromFilePath('//ui-design/index.html')).toBe('ui-design');
-  });
-
-  it('returns empty for empty/garbage input', () => {
-    expect(archiveRootFromFilePath('')).toBe('');
-    expect(archiveRootFromFilePath('/')).toBe('');
-  });
-});
 
 describe('archiveFilenameFrom', () => {
   it('decodes the RFC 5987 UTF-8 filename* form (preserves multi-byte chars)', () => {
@@ -706,5 +683,63 @@ describe('exportAsImage', () => {
     exportAsImage('data:image/png;base64,AA==', 'Hello <World> / Test!');
 
     expect(anchors[0]!.download).toBe('Hello-World-Test.png');
+  });
+});
+
+describe('exportProjectAsZip', () => {
+  beforeEach(() => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('blob:test'),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.stubGlobal('document', {
+      createElement: () => ({ href: '', download: '', click: vi.fn() }),
+      body: { appendChild: vi.fn(), removeChild: vi.fn() },
+    });
+    vi.stubGlobal('setTimeout', (fn: () => void) => fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('fetches the project archive without a root query string', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Blob(['zip']), {
+        status: 200,
+        headers: { 'content-disposition': 'attachment; filename="p.zip"' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { exportProjectAsZip } = await import('../../src/runtime/exports');
+    await exportProjectAsZip({
+      projectId: 'p1',
+      fallbackHtml: '<i></i>',
+      fallbackTitle: 'p',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/p1/archive');
+  });
+
+  it('encodes the project id into the URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Blob(['zip']), {
+        status: 200,
+        headers: { 'content-disposition': 'attachment; filename="p.zip"' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { exportProjectAsZip } = await import('../../src/runtime/exports');
+    await exportProjectAsZip({
+      projectId: 'proj with space',
+      fallbackHtml: '<i></i>',
+      fallbackTitle: 'p',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/proj%20with%20space/archive');
   });
 });

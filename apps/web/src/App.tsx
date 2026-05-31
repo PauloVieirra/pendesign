@@ -7,6 +7,8 @@ import {
   fidelityToTracking,
 } from '@open-design/contracts/analytics';
 import { EntryView } from './components/EntryView';
+import { ProjectSetupLoadingOverlay } from './components/ProjectSetupLoadingOverlay';
+import { CloudLoginGate } from './components/CloudLoginGate';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -36,6 +38,8 @@ import {
   fetchDesignTemplates,
   fetchPromptTemplates,
   fetchSkills,
+  setupSpaSingleFileProject,
+  startProjectReactSetup,
   uploadProjectFiles,
 } from './providers/registry';
 import { RUNS_CHANGED_EVENT, listProjectRuns } from './providers/daemon';
@@ -60,6 +64,7 @@ import { OD_THEME_CHANGE_EVENT, type OdThemeChangeDetail } from './components/Th
 import { isMacPlatform } from './utils/platform';
 import {
   createProject,
+  lastCreateProjectError,
   createPluginShareProject,
   deleteProject as deleteProjectApi,
   importClaudeDesignZip,
@@ -205,6 +210,11 @@ export function App() {
     'idle' | 'ok' | 'error'
   >('idle');
   const [mediaProvidersNotice, setMediaProvidersNotice] = useState<string | null>(null);
+  // When the user picks the React (Vite) stack on the New Project panel, we
+  // start the install in the background and pin the project here so the
+  // ProjectSetupLoadingOverlay renders on top of EntryView. Navigation into
+  // the project happens once the overlay reports phase: 'ready'.
+  const [reactSetupProject, setReactSetupProject] = useState<{ id: string; name: string } | null>(null);
   // Per-resource loading flags. Each goes false the moment its own fetch
   // resolves so each entry-view tab can render as its data lands instead of
   // every tab waiting on the slowest endpoint (typically `/api/agents`,
@@ -804,6 +814,14 @@ export function App() {
           },
           { requestId: input.requestId },
         );
+        // Surface the failure to the user. Before this, a backend rejection
+        // (e.g. a draft design system, an invalid metadata field) was eaten
+        // silently and the Create button looked like a no-op. Reading the
+        // captured error from state/projects.ts gives the user something
+        // actionable to fix instead of a stuck submit.
+        const reason = lastCreateProjectError ?? 'Could not create project';
+        try { window.alert(`Não foi possível criar o projeto:\n\n${reason}`); }
+        catch { console.error('[create-project] failed:', reason); }
         return;
       }
       const pendingFiles = Array.isArray(input.pendingFiles)
@@ -870,6 +888,21 @@ export function App() {
         project,
         ...curr.filter((p) => p.id !== project.id),
       ]);
+      // React-Vite projects need the daemon to extract the template and run
+      // a package-manager install before the canvas can render anything
+      // meaningful. We fire the setup, stash the project for the loading
+      // overlay, and defer navigation until the overlay reports 'ready'.
+      if (input.metadata?.stack === 'react-vite') {
+        await startProjectReactSetup(project.id);
+        setReactSetupProject({ id: project.id, name: project.name });
+        return;
+      }
+      // SPA single-file projects just copy a small HTML template — no
+      // install, no loading overlay. Fire the request and continue into
+      // the project; the file is there by the time the canvas mounts.
+      if (input.metadata?.stack === 'spa-single-file') {
+        await setupSpaSingleFileProject(project.id);
+      }
       navigate({
         kind: 'project',
         projectId: project.id,
@@ -1088,6 +1121,22 @@ export function App() {
   const openMcpSettings = useCallback(() => {
     setIntegrationInitialTab('mcp');
     navigate({ kind: 'home', view: 'integrations' });
+  }, []);
+
+  // Lean Inception "Criar agora" flow: sync state is already written to RAG by
+  // the time this event fires. We just need to pre-fill pendingPrompt so the
+  // chat composer auto-submits it on next mount.
+  useEffect(() => {
+    const onStart = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { projectId?: string; prompt?: string } | undefined;
+      if (!detail?.projectId || !detail.prompt) return;
+      void patchProject(detail.projectId, { pendingPrompt: detail.prompt });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === detail.projectId ? { ...p, pendingPrompt: detail.prompt } : p)),
+      );
+    };
+    window.addEventListener('lean-inception:start-creation', onStart as EventListener);
+    return () => window.removeEventListener('lean-inception:start-creation', onStart as EventListener);
   }, []);
 
   // Cmd+, (mac) / Ctrl+, (win/linux) opens Settings. Capture phase so we
@@ -1328,7 +1377,7 @@ export function App() {
     );
   }
   return (
-    <>
+    <CloudLoginGate>
       <div
         className={`workspace-shell workspace-shell--${clientType}`}
         data-client-type={clientType}
@@ -1339,6 +1388,24 @@ export function App() {
         />
         <div className="workspace-shell__body">{appMain}</div>
       </div>
+      {reactSetupProject ? (
+        <ProjectSetupLoadingOverlay
+          projectId={reactSetupProject.id}
+          onReady={() => {
+            const target = reactSetupProject;
+            setReactSetupProject(null);
+            navigate({ kind: 'project', projectId: target.id, fileName: null });
+          }}
+          onError={(message) => {
+            console.warn('[react-setup] failed:', message);
+            const target = reactSetupProject;
+            setReactSetupProject(null);
+            // Still navigate so the user sees the project (broken-but-
+            // recoverable) instead of being stuck on the overlay.
+            navigate({ kind: 'project', projectId: target.id, fileName: null });
+          }}
+        />
+      ) : null}
       {clientType === 'desktop' ? null : (
         <PetOverlay
           pet={config.pet?.enabled ? config.pet : undefined}
@@ -1408,7 +1475,7 @@ export function App() {
           }}
         />
       ) : null}
-    </>
+    </CloudLoginGate>
   );
 }
 

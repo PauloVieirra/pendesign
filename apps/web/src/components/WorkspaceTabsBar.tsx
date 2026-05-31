@@ -398,6 +398,21 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
   return (
     <header className="app-chrome-header workspace-tabs-chrome" aria-label="Workspace tabs">
       <div className="app-chrome-traffic-space workspace-tabs-traffic" aria-hidden />
+      <button
+        type="button"
+        className="workspace-tabs-brand"
+        onClick={() => navigate({ kind: 'home', view: 'home' })}
+        aria-label="Vision Design"
+        title="Vision Design"
+        data-testid="workspace-brand"
+      >
+        <img
+          src="/vision-logo.svg"
+          alt=""
+          className="workspace-tabs-brand__img"
+          draggable={false}
+        />
+      </button>
       <div
         className="workspace-tabs-strip"
         role="tablist"

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
-import type { VariablesFile } from '../providers/design-system-variables';
-import { VariablePicker } from './design-system-manager/VariablePicker';
+import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
+import { pickPrimaryValue, type VariableScope, type VariablesFile } from '../providers/design-system-variables';
+import { varNameForVariable, VariablePicker } from './design-system-manager/VariablePicker';
 import { ColorPickerPopover } from './ColorPickerPopover';
+import { DeleteConfirmModal, type DeleteConfirmModalLabels } from './DeleteConfirmModal';
 
 export interface ManualEditDraft {
   text: string;
@@ -23,6 +24,190 @@ export function emptyManualEditDraft(source = ''): ManualEditDraft {
   };
 }
 
+type SizeMode = 'fixed' | 'fill' | 'hug';
+
+const NEXT_MODE: Record<SizeMode, SizeMode> = { fixed: 'fill', fill: 'hug', hug: 'fixed' };
+const MODE_LABEL: Record<SizeMode, string> = { fixed: 'Fixed', fill: 'Fill', hug: 'Hug' };
+
+function isCssVarToken(value: string): boolean {
+  return /^var\(\s*--/.test((value || '').trim());
+}
+
+/** Matches a valid-but-incomplete decimal draft (e.g. "", "1", "1.", "1.23"). Rejects negatives. */
+const FIXED_PX_DRAFT = /^\d*(\.\d{0,4})?$/;
+/** Matches a complete positive decimal suitable for committing (e.g. "1", "1.23"). Rejects negatives. */
+const FIXED_PX_COMMIT = /^\d+(\.\d{0,4})?$/;
+
+// Anything not matching the Fill (`100%`) or Hug (`fit-content` / `auto`)
+// sentinels falls through to Fixed. Non-standard inline values (e.g. `50vh`)
+// also map to Fixed; the Fixed input then renders empty because the px regex
+// in SizeRow does not match — the user can overwrite without seeing the old
+// literal value. Track this in a future task if it becomes a problem.
+function modeFromValue(value: string): SizeMode {
+  const trimmed = (value || '').trim();
+  if (trimmed === '100%') return 'fill';
+  if (trimmed === 'fit-content' || trimmed === 'auto') return 'hug';
+  return 'fixed';
+}
+
+function valueForMode(mode: SizeMode, fixedPx: string): string {
+  if (mode === 'fill') return '100%';
+  if (mode === 'hug') return 'fit-content';
+  return `${fixedPx || '0'}px`;
+}
+
+function readOnlyDisplay(mode: Exclude<SizeMode, 'fixed'>): string {
+  return mode === 'fill' ? '100%' : 'auto';
+}
+
+/**
+ * Inline mode glyph. Three shapes:
+ *  - fixed: bordered square (locked size)
+ *  - fill:  arrows pointing outward (expand to fill)
+ *  - hug:   arrows pointing inward (shrink to content)
+ */
+function SizeModeIcon({ mode }: { mode: SizeMode }) {
+  if (mode === 'fixed') {
+    return (
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+  if (mode === 'fill') {
+    return (
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M2 5h6M2 5l1.5-1.5M2 5l1.5 1.5M8 5L6.5 3.5M8 5L6.5 6.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <path d="M0.5 5h3M9.5 5h-3M3.5 5L2 3.5M3.5 5L2 6.5M6.5 5L8 3.5M6.5 5L8 6.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * Width or Height row. The numeric value is always visible:
+ *   - Fixed: editable text input via FixedPxInput (decimal-aware).
+ *   - Fill:  read-only "100%".
+ *   - Hug:   read-only "auto".
+ * One icon button to the right cycles the mode (Fixed → Fill → Hug → Fixed).
+ * When the value is `var(--token)`, renders the existing token chip + clear
+ * button so token data isn't silently overwritten.
+ */
+function SizeRow({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  variables = null,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (next: string) => void;
+  variables?: VariablesFile | null;
+}) {
+  if (isCssVarToken(value)) {
+    const tokenName = varTokenName(value);
+    const displayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : value;
+    return (
+      <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
+        <span className="manual-edit-size-label">{label}</span>
+        <span className="manual-edit-size-token" title={value}>{displayName}</span>
+        <button
+          type="button"
+          className="manual-edit-size-clear"
+          onClick={() => onChange('')}
+          aria-label="Clear token"
+        >×</button>
+      </div>
+    );
+  }
+  const mode = value.trim() === '' ? 'fixed' : modeFromValue(value);
+  const fixedPx = (() => {
+    const match = /^(\d+(?:\.\d+)?)px$/.exec((value || '').trim());
+    return match ? match[1]! : '';
+  })();
+  const next = NEXT_MODE[mode];
+  return (
+    <div role="group" aria-label={ariaLabel} className="manual-edit-size-row">
+      <span className="manual-edit-size-label">{label}</span>
+      {mode === 'fixed' ? (
+        <FixedPxInput
+          value={fixedPx}
+          onChange={(raw) => onChange(`${raw}px`)}
+          ariaLabel={ariaLabel}
+        />
+      ) : (
+        <input
+          type="text"
+          inputMode="decimal"
+          className="manual-edit-size-input"
+          value={readOnlyDisplay(mode)}
+          readOnly
+          aria-label={`${ariaLabel} value, ${MODE_LABEL[mode]} mode (read-only)`}
+        />
+      )}
+      <button
+        type="button"
+        className="manual-edit-size-mode-btn"
+        data-mode={mode}
+        aria-label={`${label} mode: ${MODE_LABEL[mode]}`}
+        title={`Switch to ${MODE_LABEL[next]}`}
+        onClick={() => onChange(valueForMode(next, fixedPx || '120'))}
+      >
+        <SizeModeIcon mode={mode} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Numeric input for Fixed-mode Width/Height. Uses `type="text"
+ * inputMode="decimal"` so the browser does not coerce values through
+ * Number() (which would strip trailing zeros), round to integers, or
+ * silently clamp to an HTML max. The value flows as a string end-to-end
+ * so `120.5050` survives the round trip through the parent, instead of
+ * collapsing to `120.505` the moment the prop refreshes.
+ *
+ * Negative values are rejected at the draft level (Width/Height don't
+ * accept negatives) and again on commit, matching the original guard.
+ */
+function FixedPxInput({ value, onChange, ariaLabel }: {
+  value: string;
+  onChange: (raw: string) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState<string>(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      placeholder="auto"
+      aria-label={`${ariaLabel} size in pixels`}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (FIXED_PX_DRAFT.test(next)) setDraft(next);
+      }}
+      onBlur={() => {
+        if (FIXED_PX_COMMIT.test(draft)) onChange(draft);
+        else setDraft(value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      className="manual-edit-size-input"
+    />
+  );
+}
+
 export function ManualEditPanel({
   selectedTarget,
   draft,
@@ -36,6 +221,10 @@ export function ManualEditPanel({
   onClearSelection,
   pageStylesEnabled = true,
   dsVariables = null,
+  deleteConfirmOpen = false,
+  onDeleteConfirmOpenChange,
+  deleteConfirmLabels,
+  deleteButtonLabel,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -63,6 +252,13 @@ export function ManualEditPanel({
   onCancelDraft: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  /** Delete-confirm modal state lifted to the host (FileViewer) so the
+   * Delete/Backspace keyboard shortcut can open it. Optional so existing
+   * tests and any non-FileViewer mounts keep working with a no-op default. */
+  deleteConfirmOpen?: boolean;
+  onDeleteConfirmOpenChange?: (open: boolean) => void;
+  deleteConfirmLabels?: Partial<DeleteConfirmModalLabels>;
+  deleteButtonLabel?: string;
 }) {
   const targetForInspector = selectedTarget;
   const changeTargetStyle = (key: keyof ManualEditStyles, value: string) => {
@@ -119,7 +315,30 @@ export function ManualEditPanel({
         ) : null}
 
         {error ? <div className="manual-edit-error">{error}</div> : null}
+        {selectedTarget ? (
+          <div className="manual-edit-panel-footer">
+            <button
+              type="button"
+              className="manual-edit-delete"
+              onClick={() => onDeleteConfirmOpenChange?.(true)}
+            >
+              {deleteButtonLabel ?? 'Delete'}
+            </button>
+          </div>
+        ) : null}
       </section>
+      <DeleteConfirmModal
+        open={deleteConfirmOpen}
+        onCancel={() => onDeleteConfirmOpenChange?.(false)}
+        onConfirm={() => {
+          if (selectedTarget) {
+            onApplyPatch({ kind: 'delete-element', id: selectedTarget.id }, 'Delete element');
+          }
+          onDeleteConfirmOpenChange?.(false);
+          onClearSelection();
+        }}
+        labels={deleteConfirmLabels}
+      />
     </aside>
   );
 }
@@ -155,7 +374,7 @@ function ContentInspector({
   };
   if (target.kind === 'image') {
     return (
-      <Section title="CONTENT">
+      <Section title="Content">
         <label className="cc-row cc-row-stacked">
           <span className="cc-label">Image URL</span>
           <input
@@ -194,7 +413,7 @@ function ContentInspector({
   }
   if (target.kind === 'link') {
     return (
-      <Section title="CONTENT">
+      <Section title="Content">
         <label className="cc-row cc-row-stacked">
           <span className="cc-label">Text</span>
           <textarea
@@ -242,7 +461,7 @@ function ContentInspector({
   // don't have a single textContent worth editing safely).
   const isTextLeaf = !target.text.trim() || target.kind === 'text' || target.kind === 'token';
   return (
-    <Section title="CONTENT">
+    <Section title="Content">
       {isTextLeaf ? (
         <>
           <label className="cc-row cc-row-stacked">
@@ -313,10 +532,10 @@ function PageInspector({
 
   return (
     <div className="cc-inspector">
-      <Section title="PAGE">
+      <Section title="Page">
         {enabled ? (
           <>
-            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} />
+            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} variables={dsVariables} requiredScope="color" />
             <FontRow value={font} onChange={(value) => update({ font: value })} />
             <UnitRow label="Base size" value={size} onChange={(value) => update({ size: value })} unit="px" autoUnit />
           </>
@@ -399,6 +618,13 @@ export function normalizeManualEditStyles(
     // browser handles the resolution; we just pass it through. This lets
     // sizes, typography options, opacity, etc. all reference tokens.
     if (looksLikeVarToken(value)) {
+      normalized[rawKey] = value;
+      continue;
+    }
+    // Width / Height also accept the Fill (`100%`) and Hug (`fit-content` /
+    // `auto`) sentinels emitted by the SizeRow 3-way toggle. Other px props
+    // stay numeric-only.
+    if ((rawKey === 'width' || rawKey === 'height') && (value === '100%' || value === 'fit-content' || value === 'auto')) {
       normalized[rawKey] = value;
       continue;
     }
@@ -503,7 +729,7 @@ function resolveVarColor(value: string, variables: VariablesFile | null): string
       for (const variable of group.variables) {
         if (variable.type !== 'color') continue;
         const slug = `--${slugifyToken(collection.name)}-${slugifyToken(group.name)}-${slugifyToken(variable.name)}`;
-        if (slug === target) return String(variable.value);
+        if (slug === target) return String(pickPrimaryValue(variable) ?? '');
       }
     }
   }
@@ -532,94 +758,107 @@ function StyleInspector({
           Page
         </button>
       </div>
-      <Section title="TYPOGRAPHY">
-        <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} variables={dsVariables} />
+
+      <Section title="Layout">
+        <SubSection title="Size">
+          <PairRow>
+            <SizeRow label="W" ariaLabel="width" value={styles.width} onChange={(v) => u('width', v)} variables={dsVariables} />
+            <SizeRow label="H" ariaLabel="height" value={styles.height} onChange={(v) => u('height', v)} variables={dsVariables} />
+          </PairRow>
+        </SubSection>
+
+        <SubSection title="Flex">
+          {!layoutEnabled ? (
+            <p className="cc-section-hint">Select a container or group to edit flex layout.</p>
+          ) : null}
+          <PairRow>
+            <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} requiredScope="gap" />
+            <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} disabled={!layoutEnabled} />
+          </PairRow>
+          <PairRow>
+            <DropdownRow label="Justify" value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} disabled={!layoutEnabled} />
+            <DropdownRow label="Align" value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} disabled={!layoutEnabled} />
+          </PairRow>
+        </SubSection>
+
+        <SubSection title="Spacing">
+          <QuadRow label="Padding" values={{
+            t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
+          }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} requiredScope="padding" />
+          <QuadRow label="Margin" values={{
+            t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
+          }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} requiredScope="margin" />
+        </SubSection>
+      </Section>
+
+      <Section title="Typography">
+        <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} variables={dsVariables} requiredScope="font-family" />
         <PairRow>
-          <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit variables={dsVariables} />
+          <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit variables={dsVariables} requiredScope="font-size" />
           <DropdownRow label="Weight" value={styles.fontWeight} onChange={(v) => u('fontWeight', v)} options={WEIGHT_OPTS} />
         </PairRow>
         <PairRow>
-          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} variables={dsVariables} />
+          <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} variables={dsVariables} requiredScope="color" />
           <DropdownRow label="Align" value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={ALIGN_OPTS} />
         </PairRow>
         <PairRow>
-          <UnitRow label="Line" value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" variables={dsVariables} />
+          <UnitRow label="Line" value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" variables={dsVariables} requiredScope="line-height" />
           <UnitRow label="Tracking" value={styles.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit />
         </PairRow>
       </Section>
 
-      <Section title="SIZE">
-        <PairRow>
-          <UnitRow label="Width" value={styles.width} onChange={(v) => u('width', v)} unit="px" autoUnit variables={dsVariables} />
-          <UnitRow label="Height" value={styles.height} onChange={(v) => u('height', v)} unit="px" autoUnit variables={dsVariables} />
-        </PairRow>
+      <Section title="Appearance">
+        <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} requiredScope="opacity" />
       </Section>
 
-      <Section title="LAYOUT" inactive={!layoutEnabled}>
-        {!layoutEnabled ? (
-          <p className="cc-section-hint">Select a container or group to edit layout.</p>
-        ) : null}
-        <PairRow>
-          <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={!layoutEnabled} variables={dsVariables} />
-          <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} disabled={!layoutEnabled} />
-        </PairRow>
-        <PairRow>
-          <DropdownRow label="Justify" value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} disabled={!layoutEnabled} />
-          <DropdownRow label="Align" value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} disabled={!layoutEnabled} />
-        </PairRow>
+      <Section title="Fill">
+        <ColorRow
+          label="Fill"
+          value={isGradientValue(styles.backgroundImage) ? styles.backgroundImage : styles.backgroundColor}
+          onChange={(v) => {
+            if (isGradientValue(v)) {
+              u('backgroundImage', v);
+              u('backgroundColor', '');
+            } else {
+              u('backgroundColor', v);
+              u('backgroundImage', '');
+            }
+          }}
+          variables={dsVariables}
+          allowGradient
+          requiredScope="color"
+        />
       </Section>
 
-      <Section title="BOX">
+      <Section title="Stroke">
         <PairRow>
-          <ColorRow
-            label="Fill"
-            // When backgroundImage holds a gradient, the Fill row is showing
-            // it; switching back to a solid color must clear backgroundImage
-            // and write to backgroundColor instead. The reverse holds too.
-            value={isGradientValue(styles.backgroundImage) ? styles.backgroundImage : styles.backgroundColor}
-            onChange={(v) => {
-              if (isGradientValue(v)) {
-                u('backgroundImage', v);
-                u('backgroundColor', '');
-              } else {
-                u('backgroundColor', v);
-                u('backgroundImage', '');
-              }
-            }}
-            variables={dsVariables}
-            allowGradient
-          />
-          <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" variables={dsVariables} />
-        </PairRow>
-
-        <QuadRow label="Padding" values={{
-          t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
-        }} onChange={(side, value) => u(sideToProp('padding', side), value)} variables={dsVariables} />
-
-        <QuadRow label="Margin" values={{
-          t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
-        }} onChange={(side, value) => u(sideToProp('margin', side), value)} variables={dsVariables} />
-
-        <QuadRow label="Border" values={{
-          t: styles.borderTopWidth, r: styles.borderRightWidth, b: styles.borderBottomWidth, l: styles.borderLeftWidth,
-        }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} variables={dsVariables} />
-
-        <PairRow>
+          <ColorRow label="Color" value={styles.borderColor} onChange={(v) => u('borderColor', v)} variables={dsVariables} requiredScope="color" />
           <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
-          <ColorRow label="Border" value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact variables={dsVariables} />
         </PairRow>
-        <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit variables={dsVariables} />
+        <QuadRow label="Width" values={{
+          t: styles.borderTopWidth, r: styles.borderRightWidth, b: styles.borderBottomWidth, l: styles.borderLeftWidth,
+        }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} variables={dsVariables} requiredScope="border-width" />
+        <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit variables={dsVariables} requiredScope="border-radius" />
       </Section>
     </div>
   );
 }
 
-function Section({ title, children, inactive }: { title: string; children: React.ReactNode; inactive?: boolean }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`}>
+    <section className="cc-section">
       <header className="cc-section-head">{title}</header>
       <div className="cc-section-body">{children}</div>
     </section>
+  );
+}
+
+function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="cc-sub">
+      <header className="cc-section-sub">{title}</header>
+      <div className="cc-section-body">{children}</div>
+    </div>
   );
 }
 
@@ -636,10 +875,27 @@ function varTokenName(value: string): string | null {
   return match ? match[1]! : null;
 }
 
-function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables = null }: {
+// Reverse-lookup: given a CSS var name (e.g. `--cores-group-btn-primary`),
+// find the variable's leaf name (e.g. `btn-primary`) by scanning the DS
+// variables file. Returns null when the DS file is absent or the slug has
+// no match.
+function lookupVariableName(varCssName: string, variables: VariablesFile | null): string | null {
+  if (!variables) return null;
+  for (const c of variables.collections) {
+    for (const g of c.groups) {
+      for (const v of g.variables) {
+        if (varNameForVariable(c.name, g.name, v) === varCssName) return v.name;
+      }
+    }
+  }
+  return null;
+}
+
+function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables = null, requiredScope }: {
   label: string; value: string; onChange: (v: string) => void;
   unit: string; autoUnit?: boolean; disabled?: boolean;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
   const display = tokenName ? tokenName : (unit === 'px' ? stripPxUnit(value) : value);
@@ -661,18 +917,46 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, variables =
     const next = formatSteppedNumber(Number(display) + direction * step, display, step);
     onChange(valueFromDisplay(next));
   };
+  if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
+    return (
+      <label className="cc-row">
+        <span className="cc-label">{label}</span>
+        <span className="cc-value cc-value-token">
+          <input value={displayName} readOnly title={tokenName} aria-label={`${label} bound to ${tokenName}`} />
+          <button
+            type="button"
+            className="cc-token-clear"
+            aria-label={`Unbind ${label}`}
+            title="Unbind token"
+            onClick={() => onChange('')}
+          >×</button>
+          {variables ? (
+            <VariablePicker
+              variables={variables}
+              filterType="number"
+              requiredScope={requiredScope}
+              ariaLabel={`Rebind ${label} to design system variable`}
+              onPick={(slug) => onChange(`var(${slug})`)}
+            />
+          ) : null}
+        </span>
+      </label>
+    );
+  }
   return (
     <label className="cc-row">
       <span className="cc-label">{label}</span>
-      <span className={`cc-value${tokenName ? ' cc-value-token' : ''}`}>
+      <span className="cc-value">
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} decrease`} onClick={() => stepBy(-1)}>−</button>
         <input value={display} placeholder="" disabled={disabled} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} increase`} onClick={() => stepBy(1)}>+</button>
-        {unit && !tokenName ? <em className="cc-unit">{unit}</em> : null}
+        {unit ? <em className="cc-unit">{unit}</em> : null}
         {variables ? (
           <VariablePicker
             variables={variables}
             filterType="number"
+            requiredScope={requiredScope}
             ariaLabel={`Bind ${label} to design system variable`}
             onPick={(slug) => onChange(`var(${slug})`)}
           />
@@ -689,11 +973,12 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, v
 }) {
   const tokenName = varTokenName(value);
   if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
     return (
       <label className="cc-row">
         <span className="cc-label">{label}</span>
         <span className="cc-value cc-value-token">
-          <input value={tokenName} readOnly aria-label={`${label} bound to ${tokenName}`} />
+          <input value={displayName} readOnly title={tokenName} aria-label={`${label} bound to ${tokenName}`} />
           <button
             type="button"
             className="cc-token-clear"
@@ -735,18 +1020,20 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, v
   );
 }
 
-function FontRow({ value, onChange, variables = null }: {
+function FontRow({ value, onChange, variables = null, requiredScope }: {
   value: string;
   onChange: (v: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
   if (tokenName) {
+    const displayName = lookupVariableName(tokenName, variables) ?? tokenName;
     return (
       <label className="cc-row">
         <span className="cc-label">Font</span>
         <span className="cc-value cc-value-token">
-          <input value={tokenName} readOnly aria-label={`Font bound to ${tokenName}`} />
+          <input value={displayName} readOnly title={tokenName} aria-label={`Font bound to ${tokenName}`} />
           <button
             type="button"
             className="cc-token-clear"
@@ -758,6 +1045,7 @@ function FontRow({ value, onChange, variables = null }: {
             <VariablePicker
               variables={variables}
               filterType="string"
+              requiredScope={requiredScope}
               ariaLabel="Rebind Font to design system variable"
               onPick={(slug) => onChange(`var(${slug})`)}
             />
@@ -785,6 +1073,7 @@ function FontRow({ value, onChange, variables = null }: {
           <VariablePicker
             variables={variables}
             filterType="string"
+            requiredScope={requiredScope}
             ariaLabel="Bind Font to design system variable"
             onPick={(slug) => onChange(`var(${slug})`)}
           />
@@ -820,13 +1109,14 @@ function parseFontFamilies(value: string): string[] {
     .filter(Boolean);
 }
 
-function ColorRow({ label, value, onChange, compact, variables = null, allowGradient = false }: {
+function ColorRow({ label, value, onChange, compact, variables = null, allowGradient = false, requiredScope }: {
   label: string; value: string; onChange: (v: string) => void; compact?: boolean;
   /** Project's DS variables; when present, a small link affordance lets
    * the user bind this color to a token (writes `var(--<slug>)`). */
   variables?: VariablesFile | null;
   /** Fill row enables gradient mode in the popover. Color/Border use solid only. */
   allowGradient?: boolean;
+  requiredScope?: VariableScope;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -834,21 +1124,38 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
   // click-outside is handled inside ColorPickerPopover (it owns the portal'd
   // node and the trigger anchor); we only manage open/closed state here.
   const swatchBackground = resolveVarColor(value, variables) ?? value ?? 'transparent';
+  const tokenName = varTokenName(value);
+  const tokenDisplayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : null;
   return (
     <label className="cc-row">
       {compact ? null : <span className="cc-label">{label}</span>}
-      <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}`} ref={ref}>
+      <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}${tokenName ? ' cc-value-token' : ''}`} ref={ref}>
         <button ref={swatchRef} type="button" className="cc-swatch"
           style={{ background: swatchBackground }}
           onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
-        <input value={value} placeholder="#000000"
-          onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => setOpen(true)} />
+        <input value={tokenDisplayName ?? value} placeholder="#000000"
+          title={tokenName ?? undefined}
+          onChange={(e) => { if (tokenName) { onChange(''); } else { onChange(e.currentTarget.value); } }}
+          onFocus={() => { if (!tokenName) setOpen(true); }}
+          readOnly={!!tokenName}
+          aria-label={tokenName ? `${label} bound to ${tokenName}` : undefined}
+        />
+        {tokenName ? (
+          <button
+            type="button"
+            className="cc-token-clear"
+            aria-label={`Unbind ${label}`}
+            title="Unbind token"
+            onClick={() => { setOpen(false); onChange(''); }}
+          >×</button>
+        ) : null}
         {variables ? (
           <VariablePicker
             variables={variables}
             filterType="color"
-            ariaLabel={`Bind ${label} to design system variable`}
-            onPick={(slug) => onChange(`var(${slug})`)}
+            requiredScope={requiredScope}
+            ariaLabel={tokenName ? `Rebind ${label} to design system variable` : `Bind ${label} to design system variable`}
+            onPick={(slug) => { setOpen(false); onChange(`var(${slug})`); }}
           />
         ) : null}
         {open ? (
@@ -866,10 +1173,11 @@ function ColorRow({ label, value, onChange, compact, variables = null, allowGrad
   );
 }
 
-function QuadRow({ label, values, onChange, variables = null }: {
+function QuadRow({ label, values, onChange, variables = null, requiredScope }: {
   label: string; values: { t: string; r: string; b: string; l: string };
   onChange: (side: 't' | 'r' | 'b' | 'l', value: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const [open, setOpen] = useState(true);
   const allEqualValue = (() => {
@@ -884,22 +1192,24 @@ function QuadRow({ label, values, onChange, variables = null }: {
       </button>
       {open ? (
         <div className="cc-quad-grid">
-          <QuadCell axis="T" value={values.t} onChange={(v) => onChange('t', v)} variables={variables} />
-          <QuadCell axis="R" value={values.r} onChange={(v) => onChange('r', v)} variables={variables} />
-          <QuadCell axis="B" value={values.b} onChange={(v) => onChange('b', v)} variables={variables} />
-          <QuadCell axis="L" value={values.l} onChange={(v) => onChange('l', v)} variables={variables} />
+          <QuadCell axis="T" value={values.t} onChange={(v) => onChange('t', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="R" value={values.r} onChange={(v) => onChange('r', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="B" value={values.b} onChange={(v) => onChange('b', v)} variables={variables} requiredScope={requiredScope} />
+          <QuadCell axis="L" value={values.l} onChange={(v) => onChange('l', v)} variables={variables} requiredScope={requiredScope} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function QuadCell({ axis, value, onChange, variables = null }: {
+function QuadCell({ axis, value, onChange, variables = null, requiredScope }: {
   axis: string; value: string; onChange: (v: string) => void;
   variables?: VariablesFile | null;
+  requiredScope?: VariableScope;
 }) {
   const tokenName = varTokenName(value);
-  const display = tokenName ? tokenName : stripPxUnit(value);
+  const displayName = tokenName ? (lookupVariableName(tokenName, variables) ?? tokenName) : null;
+  const display = displayName ?? stripPxUnit(value);
   const canStep = !tokenName && isNumericInput(display);
   const stepBy = (direction: -1 | 1) => {
     if (!canStep) return;
@@ -909,7 +1219,7 @@ function QuadCell({ axis, value, onChange, variables = null }: {
     <span className={`cc-quad-cell${tokenName ? ' cc-quad-cell-token' : ''}`}>
       <em className="cc-quad-axis">{axis}</em>
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} decrease`} onClick={() => stepBy(-1)}>−</button>
-      <input value={display} placeholder="0" readOnly={!!tokenName}
+      <input value={display} placeholder="0" title={tokenName ?? undefined} readOnly={!!tokenName}
         onChange={(e) => {
           const raw = e.currentTarget.value.trim();
           if (raw === '') onChange('');
@@ -926,11 +1236,21 @@ function QuadCell({ axis, value, onChange, variables = null }: {
         }} />
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} increase`} onClick={() => stepBy(1)}>+</button>
       {tokenName ? null : <em className="cc-quad-unit">px</em>}
+      {tokenName ? (
+        <button
+          type="button"
+          className="cc-token-clear"
+          aria-label={`Unbind ${axis}`}
+          title="Unbind token"
+          onClick={() => onChange('')}
+        >×</button>
+      ) : null}
       {variables ? (
         <VariablePicker
           variables={variables}
           filterType="number"
-          ariaLabel={`Bind ${axis} to design system variable`}
+          requiredScope={requiredScope}
+          ariaLabel={tokenName ? `Rebind ${axis} to design system variable` : `Bind ${axis} to design system variable`}
           onPick={(slug) => onChange(`var(${slug})`)}
         />
       ) : null}

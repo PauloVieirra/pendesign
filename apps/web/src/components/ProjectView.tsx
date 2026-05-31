@@ -42,7 +42,8 @@ import {
   type ResearchOptions,
 } from '@open-design/contracts';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
-import { navigate } from '../router';
+import { navigate, useRoute } from '../router';
+import { DesignSystemModal } from './design-system-manager/DesignSystemModal';
 import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
@@ -114,6 +115,7 @@ import {
 import { AppChromeHeader } from './AppChromeHeader';
 import { AvatarMenu } from './AvatarMenu';
 import { ChatPane } from './ChatPane';
+import { FileExplorerPanel } from './FileExplorerPanel';
 import type { ChatSendMeta } from './ChatComposer';
 import {
   CritiqueTheaterMount,
@@ -457,6 +459,7 @@ export function ProjectView({
   onProjectsRefresh,
 }: Props) {
   const t = useT();
+  const route = useRoute();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
@@ -487,6 +490,10 @@ export function ProjectView({
   const [liveArtifacts, setLiveArtifacts] = useState<LiveArtifactSummary[]>([]);
   const [liveArtifactEvents, setLiveArtifactEvents] = useState<LiveArtifactEventItem[]>([]);
   const [workspaceFocused, setWorkspaceFocused] = useState(false);
+  // Toggle inside the left panel: 'chat' shows the assistant, 'files' shows
+  // the VS Code-style file explorer (tree) that the user can use to open
+  // any project file in the right-hand FileWorkspace.
+  const [chatPaneView, setChatPaneView] = useState<'chat' | 'files'>('chat');
   // `closed` → no surface; `review` → read-only saved-state panel with a
   // preview + reopen-to-edit action (#1822); `edit` → the textarea editor.
   const [instructionsMode, setInstructionsMode] = useState<'closed' | 'review' | 'edit'>('closed');
@@ -1101,10 +1108,13 @@ export function ProjectView({
         projectId: project.id,
         conversationId: activeConversationId,
         fileName: target,
+        // Preserve the ds=open query param so the DS modal remains open
+        // when the conversation URL sync fires while the modal is visible.
+        ...(route.kind === 'project' && route.ds === 'open' ? { ds: 'open' as const } : {}),
       },
       { replace: true },
     );
-  }, [openTabsState.active, projectFileNames, project.id, activeConversationId]);
+  }, [openTabsState.active, projectFileNames, project.id, activeConversationId, route]);
 
   const handleEnsureProject = useCallback(async (): Promise<string | null> => {
     return project.id;
@@ -3193,28 +3203,59 @@ export function ProjectView({
   // resulting SSE stream.
   const critiqueTheaterEnabled = useCritiqueTheaterEnabled();
 
+  useEffect(() => {
+    function onKey(ev: KeyboardEvent) {
+      const isMod = ev.metaKey || ev.ctrlKey;
+      if (isMod && ev.shiftKey && ev.key.toLowerCase() === 'd') {
+        ev.preventDefault();
+        navigate({ kind: 'project', projectId: project.id, conversationId: null, fileName: null, ds: 'open' });
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [project.id]);
+
   return (
     <div className="app">
       <CritiqueTheaterMount
         projectId={project.id}
         enabled={critiqueTheaterEnabled}
       />
+      <DesignSystemModal
+        open={route.kind === 'project' && route.ds === 'open'}
+        projectId={project.id}
+        designSystemId={project.designSystemId ?? null}
+        projectName={project.name}
+        onAttachDsRequested={() => { /* defer to existing create flow */ }}
+      />
       <AppChromeHeader
         showTrafficSpace={false}
         onBack={onBack}
         backLabel={t('project.backToProjects')}
         actions={(
-          <AvatarMenu
-            config={config}
-            agents={agents}
-            daemonLive={daemonLive}
-            onModeChange={onModeChange}
-            onAgentChange={onAgentChange}
-            onAgentModelChange={onAgentModelChange}
-            onOpenSettings={onOpenSettings}
-            onRefreshAgents={onRefreshAgents}
-            onBack={onBack}
-          />
+          <>
+            <button
+              type="button"
+              className="settings-icon-btn"
+              onClick={() => navigate({ kind: 'project', projectId: project.id, conversationId: null, fileName: null, ds: 'open' })}
+              title="Design System"
+              aria-label="Design System"
+              data-testid="project-open-ds"
+            >
+              <Icon name="palette" size={17} />
+            </button>
+            <AvatarMenu
+              config={config}
+              agents={agents}
+              daemonLive={daemonLive}
+              onModeChange={onModeChange}
+              onAgentChange={onAgentChange}
+              onAgentModelChange={onAgentModelChange}
+              onOpenSettings={onOpenSettings}
+              onRefreshAgents={onRefreshAgents}
+              onBack={onBack}
+            />
+          </>
         )}
       >
         <div className="app-project-title">
@@ -3345,7 +3386,33 @@ export function ProjectView({
             }}
       >
         <div className="split-chat-slot" hidden={workspaceFocused}>
-          {activeConversationId || conversationLoadError ? (
+          <div className="chat-pane-tabs" role="tablist" aria-label="Side panel view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chatPaneView === 'chat'}
+              className={`chat-pane-tab${chatPaneView === 'chat' ? ' chat-pane-tab--active' : ''}`}
+              onClick={() => setChatPaneView('chat')}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chatPaneView === 'files'}
+              className={`chat-pane-tab${chatPaneView === 'files' ? ' chat-pane-tab--active' : ''}`}
+              onClick={() => setChatPaneView('files')}
+            >
+              Files
+            </button>
+          </div>
+          {chatPaneView === 'files' ? (
+            <FileExplorerPanel
+              projectId={project.id}
+              onOpenFile={requestOpenFile}
+              refreshKey={filesRefresh}
+            />
+          ) : activeConversationId || conversationLoadError ? (
             <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
@@ -3426,6 +3493,7 @@ export function ProjectView({
         <FileWorkspace
           projectId={project.id}
           projectKind={projectKindToTracking(project.metadata?.kind) ?? 'prototype'}
+          projectMetadata={project.metadata as { stack?: 'react-vite' } | undefined}
           files={projectFiles}
           liveArtifacts={liveArtifacts}
           filesRefreshKey={filesRefresh}

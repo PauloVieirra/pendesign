@@ -1,5 +1,5 @@
 // Typed catalog for the 17 P0 analytics events. Per-event prop shapes mirror
-// the CSV tracking doc (Open Design 埋点文档 1.0). Enums map code-side values
+// the CSV tracking doc (Vision Design 埋点文档 1.0). Enums map code-side values
 // to the CSV's wire format via the `…ToTracking…` helpers below — when the
 // product team finalizes BLOCKING decisions (see
 // specs/change/20260511-posthog-analytics/tracking-doc-issues.md), revise

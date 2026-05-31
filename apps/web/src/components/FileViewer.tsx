@@ -103,6 +103,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { InsertToolbar, buildInsertedElement, type InsertToolId } from './InsertToolbar';
 import { fetchVariables, type VariablesFile } from '../providers/design-system-variables';
 import { EditModeMediaPopover, emptyEditModeMediaPopoverState, type EditModeMediaPopoverState } from './EditModeMediaPopover';
 import { EditModeLinkBubble, emptyEditModeLinkBubbleState, type EditModeLinkBubbleState } from './EditModeLinkBubble';
@@ -115,8 +116,9 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
-} from '../edit-mode/source-patches';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+  replaceBodyWithSnapshot,
+} from '@open-design/edit-bridge';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '@open-design/edit-bridge';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import { BreakpointRuler, BREAKPOINT_PRESETS } from './BreakpointRuler';
 import { CodeEditor } from './CodeEditor';
@@ -3767,12 +3769,32 @@ function HtmlViewer({
     scale: 1,
   });
   const dcViewportRestoreAtRef = useRef(0);
+  // Insert-mode arming for the bottom-centre InsertToolbar. The host owns the
+  // state so the toolbar's active highlight survives iframe srcDoc swaps;
+  // the bridge inside the iframe receives `od-edit-insert-arm` /
+  // `od-edit-insert-disarm` and paints the drop indicator + cursor while
+  // armed. `null` means no tool is selected (default Edit-mode cursor).
+  const [armedTool, setArmedTool] = useState<InsertToolId | null>(null);
+  // Delete-confirm modal state is lifted to FileViewer so the Delete/Backspace
+  // keyboard shortcut can trigger it without going through the sidebar panel.
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const postArm = useCallback((tool: InsertToolId | null) => {
+    setArmedTool(tool);
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    if (tool == null) {
+      iframe.contentWindow.postMessage({ type: 'od-edit-insert-disarm' }, '*');
+    } else {
+      iframe.contentWindow.postMessage({ type: 'od-edit-insert-arm', tool }, '*');
+    }
+  }, []);
   const setManualEditMode = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setManualEditModeRaw((prev) => {
       const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next;
       if (value !== prev && !value) {
         setManualEditFrozenSource(null);
         setManualEditViewportWidth(null);
+        setArmedTool(null);
       }
       return value;
     });
@@ -3859,6 +3881,24 @@ function HtmlViewer({
   const [manualEditColorPicker, setManualEditColorPicker] = useState<EditModeColorPopoverState>(emptyEditModeColorPopoverState);
   const manualEditUploadInputRef = useRef<HTMLInputElement | null>(null);
   const manualEditSavingRef = useRef(false);
+  // Pending snapshot requests, keyed by requestId. The host posts
+  // 'od-edit-request-snapshot' when a structural patch failed against the
+  // source HTML; the bridge replies with 'od-edit-snapshot-response' that
+  // resolves the matching promise. Used only by SPA fallback in
+  // applyManualEdit.
+  const pendingSnapshotsRef = useRef<Map<string, (html: string | null) => void>>(new Map());
+  const requestBridgeSnapshot = useCallback((): Promise<string | null> => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return Promise.resolve(null);
+    const requestId = `snap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return new Promise<string | null>((resolve) => {
+      pendingSnapshotsRef.current.set(requestId, resolve);
+      window.setTimeout(() => {
+        if (pendingSnapshotsRef.current.delete(requestId)) resolve(null);
+      }, 2000);
+      win.postMessage({ type: 'od-edit-request-snapshot', requestId }, '*');
+    });
+  }, []);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mirrors the pending-style infrastructure for text/link/image content
@@ -4442,6 +4482,41 @@ function HtmlViewer({
     win.postMessage({ type: 'od-static-preview', enabled: staticPreview }, '*');
   }, [manualEditMode, viewMode, srcDoc]);
 
+  // Re-post the armed-tool to the iframe whenever:
+  //  - the user picks a tool in the InsertToolbar (armedTool changes), OR
+  //  - the iframe rebuilds with a new srcDoc while a tool is still armed
+  //    (the bridge inside the new document boots with armedTool = null and
+  //    needs a fresh od-edit-insert-arm to repaint the crosshair cursor and
+  //    drop indicator).
+  // We mirror the `od-edit-mode` effect's deps shape so srcDoc swaps and
+  // tool-toggle clicks both trigger this.
+  useEffect(() => {
+    if (!armedTool) return;
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-insert-arm', tool: armedTool }, '*');
+  }, [armedTool, srcDoc]);
+
+  // Delete / Backspace shortcut for the currently selected manual-edit target.
+  // Opens the central confirm modal instead of deleting directly. The form-field
+  // guard prevents the shortcut from firing when the user is editing text in an
+  // input/textarea/contenteditable surface (sidebar fields, the iframe's own
+  // editable inline text, etc.) — there, the key means "delete a character".
+  useEffect(() => {
+    if (!manualEditMode) return;
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+      if (!selectedManualEditTarget) return;
+      const tgt = ev.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      if (deleteConfirmOpen) return;
+      ev.preventDefault();
+      setDeleteConfirmOpen(true);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, selectedManualEditTarget, deleteConfirmOpen]);
+
   // Post the project's DS tokens.css into the iframe so `var(--<token>)`
   // references the user just bound via the property panel actually
   // resolve at runtime — even in projects whose source HTML never
@@ -4894,9 +4969,18 @@ function HtmlViewer({
         });
         return;
       }
+      if (data.type === 'od-edit-snapshot-response') {
+        const resolve = pendingSnapshotsRef.current.get(data.requestId);
+        if (resolve) {
+          pendingSnapshotsRef.current.delete(data.requestId);
+          resolve(typeof data.bodyHtml === 'string' ? data.bodyHtml : null);
+        }
+        return;
+      }
       if (data.type === 'od-edit-structural-action') {
+        console.log('[od-edit-host] structural-action received', data);
         if (data.action === 'clone') {
-          void applyManualEdit({ id: data.id, kind: 'clone-element-after' }, 'Duplicate');
+          void applyManualEdit({ id: data.id, kind: 'clone-element-after' }, 'Duplicate').then((ok) => console.log('[od-edit-host] Duplicate ok=', ok));
         } else if (data.action === 'delete') {
           void applyManualEdit({ id: data.id, kind: 'delete-element' }, 'Delete');
         } else if (data.action === 'add-sibling-li') {
@@ -4912,12 +4996,12 @@ function HtmlViewer({
           void applyManualEdit(
             { id: data.id, kind: 'move-before-ref', referenceId: data.referenceId },
             'Reorder',
-          );
+          ).then((ok) => console.log('[od-edit-host] Reorder ok=', ok, 'manualEditError=', manualEditError));
         } else if (data.action === 'append-to-parent' && data.parentId) {
           void applyManualEdit(
             { id: data.id, kind: 'append-to-parent', parentId: data.parentId },
             'Reparent',
-          );
+          ).then((ok) => console.log('[od-edit-host] Reparent ok=', ok, 'manualEditError=', manualEditError));
         }
         return;
       }
@@ -4941,10 +5025,47 @@ function HtmlViewer({
         });
         return;
       }
+      if (data.type === 'od-edit-insert-commit') {
+        // The bridge committed a drop while a tool was armed. Translate the
+        // toolbar's tool kind into a concrete element via buildInsertedElement
+        // and apply either an insert-before-ref (sibling drop) or
+        // insert-html-as-child (append-to-container drop).
+        const tool = data.tool;
+        const containerId = data.containerId;
+        const insertBefore = data.insertBefore;
+        if (tool !== 'text' && tool !== 'shape') return;
+        if (typeof containerId !== 'string') return;
+        const built = buildInsertedElement(tool);
+        const patch: ManualEditPatch = insertBefore && typeof insertBefore === 'string'
+          ? { kind: 'insert-html-before-ref', id: built.id, referenceId: insertBefore, html: built.html }
+          : { kind: 'insert-html-as-child', id: built.id, parentId: containerId, html: built.html };
+        const label = tool === 'text' ? 'Insert text' : 'Insert shape';
+        void applyManualEdit(patch, label);
+        setArmedTool(null);
+        return;
+      }
+      if (data.type === 'od-edit-insert-disarmed') {
+        // Bridge auto-disarmed (Escape inside the iframe, or after a commit
+        // — the commit branch above already cleared armedTool, but a fresh
+        // disarmed event from a future code path should still no-op safely).
+        setArmedTool(null);
+        return;
+      }
+      if (data.type === 'od-edit-delete-request') {
+        // The bridge forwarded a Delete/Backspace press while a target was
+        // selected. We open the confirm modal here — the host keydown
+        // listener at ~line 4505 is the equivalent for the "focus is on the
+        // sidebar/host" path. Both paths are deduplicated by the modal-open
+        // guard: if it's already open we ignore the duplicate intent.
+        if (!selectedManualEditTarget) return;
+        if (deleteConfirmOpen) return;
+        setDeleteConfirmOpen(true);
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [isOurPreviewIframeSource, manualEditMode, source]);
+  }, [isOurPreviewIframeSource, manualEditMode, source, selectedManualEditTarget, deleteConfirmOpen]);
 
   function nextManualEditPreviewVersion(): number {
     manualEditPreviewVersionRef.current += 1;
@@ -5105,7 +5226,31 @@ function HtmlViewer({
     setManualEditError(null);
     try {
       const baseSource = sourceRef.current;
-      const result = applyManualEditPatch(baseSource, patch);
+      let result = applyManualEditPatch(baseSource, patch);
+      // SPA fallback. Structural patches (drag, reparent, reorder…) need
+      // the source to contain the runtime DOM nodes the bridge stamps
+      // ids on. Single-file SPAs only carry a root div + scripts, so
+      // findEditableElement returns null and the patch fails. Recover by
+      // asking the bridge for a snapshot of the live body, replacing the
+      // source's body with it, and stripping the scripts that would
+      // overwrite the snapshot next load.
+      const isStructural =
+        patch.kind === 'move-before-ref' ||
+        patch.kind === 'append-to-parent' ||
+        patch.kind === 'move-element-up' ||
+        patch.kind === 'move-element-down' ||
+        patch.kind === 'delete-element' ||
+        patch.kind === 'clone-element-after' ||
+        patch.kind === 'insert-sibling-after' ||
+        patch.kind === 'insert-html-as-child' ||
+        patch.kind === 'insert-html-before-ref';
+      if (!result.ok && isStructural && /not found/i.test(result.error ?? '')) {
+        const snapshot = await requestBridgeSnapshot();
+        if (snapshot) {
+          const snapshotSource = replaceBodyWithSnapshot(baseSource, snapshot);
+          result = { ok: true, source: snapshotSource };
+        }
+      }
       if (!result.ok) {
         setManualEditError(result.error ?? 'Could not apply edit.');
         return false;
@@ -5137,6 +5282,27 @@ function HtmlViewer({
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       if (patch.kind === 'set-style') {
         reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+      }
+      // Structural patches (move / append / delete / clone / insert / replace
+      // outer HTML / full source rewrite) can NOT be mirrored into the iframe
+      // via a single postMessage the way set-style / set-text do — they
+      // rewrite the DOM tree. We unfreeze the preview source so the iframe
+      // rebuilds from the patched HTML and the user sees the new layout
+      // without having to leave and re-enter Edit mode.
+      if (
+        patch.kind === 'move-before-ref' ||
+        patch.kind === 'append-to-parent' ||
+        patch.kind === 'move-element-up' ||
+        patch.kind === 'move-element-down' ||
+        patch.kind === 'delete-element' ||
+        patch.kind === 'clone-element-after' ||
+        patch.kind === 'insert-sibling-after' ||
+        patch.kind === 'insert-html-as-child' ||
+        patch.kind === 'insert-html-before-ref' ||
+        patch.kind === 'set-outer-html' ||
+        patch.kind === 'set-full-source'
+      ) {
+        setManualEditFrozenSource(result.source);
       }
       await onFileSaved?.();
       return true;
@@ -6177,6 +6343,8 @@ function HtmlViewer({
             onRedo={() => {
               void redoManualEdit();
             }}
+            deleteConfirmOpen={deleteConfirmOpen}
+            onDeleteConfirmOpenChange={setDeleteConfirmOpen}
           />
         ) : null}
         {manualEditMode ? (
@@ -6232,6 +6400,7 @@ function HtmlViewer({
               onClose={closeManualEditColorPicker}
               onApply={(hex) => { void applyManualEditColorSwap(hex); }}
             />
+            <InsertToolbar active={armedTool} onSelectTool={postArm} />
           </>
         ) : null}
         <div className={manualEditMode ? 'manual-edit-canvas' : 'comment-frame-clip'}>
@@ -6944,7 +7113,6 @@ function HtmlViewer({
                       setShareMenuOpen(false);
                       fireShareExport('zip', () => exportProjectAsZip({
                         projectId,
-                        filePath: file.name,
                         fallbackHtml: source ?? '',
                         fallbackTitle: exportTitle,
                       }));

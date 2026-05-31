@@ -7,7 +7,7 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
-} from '../../src/edit-mode/source-patches';
+} from '@open-design/edit-bridge';
 
 const baseSource = `<!doctype html>
 <html>
@@ -209,5 +209,203 @@ describe('manual edit source patches', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('nested markup');
+  });
+
+  describe('structural drag-and-drop patches', () => {
+    const dragSource = `<!doctype html>
+<html>
+  <body>
+    <main>
+      <section data-od-id="row" style="display:flex;flex-direction:row;gap:8px;">
+        <div data-od-id="card-a">A</div>
+        <div data-od-id="card-b">B</div>
+        <div data-od-id="card-c">C</div>
+      </section>
+      <section data-od-id="col" style="display:flex;flex-direction:column;">
+        <p data-od-id="copy">Copy</p>
+      </section>
+      <aside data-od-id="empty-box"></aside>
+    </main>
+  </body>
+</html>`;
+
+    function orderOfDataIds(source: string, parentId: string): string[] {
+      const doc = new DOMParser().parseFromString(source, 'text/html');
+      const parent = doc.querySelector(`[data-od-id="${parentId}"]`);
+      if (!parent) return [];
+      return Array.from(parent.children)
+        .map((child) => child.getAttribute('data-od-id') ?? '')
+        .filter(Boolean);
+    }
+
+    it('move-before-ref reorders siblings inside the same row', () => {
+      const result = applyManualEditPatch(dragSource, {
+        kind: 'move-before-ref',
+        id: 'card-c',
+        referenceId: 'card-a',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-c', 'card-a', 'card-b']);
+    });
+
+    it('move-before-ref moves an element into a different parent', () => {
+      const result = applyManualEditPatch(dragSource, {
+        kind: 'move-before-ref',
+        id: 'card-b',
+        referenceId: 'copy',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-a', 'card-c']);
+      expect(orderOfDataIds(result.source, 'col')).toEqual(['card-b', 'copy']);
+    });
+
+    it('append-to-parent drops the element as the last child of a different container', () => {
+      const result = applyManualEditPatch(dragSource, {
+        kind: 'append-to-parent',
+        id: 'card-a',
+        parentId: 'empty-box',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-b', 'card-c']);
+      expect(orderOfDataIds(result.source, 'empty-box')).toEqual(['card-a']);
+    });
+
+    it('rejects move-before-ref when reference is the element itself', () => {
+      const result = applyManualEditPatch(dragSource, {
+        kind: 'move-before-ref',
+        id: 'card-a',
+        referenceId: 'card-a',
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/itself/i);
+    });
+
+    it('rejects move-before-ref when reference is a descendant of the moved element', () => {
+      const nested = `<!doctype html>
+<html><body>
+  <main>
+    <section data-od-id="outer">
+      <article data-od-id="inner"><p data-od-id="leaf">leaf</p></article>
+    </section>
+  </main>
+</body></html>`;
+
+      const result = applyManualEditPatch(nested, {
+        kind: 'move-before-ref',
+        id: 'outer',
+        referenceId: 'leaf',
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/descendant/i);
+    });
+
+    it('rejects append-to-parent when parent is a descendant of the moved element', () => {
+      const nested = `<!doctype html>
+<html><body>
+  <main>
+    <section data-od-id="outer">
+      <article data-od-id="inner"></article>
+    </section>
+  </main>
+</body></html>`;
+
+      const result = applyManualEditPatch(nested, {
+        kind: 'append-to-parent',
+        id: 'outer',
+        parentId: 'inner',
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/descendant/i);
+    });
+  });
+
+  describe('insert-html patches', () => {
+    const insertSource = `<!doctype html>
+<html><body>
+  <main data-od-id="root">
+    <section data-od-id="card-a">A</section>
+    <section data-od-id="card-b">B</section>
+  </main>
+</body></html>`;
+
+    it('insert-html-as-child appends a new element as the last child of parentId', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'root',
+        html: '<div data-od-id="new-shape" style="width: 120px; height: 120px;"></div>',
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source).toContain('data-od-id="new-shape"');
+      // Last sibling after card-b.
+      expect(result.source.indexOf('new-shape')).toBeGreaterThan(result.source.indexOf('card-b'));
+    });
+
+    it('insert-html-as-child treats __body__ as document body', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: '__body__',
+        html: '<div data-od-id="new-shape"></div>',
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source).toContain('data-od-id="new-shape"');
+    });
+
+    it('insert-html-as-child rejects html with multiple roots', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'root',
+        html: '<div></div><div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/exactly one root/);
+    });
+
+    it('insert-html-as-child reports a clear error when the parent id is missing', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-as-child',
+        id: 'new-shape',
+        parentId: 'does-not-exist',
+        html: '<div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/does-not-exist/);
+    });
+
+    it('insert-html-before-ref inserts before the referenced sibling', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-before-ref',
+        id: 'new-shape',
+        referenceId: 'card-b',
+        html: '<div data-od-id="new-shape"></div>',
+      });
+      expect(result.ok).toBe(true);
+      // new-shape lands between card-a and card-b.
+      const a = result.source.indexOf('card-a');
+      const n = result.source.indexOf('new-shape');
+      const b = result.source.indexOf('card-b');
+      expect(a).toBeGreaterThan(-1);
+      expect(n).toBeGreaterThan(a);
+      expect(n).toBeLessThan(b);
+    });
+
+    it('insert-html-before-ref reports a clear error when reference id is missing', () => {
+      const result = applyManualEditPatch(insertSource, {
+        kind: 'insert-html-before-ref',
+        id: 'new-shape',
+        referenceId: 'does-not-exist',
+        html: '<div></div>',
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/does-not-exist/);
+    });
   });
 });

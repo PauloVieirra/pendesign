@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ManualEditColorTarget, ManualEditRect } from '../edit-mode/types';
+import type { ManualEditColorTarget, ManualEditRect } from '@open-design/edit-bridge';
 
 const SWATCH_COLORS = [
   '#000000', '#ffffff', '#374151', '#6b7280',

@@ -5,7 +5,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildProjectArchive } from '../src/projects.js';
+import { buildProjectArchive, listFiles } from '../src/projects.js';
 
 describe('buildProjectArchive', () => {
   let projectsRoot = '';
@@ -194,5 +194,60 @@ describe('buildProjectArchive', () => {
     expect(screenFiles).not.toContain('frames/device-shell.html');
     // but still present in sourceFiles.html
     expect(manifest.sourceFiles.html).toContain('frames/device-shell.html');
+  });
+
+  it('excludes node_modules and other build dirs from the whole-project archive', async () => {
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'node_modules', 'left-pad'), { recursive: true });
+    await writeFile(
+      path.join(dir, 'node_modules', 'left-pad', 'index.js'),
+      'module.exports = (s) => s;',
+    );
+    await mkdir(path.join(dir, 'dist'), { recursive: true });
+    await writeFile(path.join(dir, 'dist', 'bundle.js'), '/* compiled */');
+    await mkdir(path.join(dir, '.next'), { recursive: true });
+    await writeFile(path.join(dir, '.next', 'build-manifest.json'), '{}');
+
+    const { buffer } = await buildProjectArchive(projectsRoot, projectId, '');
+    const zip = await JSZip.loadAsync(buffer);
+    const fileEntries = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .map((entry) => entry.name);
+
+    expect(fileEntries).toContain('README.md');
+    expect(fileEntries.some((n) => n.startsWith('node_modules/'))).toBe(false);
+    expect(fileEntries.some((n) => n.startsWith('dist/'))).toBe(false);
+    expect(fileEntries.some((n) => n.startsWith('.next/'))).toBe(false);
+  });
+
+  it('excludes build dirs case-insensitively (Node_Modules, DIST)', async () => {
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'Node_Modules'), { recursive: true });
+    await writeFile(path.join(dir, 'Node_Modules', 'a.js'), '');
+    await mkdir(path.join(dir, 'DIST'), { recursive: true });
+    await writeFile(path.join(dir, 'DIST', 'b.js'), '');
+
+    const { buffer } = await buildProjectArchive(projectsRoot, projectId, '');
+    const zip = await JSZip.loadAsync(buffer);
+    const fileEntries = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .map((entry) => entry.name);
+
+    expect(fileEntries.some((n) => /^node_modules\//i.test(n))).toBe(false);
+    expect(fileEntries.some((n) => /^dist\//i.test(n))).toBe(false);
+  });
+
+  it('listFiles excludes Node_Modules case-insensitively when baseDir metadata is set', async () => {
+    // Symmetric with collectArchiveEntries: a case-variant build dir like
+    // "Node_Modules" on macOS APFS / Windows would otherwise show up in the
+    // file panel while being hidden from the archive — exactly the
+    // divergence the case-insensitive match is meant to prevent.
+    const dir = path.join(projectsRoot, projectId);
+    await mkdir(path.join(dir, 'Node_Modules'), { recursive: true });
+    await writeFile(path.join(dir, 'Node_Modules', 'a.js'), '');
+    // listFiles only honors SKIP_DIRS when metadata.baseDir is set (linked
+    // projects); pass a synthetic baseDir metadata to exercise the skip.
+    const files = await listFiles(projectsRoot, projectId, { metadata: { baseDir: dir } });
+    expect(files.some((f) => /^Node_Modules\//i.test(f.path ?? f.name ?? ''))).toBe(false);
   });
 });

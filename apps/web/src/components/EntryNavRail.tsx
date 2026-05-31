@@ -76,7 +76,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           data-testid="entry-nav-logo"
         >
           <img
-            src="/app-icon.svg"
+            src="/vision-logo.svg"
             alt=""
             className="entry-nav-rail__logo-img"
             draggable={false}

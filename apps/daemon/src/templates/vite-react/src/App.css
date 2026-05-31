@@ -1,0 +1,4 @@
+/* App-level styles are intentionally minimal — the Welcome screen
+ * brings in its own styles from src/components/Welcome.css. Add global
+ * resets here, or scope new styles to components under src/components/.
+ */

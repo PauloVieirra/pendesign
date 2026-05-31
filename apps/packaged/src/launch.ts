@@ -1,7 +1,7 @@
-import { access, mkdir, stat } from "node:fs/promises";
+import { access, cp, mkdir, stat, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import { dirname } from "node:path";
-import { userInfo } from "node:os";
+import { dirname, join } from "node:path";
+import { homedir, userInfo } from "node:os";
 
 import { app } from "electron";
 
@@ -13,7 +13,7 @@ export class PackagedPathAccessError extends Error {
   constructor(message: string, options?: { cause?: unknown; title?: string }) {
     super(message, options);
     this.name = "PackagedPathAccessError";
-    this.title = options?.title ?? "Open Design cannot access its data folder";
+    this.title = options?.title ?? "Vision Design cannot access its data folder";
   }
 }
 
@@ -48,7 +48,7 @@ function formatWritablePathError(options: {
   const message = error instanceof Error ? error.message : String(error);
   const parentPath = dirname(attemptedPath);
   const diagLines = [
-    `Open Design could not create or write to:`,
+    `Vision Design could not create or write to:`,
     attemptedPath,
     "",
     `Current user: ${currentUser}`,
@@ -116,4 +116,82 @@ export function applyPackagedElectronPathOverrides(
   app.setPath("userData", paths.electronUserDataRoot);
   app.setPath("sessionData", paths.electronSessionDataRoot);
   app.setPath("logs", paths.desktopLogsRoot);
+}
+
+// ---------------------------------------------------------------------------
+// One-shot data migration: "Open Design" → "Vision Design" userData
+// ---------------------------------------------------------------------------
+// Electron derives userData from productName. After the rename from
+// "Open Design" to "Vision Design" the default userData path changes from
+//   ~/Library/Application Support/Open Design/
+// to
+//   ~/Library/Application Support/Vision Design/
+// which would make existing namespaces (projects, SQLite, etc.) invisible.
+//
+// This migration copies the legacy namespaces tree into the new root once,
+// then writes a marker file so it never runs again.
+// ---------------------------------------------------------------------------
+
+const LEGACY_PRODUCT_NAME = "Open Design";
+const MIGRATION_MARKER = ".vision-design-migrated";
+
+async function pathExistsAsync(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Migrates the legacy "Open Design" userData namespaces into the new
+ * "Vision Design" userData root when:
+ *   1. The migration marker does not yet exist (never run before).
+ *   2. The legacy root exists on disk.
+ *   3. The new root either does not exist, or exists but has no namespaces dir.
+ *
+ * Call this BEFORE ensurePackagedNamespacePaths / sidecar startup so that
+ * the daemon finds migrated data when it opens SQLite.
+ *
+ * @param newUserDataRoot  The resolved Vision Design userData directory
+ *                         (i.e. path.dirname(config.namespaceBaseRoot) when
+ *                          namespaceBaseRoot was not explicitly configured).
+ */
+export async function migrateLegacyOpenDesignDataIfNeeded(newUserDataRoot: string): Promise<void> {
+  // Only migrate when the caller is using the default (Electron-derived) path.
+  // If the user has a custom namespaceBaseRoot configured we leave their data
+  // alone — it is already in a stable, explicitly chosen location.
+  const legacyRoot = join(homedir(), "Library", "Application Support", LEGACY_PRODUCT_NAME);
+  const marker = join(newUserDataRoot, MIGRATION_MARKER);
+
+  // Already migrated — nothing to do.
+  if (await pathExistsAsync(marker)) return;
+
+  // No legacy data — nothing to migrate.
+  if (!(await pathExistsAsync(legacyRoot))) return;
+
+  // If the new root already has a namespaces directory the user has already
+  // used Vision Design directly.  Skip the copy to avoid clobbering their data
+  // and write the marker so we don't check again.
+  const newNamespacesDir = join(newUserDataRoot, "namespaces");
+  if (await pathExistsAsync(newNamespacesDir)) {
+    await mkdir(newUserDataRoot, { recursive: true });
+    await writeFile(marker, "skipped: new namespaces dir already present\n", "utf8");
+    return;
+  }
+
+  await mkdir(newUserDataRoot, { recursive: true });
+
+  // Copy the legacy namespaces tree.
+  const legacyNamespacesDir = join(legacyRoot, "namespaces");
+  if (await pathExistsAsync(legacyNamespacesDir)) {
+    await cp(legacyNamespacesDir, newNamespacesDir, { recursive: true });
+  }
+
+  await writeFile(
+    marker,
+    `migrated from ${legacyRoot} on ${new Date().toISOString()}\n`,
+    "utf8",
+  );
 }

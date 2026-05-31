@@ -7,7 +7,7 @@ import {
   isSourceMappableManualEditElement,
   manualEditDomPathForElement,
   manualEditStableIdForElement,
-} from '../../src/edit-mode/bridge';
+} from '@open-design/edit-bridge';
 
 describe('manual edit bridge target normalization', () => {
   it('prefers explicit data-od-id over generated ids', () => {
@@ -142,5 +142,97 @@ describe('manual edit bridge target normalization', () => {
 
     expect(bridge).toContain('isLayoutContainer: isLayoutContainer(el)');
     expect(bridge).toContain("display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0");
+  });
+});
+
+describe('manual edit bridge insert flow', () => {
+  it('handles od-edit-insert-arm and stores the armed tool', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.data.type === 'od-edit-insert-arm'");
+    expect(bridge).toContain('armedTool = ev.data.tool');
+  });
+
+  it('handles od-edit-insert-disarm and clears the armed tool', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.data.type === 'od-edit-insert-disarm'");
+    expect(bridge).toContain('clearInsertArm()');
+  });
+
+  it('reuses the drop-plan engine for the insert preview', () => {
+    const bridge = buildManualEditBridge(true);
+    // The mousemove branch when armed must call the same hit-test + plan
+    // helpers as the drag flow.
+    expect(bridge).toContain('findDropAnchor(insertMoveEv.clientX, insertMoveEv.clientY, null)');
+    expect(bridge).toContain('planForContainer(');
+  });
+
+  it('emits od-edit-insert-commit on click while armed', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-insert-commit'");
+    expect(bridge).toContain("containerId:");
+    expect(bridge).toContain("insertBefore:");
+  });
+
+  it('treats body as the __body__ sentinel container id', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("plan.container === document.body ? '__body__'");
+  });
+
+  it('cancels arm on Escape', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("ev.key === 'Escape'");
+    // The insert arm Escape handler clears via the shared helper.
+    expect(bridge).toContain('clearInsertArm');
+  });
+
+  it('findDropAnchor tolerates a null draggedEl in the bridge script body', () => {
+    const bridge = buildManualEditBridge(true);
+    // The fix pattern from draggableChildrenOf must be present in findDropAnchor too:
+    // a leading `draggedEl && ` guard before any `.contains` access.
+    expect(bridge).toContain('!(draggedEl && draggedEl.contains && draggedEl.contains(hit))');
+  });
+
+  it('od-edit-insert-arm is gated on edit-mode being enabled', () => {
+    const bridge = buildManualEditBridge(true);
+    // The arm branch must early-return when edit-mode is off.
+    expect(bridge).toMatch(/od-edit-insert-arm[\s\S]{0,200}if \(!enabled\) return;/);
+  });
+
+  it('emits od-edit-insert-disarmed after a commit click', () => {
+    const bridge = buildManualEditBridge(true);
+    // The bridge wraps disarm postMessage in clearInsertArm(reason) and the
+    // commit-path caller passes the literal 'commit'.
+    expect(bridge).toContain("type: 'od-edit-insert-disarmed'");
+    expect(bridge).toContain("clearInsertArm('commit')");
+  });
+
+  it('emits od-edit-insert-disarmed after Escape', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("clearInsertArm('escape')");
+  });
+
+  it('does not disarm on a missed click (no findDropAnchor / no plan)', () => {
+    const bridge = buildManualEditBridge(true);
+    // The missed-click branches in onInsertClick must return early WITHOUT
+    // calling clearInsertArm — the user is fumbling, not signalling intent to
+    // cancel. Disarming on a missed click would desync the host's armedTool
+    // from the iframe and leave the toolbar button looking active while the
+    // iframe is no longer armed. Verify by string contract: the onInsertClick
+    // function body must NOT contain a bare `clearInsertArm()` call; only the
+    // commit branch's `clearInsertArm('commit')` is allowed.
+    const onClickStart = bridge.indexOf('function onInsertClick');
+    const onClickEnd = bridge.indexOf('function onInsertKey');
+    expect(onClickStart).toBeGreaterThan(-1);
+    expect(onClickEnd).toBeGreaterThan(onClickStart);
+    const onClickBody = bridge.slice(onClickStart, onClickEnd);
+    expect(onClickBody).not.toContain('clearInsertArm()');
+    expect(onClickBody).toContain("clearInsertArm('commit')");
+  });
+
+  it('forwards Delete/Backspace to host as od-edit-delete-request when a target is selected', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-delete-request'");
+    expect(bridge).toContain("ev.key !== 'Delete' && ev.key !== 'Backspace'");
+    expect(bridge).toContain("data-od-edit-selected");
   });
 });

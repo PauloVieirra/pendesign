@@ -310,7 +310,7 @@ async function ensureOwnedUpdateRoot(config: DesktopUpdaterConfig): Promise<Owne
         ok: false,
         error: createError(
           "update-root-not-owned",
-          `update root is not empty and has no Open Design updater ownership marker: ${realRoot}`,
+          `update root is not empty and has no Vision Design updater ownership marker: ${realRoot}`,
         ),
       };
     }

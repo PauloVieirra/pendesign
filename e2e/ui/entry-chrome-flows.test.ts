@@ -728,7 +728,7 @@ test('home starters html details modal shows metadata links, supports copy query
     inputs: [{ name: 'topic', type: 'string', default: 'editorial systems' }],
     previewEntry: './example.html',
     tags: ['deck', 'marketing'],
-    authorName: 'Open Design',
+    authorName: 'Vision Design',
     authorUrl: 'https://github.com/nexu-io/open-design',
     homepage: 'https://example.com/html-metadata-plugin',
     context: {
@@ -777,7 +777,7 @@ test('home starters html details modal shows metadata links, supports copy query
 
   const dialog = page.getByRole('dialog', { name: /HTML Metadata Plugin preview/i });
   await expect(dialog).toBeVisible();
-  await expect(page.getByTestId('plugin-details-author')).toContainText('Open Design');
+  await expect(page.getByTestId('plugin-details-author')).toContainText('Vision Design');
   await expect(page.getByTestId('plugin-details-author-profile')).toHaveAttribute(
     'href',
     'https://github.com/nexu-io/open-design',
@@ -1014,7 +1014,7 @@ test('home hero attachment-only submit uploads the file and sends it with the fi
 
 async function gotoEntryHome(page: Page) {
   await page.goto('/');
-  const privacyDialog = page.getByRole('dialog').filter({ hasText: 'Help us improve Open Design' });
+  const privacyDialog = page.getByRole('dialog').filter({ hasText: 'Help us improve Vision Design' });
   if (await privacyDialog.isVisible().catch(() => false)) {
     await privacyDialog.getByRole('button', { name: /not now/i }).click();
     await expect(privacyDialog).toHaveCount(0);

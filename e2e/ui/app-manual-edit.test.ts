@@ -80,44 +80,44 @@ test('manual edit inspector previews and persists page and selected element styl
   ]);
 
   await frame.getByRole('heading', { name: 'Original Hero' }).click();
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
-  await expect(page.locator('.manual-edit-modal')).toContainText('SIZE');
-  await expect(page.locator('.manual-edit-modal')).toContainText('LAYOUT');
-  await expect(page.locator('.manual-edit-modal')).toContainText('BOX');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Typography');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Size');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Layout');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Fill');
   const selectedTitleMarker = frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]');
   await expect(selectedTitleMarker).toHaveCount(1);
-  const fontSizeInput = inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Size' }).locator('input');
+  const fontSizeInput = inspectorSection(page, 'Typography').locator('.cc-row').filter({ hasText: 'Size' }).locator('input');
   await fontSizeInput.click();
   await expect(selectedTitleMarker).toHaveCount(1);
   await expect(fontSizeInput).not.toHaveValue('');
   await expect(fontSizeInput).not.toHaveValue(/px/i);
   await page.getByRole('button', { name: 'Show page inspector' }).click();
   await expect(page.locator('.manual-edit-modal')).toContainText('PAGE');
-  await expect(page.locator('.manual-edit-modal')).not.toContainText('TYPOGRAPHY');
+  await expect(page.locator('.manual-edit-modal')).not.toContainText('Typography');
   await expect(selectedTitleMarker).toHaveCount(0);
   await frame.getByRole('heading', { name: 'Original Hero' }).click();
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Typography');
   await expect(selectedTitleMarker).toHaveCount(1);
-  await expect(inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Color' }).locator('input')).toHaveValue(/^#[0-9a-f]{6}$/);
-  const lineInput = inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Line' }).locator('input');
+  await expect(inspectorSection(page, 'Typography').locator('.cc-row').filter({ hasText: 'Color' }).locator('input')).toHaveValue(/^#[0-9a-f]{6}$/);
+  const lineInput = inspectorSection(page, 'Typography').locator('.cc-row').filter({ hasText: 'Line' }).locator('input');
   await lineInput.click();
   await lineInput.blur();
   await expect(page.locator('.manual-edit-error')).toHaveCount(0);
   await frame.locator('body').evaluate(() => {
     window.parent.postMessage({ type: 'od-edit-targets', targets: [] }, '*');
   });
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Typography');
   await expect(page.locator('.manual-edit-modal')).not.toContainText('PAGE');
   await frame.locator('body').evaluate(() => {
     (window as Window & typeof globalThis & { __manualEditSmokeMarker?: string }).__manualEditSmokeMarker = 'stable-frame';
   });
 
   await fontSizeInput.fill('48');
-  await inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Color' }).locator('input').fill('#ef4444');
-  await inspectorSection(page, 'BOX').locator('.cc-row').filter({ hasText: 'Fill' }).locator('input').fill('#f97316');
-  const paddingTopInput = inspectorSection(page, 'BOX').locator('.cc-quad').filter({ hasText: 'Padding' }).locator('input').first();
+  await inspectorSection(page, 'Typography').locator('.cc-row').filter({ hasText: 'Color' }).locator('input').fill('#ef4444');
+  await inspectorSection(page, 'Fill').locator('.cc-row').filter({ hasText: 'Fill' }).locator('input').fill('#f97316');
+  const paddingTopInput = inspectorSection(page, 'Layout').locator('.cc-quad').filter({ hasText: 'Padding' }).locator('input').first();
   await paddingTopInput.fill('12');
-  await inspectorSection(page, 'BOX').locator('.cc-row').filter({ hasText: 'Radius' }).locator('input').fill('8');
+  await inspectorSection(page, 'Stroke').locator('.cc-row').filter({ hasText: 'Radius' }).locator('input').fill('8');
   await expect(fontSizeInput).toHaveValue('48');
   await expect(paddingTopInput).toHaveValue('12');
 
@@ -135,7 +135,7 @@ test('manual edit inspector previews and persists page and selected element styl
     'border-radius: 8px',
   ]);
   await expectFileSourceExcludes(page, projectId, 'manual-edit.html', ['data-od-edit-selected']);
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Typography');
   await expect(page.locator('.manual-edit-modal')).not.toContainText('PAGE');
   await expect(selectedTitleMarker).toHaveCount(1);
   await expect(page.locator('.manual-edit-error')).toHaveCount(0);
@@ -159,7 +159,7 @@ test('manual edit mode preserves preview actions after style edits', async ({ pa
   await expect(frame.getByRole('heading', { name: 'Original Hero' })).toBeVisible();
 
   await page.getByTestId('manual-edit-mode-toggle').click();
-  const fontSizeInput = await selectStyleRowInput(page, frame, '[data-od-id="hero-title"]', 'TYPOGRAPHY', 'Size');
+  const fontSizeInput = await selectStyleRowInput(page, frame, '[data-od-id="hero-title"]', 'Typography', 'Size');
   await fontSizeInput.fill('48');
   await expectFileSource(page, projectId, 'manual-edit.html', ['font-size: 48px']);
 
@@ -183,7 +183,7 @@ async function selectStyleRowInput(
   label: string,
 ) {
   await frame.locator(selector).click();
-  await expect(page.locator('.manual-edit-modal')).toContainText('TYPOGRAPHY');
+  await expect(page.locator('.manual-edit-modal')).toContainText('Typography');
   const row = inspectorSection(page, section).locator('.cc-row').filter({ hasText: label }).locator('input');
   await expect(row).toBeVisible();
   return row;
@@ -237,7 +237,7 @@ async function createEmptyProject(page: Page, name: string): Promise<string> {
 async function gotoEntryHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForLoadingToClear(page);
-  const privacyDialog = page.getByRole('dialog').filter({ hasText: 'Help us improve Open Design' });
+  const privacyDialog = page.getByRole('dialog').filter({ hasText: 'Help us improve Vision Design' });
   if (await privacyDialog.isVisible().catch(() => false)) {
     await privacyDialog.getByRole('button', { name: /not now/i }).click();
     await expect(privacyDialog).toHaveCount(0);
@@ -340,7 +340,7 @@ async function openDesignFile(page: Page, fileName: string) {
 }
 
 async function waitForLoadingToClear(page: Page) {
-  const loading = page.getByText('Loading Open Design…');
+  const loading = page.getByText('Loading Vision Design…');
   await loading.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
 }
 

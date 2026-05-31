@@ -1,0 +1,421 @@
+commit 21409b87a2e8eacaa124fed74f1c73e58cfaa13c
+Merge: 27566b2 34899bd
+Author: vgents <vgentstec@gmail.com>
+Date:   Sun May 24 08:48:20 2026 -0300
+
+    WIP on main: 27566b2 fix(build): unblock mac DMG build by clearing stale type-check errors
+
+diff --cc apps/web/src/edit-mode/bridge.ts
+index d0a6630,d0a6630..8ffa6d4
+--- a/apps/web/src/edit-mode/bridge.ts
++++ b/apps/web/src/edit-mode/bridge.ts
+@@@ -541,10 -541,10 +541,14 @@@ export function buildManualEditBridge(e
+      return Math.round(value);
+    }
+    // ──────────────────────────────────────────────────────────────────
+--  // Cross-parent drag-and-drop. mousedown on a selected element (away
+--  // from any bridge-managed handle) starts a custom drag; the bridge
+--  // hit-tests the cursor against source-mappable siblings via
+--  // elementFromPoint, draws a thin drop indicator line, and posts a
+++  // Cross-parent drag-and-drop. mousedown on a selected, source-mappable
+++  // element (away from any bridge-managed handle) starts a custom drag;
+++  // the bridge hit-tests the cursor against source-mappable siblings via
+++  // elementFromPoint and reads the hit target's parent flex-direction to
+++  // pick the right axis for the before/after decision. A 20% edge zone
+++  // (per axis) means "drop as sibling"; the centre zone of a container
+++  // means "drop inside". The bridge draws a line indicator for sibling
+++  // drops and a translucent rectangle for inside drops, then posts a
+    // move-before-ref / append-to-parent action on mouseup. The dragged
+    // element does not actually move in the iframe DOM during the drag;
+    // the host applies the patch and re-renders, so the visual move only
+@@@ -553,20 -553,20 +557,70 @@@
+    var dragState = null;
+    var dropIndicator = null;
+    var dragJustHappened = false;
+++  // Containers that visually accept children for drop-inside. Restricting
+++  // to layout/box-level boxes keeps the centre zone from kicking in on
+++  // text-only nodes like <p> or <h2> where dropping a card inside makes
+++  // no sense even though the element technically can have children.
+++  var DROP_INSIDE_TAGS = { section:1, main:1, nav:1, article:1, header:1, footer:1, aside:1, div:1, figure:1, ul:1, ol:1, dl:1 };
+++  function acceptsDropInside(el){
+++    if (!el || !el.tagName) return false;
+++    var tag = el.tagName.toLowerCase();
+++    if (!DROP_INSIDE_TAGS[tag]) return false;
+++    var display = window.getComputedStyle(el).display || '';
+++    // Pure inline boxes are not Figma-style "frames"; skip.
+++    if (display === 'inline' || display === 'contents') return false;
+++    return true;
+++  }
+++  function parentFlexAxis(el){
+++    var parent = el && el.parentElement;
+++    if (!parent) return 'y';
+++    var cs = window.getComputedStyle(parent);
+++    if ((cs.display || '').indexOf('flex') < 0) return 'y';
+++    var dir = cs.flexDirection || 'row';
+++    return (dir === 'row' || dir === 'row-reverse') ? 'x' : 'y';
+++  }
+    function ensureDropIndicator(){
+      if (dropIndicator) return dropIndicator;
+      var d = document.createElement('div');
+      d.setAttribute('data-od-edit-bridge', 'drop-indicator');
+      d.style.position = 'absolute';
+      d.style.zIndex = '2147483647';
+--    d.style.background = '#2563eb';
+      d.style.pointerEvents = 'none';
+--    d.style.boxShadow = '0 0 6px rgba(37, 99, 235, 0.7)';
+--    d.style.borderRadius = '1px';
+++    d.style.borderRadius = '2px';
+      document.body.appendChild(d);
+      dropIndicator = d;
+      return d;
+    }
+++  function paintDropIndicator(kind, rect, axis){
+++    var d = ensureDropIndicator();
+++    var x = window.scrollX, y = window.scrollY;
+++    if (kind === 'inside') {
+++      d.style.background = 'rgba(37, 99, 235, 0.12)';
+++      d.style.border = '2px solid #2563eb';
+++      d.style.boxShadow = '0 0 0 1px rgba(37, 99, 235, 0.35)';
+++      d.style.left = (x + rect.left) + 'px';
+++      d.style.top = (y + rect.top) + 'px';
+++      d.style.width = rect.width + 'px';
+++      d.style.height = rect.height + 'px';
+++      return;
+++    }
+++    // sibling line
+++    d.style.background = '#2563eb';
+++    d.style.border = 'none';
+++    d.style.boxShadow = '0 0 6px rgba(37, 99, 235, 0.7)';
+++    var thickness = 2;
+++    if (axis === 'x') {
+++      d.style.top = (y + rect.top) + 'px';
+++      d.style.height = rect.height + 'px';
+++      d.style.width = thickness + 'px';
+++      d.style.left = (x + (kind === 'before' ? rect.left - 1 : rect.right - 1)) + 'px';
+++    } else {
+++      d.style.left = (x + rect.left) + 'px';
+++      d.style.width = rect.width + 'px';
+++      d.style.height = thickness + 'px';
+++      d.style.top = (y + (kind === 'before' ? rect.top - 1 : rect.bottom - 1)) + 'px';
+++    }
+++  }
+    function hideDropIndicator(){
+      if (dropIndicator && dropIndicator.parentNode) dropIndicator.parentNode.removeChild(dropIndicator);
+      dropIndicator = null;
+@@@ -589,29 -589,29 +643,61 @@@
+      }
+      return null;
+    }
+++  function startDrag(el, downEv){
+++    dragState = {
+++      el: el,
+++      startX: downEv.clientX,
+++      startY: downEv.clientY,
+++      moved: false,
+++      lastTarget: null,
+++      lastKind: null,
+++      lastAxis: 'y'
+++    };
+++    document.addEventListener('mousemove', onDragMove, true);
+++    document.addEventListener('mouseup', onDragUp, true);
+++  }
+    function onDragMove(ev){
+      if (!dragState) return;
+      var dx = ev.clientX - dragState.startX;
+      var dy = ev.clientY - dragState.startY;
+      if (!dragState.moved && (Math.abs(dx) + Math.abs(dy)) < 6) return;
+--    dragState.moved = true;
+++    if (!dragState.moved) {
+++      dragState.moved = true;
+++      // From here on the gesture is a drag, not a click. Block selection
+++      // (otherwise mouse-drag highlights text under the cursor) and switch
+++      // the cursor to grabbing for visual feedback.
+++      try { window.getSelection && window.getSelection().removeAllRanges(); } catch(_){}
+++    }
+      document.body.style.cursor = 'grabbing';
+++    ev.preventDefault();
+      var target = findDropTargetAt(ev.clientX, ev.clientY, dragState.el);
+      if (!target) {
+        hideDropIndicator();
+        dragState.lastTarget = null;
+--      dragState.lastPos = null;
+++      dragState.lastKind = null;
+        return;
+      }
+      var rect = target.getBoundingClientRect();
+--    var pos = ev.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+++    var axis = parentFlexAxis(target);
+++    var kind;
+++    var edgeRatio = 0.2;
+++    if (axis === 'x') {
+++      var leftEdge = rect.left + rect.width * edgeRatio;
+++      var rightEdge = rect.right - rect.width * edgeRatio;
+++      if (ev.clientX < leftEdge) kind = 'before';
+++      else if (ev.clientX > rightEdge) kind = 'after';
+++      else kind = acceptsDropInside(target) ? 'inside' : (ev.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
+++    } else {
+++      var topEdge = rect.top + rect.height * edgeRatio;
+++      var botEdge = rect.bottom - rect.height * edgeRatio;
+++      if (ev.clientY < topEdge) kind = 'before';
+++      else if (ev.clientY > botEdge) kind = 'after';
+++      else kind = acceptsDropInside(target) ? 'inside' : (ev.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+++    }
+      dragState.lastTarget = target;
+--    dragState.lastPos = pos;
+--    var d = ensureDropIndicator();
+--    d.style.left = (window.scrollX + rect.left) + 'px';
+--    d.style.width = rect.width + 'px';
+--    d.style.height = '2px';
+--    d.style.top = (window.scrollY + (pos === 'before' ? rect.top - 1 : rect.bottom - 1)) + 'px';
+++    dragState.lastKind = kind;
+++    dragState.lastAxis = axis;
+++    paintDropIndicator(kind, rect, axis);
+    }
+    function onDragUp(){
+      document.removeEventListener('mousemove', onDragMove, true);
+@@@ -622,38 -622,38 +708,81 @@@
+      hideDropIndicator();
+      if (!state || !state.moved || !state.lastTarget) return;
+      dragJustHappened = true;
+--    setTimeout(function(){ dragJustHappened = false; }, 100);
+++    setTimeout(function(){ dragJustHappened = false; }, 150);
+      var sourceId = stableId(state.el);
+      var target = state.lastTarget;
+--    if (state.lastPos === 'before') {
+++    var kind = state.lastKind;
+++    if (kind === 'inside') {
+++      window.parent.postMessage({
+++        type: 'od-edit-structural-action',
+++        id: sourceId,
+++        action: 'append-to-parent',
+++        parentId: stableId(target),
+++      }, '*');
+++      return;
+++    }
+++    if (kind === 'before') {
+        window.parent.postMessage({
+          type: 'od-edit-structural-action',
+          id: sourceId,
+          action: 'move-before-ref',
+          referenceId: stableId(target),
+        }, '*');
+++      return;
+++    }
+++    // 'after' — translate to "before next sibling" or, when there isn't one,
+++    // append to the same parent so the source patcher always has a clear
+++    // reference point.
+++    var nextSibling = target.nextElementSibling;
+++    if (nextSibling) {
+++      window.parent.postMessage({
+++        type: 'od-edit-structural-action',
+++        id: sourceId,
+++        action: 'move-before-ref',
+++        referenceId: stableId(nextSibling),
+++      }, '*');
+      } else {
+--      var nextSibling = target.nextElementSibling;
+--      if (nextSibling) {
+++      var parent = target.parentElement;
+++      if (parent && parent !== document.body && parent !== document.documentElement) {
+          window.parent.postMessage({
+            type: 'od-edit-structural-action',
+            id: sourceId,
+--          action: 'move-before-ref',
+--          referenceId: stableId(nextSibling),
+++          action: 'append-to-parent',
+++          parentId: stableId(parent),
+          }, '*');
+--      } else {
+--        var parent = target.parentElement;
+--        if (parent && parent !== document.body && parent !== document.documentElement) {
+--          window.parent.postMessage({
+--            type: 'od-edit-structural-action',
+--            id: sourceId,
+--            action: 'append-to-parent',
+--            parentId: stableId(parent),
+--          }, '*');
+--        }
+        }
+      }
+    }
+++  function isBridgeManagedNode(el){
+++    while (el && el !== document.body) {
+++      if (el.hasAttribute && el.hasAttribute('data-od-edit-bridge')) return true;
+++      el = el.parentElement;
+++    }
+++    return false;
+++  }
+++  function findSelectedDragRoot(target){
+++    // Walks up from the mousedown target looking for the currently selected
+++    // element. Drag only starts when the user clicks WITHIN the selection —
+++    // this keeps the click→select gesture unchanged (clicking an unselected
+++    // element selects it; the drag affordance is opt-in via a second hold).
+++    var node = target;
+++    while (node && node !== document.body && node !== document.documentElement) {
+++      if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-od-edit-selected') === 'true') {
+++        return isSourceMappable(node) ? node : null;
+++      }
+++      node = node.parentElement;
+++    }
+++    return null;
+++  }
+++  document.addEventListener('mousedown', function(ev){
+++    if (!enabled) return;
+++    if (ev.button !== 0) return;
+++    if (inlineEditEl) return; // do not interfere with caret positioning
+++    if (ev.target && isBridgeManagedNode(ev.target)) return; // resize/padding/etc handles own their gestures
+++    var root = findSelectedDragRoot(ev.target);
+++    if (!root) return;
+++    startDrag(root, ev);
+++  }, true);
+    function startResizeDrag(el, side, downEv){
+      var startX = downEv.clientX;
+      var startY = downEv.clientY;
+@@@ -1163,6 -1163,6 +1292,14 @@@
+    });
+    document.addEventListener('click', function(ev){
+      if (!enabled) return;
+++    // A drag gesture that just released still fires a click event on the
+++    // press origin; suppressing it keeps the selection on the dragged
+++    // element instead of bouncing focus to whatever sat under the cursor.
+++    if (dragJustHappened) {
+++      ev.preventDefault();
+++      ev.stopPropagation();
+++      return;
+++    }
+      // While the user is inline-editing, let clicks land normally on the
+      // editable element (caret positioning, text selection); only intercept
+      // clicks that escape outside it.
+@@@ -1219,7 -1219,7 +1356,9 @@@ html[data-od-edit-mode] [data-od-edit-s
+    outline: 2px solid #2563eb !important;
+    outline-offset: 4px;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+++  cursor: grab !important;
+  }
+++html[data-od-edit-mode] [data-od-edit-selected] * { cursor: grab !important; }
+  /* Inline editing affordances — set by dblclick handlers in the bridge. The
+     contenteditable element gets a stronger outline so the user sees the edit
+     surface; media targets (img/svg) hint that dblclick swaps the asset via a
+diff --cc apps/web/tests/edit-mode/source-patches.test.ts
+index 5a40b38,5a40b38..624bd64
+--- a/apps/web/tests/edit-mode/source-patches.test.ts
++++ b/apps/web/tests/edit-mode/source-patches.test.ts
+@@@ -210,4 -210,4 +210,118 @@@ describe('manual edit source patches', 
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('nested markup');
+    });
+++
+++  describe('structural drag-and-drop patches', () => {
+++    const dragSource = `<!doctype html>
+++<html>
+++  <body>
+++    <main>
+++      <section data-od-id="row" style="display:flex;flex-direction:row;gap:8px;">
+++        <div data-od-id="card-a">A</div>
+++        <div data-od-id="card-b">B</div>
+++        <div data-od-id="card-c">C</div>
+++      </section>
+++      <section data-od-id="col" style="display:flex;flex-direction:column;">
+++        <p data-od-id="copy">Copy</p>
+++      </section>
+++      <aside data-od-id="empty-box"></aside>
+++    </main>
+++  </body>
+++</html>`;
+++
+++    function orderOfDataIds(source: string, parentId: string): string[] {
+++      const doc = new DOMParser().parseFromString(source, 'text/html');
+++      const parent = doc.querySelector(`[data-od-id="${parentId}"]`);
+++      if (!parent) return [];
+++      return Array.from(parent.children)
+++        .map((child) => child.getAttribute('data-od-id') ?? '')
+++        .filter(Boolean);
+++    }
+++
+++    it('move-before-ref reorders siblings inside the same row', () => {
+++      const result = applyManualEditPatch(dragSource, {
+++        kind: 'move-before-ref',
+++        id: 'card-c',
+++        referenceId: 'card-a',
+++      });
+++
+++      expect(result.ok).toBe(true);
+++      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-c', 'card-a', 'card-b']);
+++    });
+++
+++    it('move-before-ref moves an element into a different parent', () => {
+++      const result = applyManualEditPatch(dragSource, {
+++        kind: 'move-before-ref',
+++        id: 'card-b',
+++        referenceId: 'copy',
+++      });
+++
+++      expect(result.ok).toBe(true);
+++      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-a', 'card-c']);
+++      expect(orderOfDataIds(result.source, 'col')).toEqual(['card-b', 'copy']);
+++    });
+++
+++    it('append-to-parent drops the element as the last child of a different container', () => {
+++      const result = applyManualEditPatch(dragSource, {
+++        kind: 'append-to-parent',
+++        id: 'card-a',
+++        parentId: 'empty-box',
+++      });
+++
+++      expect(result.ok).toBe(true);
+++      expect(orderOfDataIds(result.source, 'row')).toEqual(['card-b', 'card-c']);
+++      expect(orderOfDataIds(result.source, 'empty-box')).toEqual(['card-a']);
+++    });
+++
+++    it('rejects move-before-ref when reference is the element itself', () => {
+++      const result = applyManualEditPatch(dragSource, {
+++        kind: 'move-before-ref',
+++        id: 'card-a',
+++        referenceId: 'card-a',
+++      });
+++
+++      expect(result.ok).toBe(false);
+++      expect(result.error).toMatch(/itself/i);
+++    });
+++
+++    it('rejects move-before-ref when reference is a descendant of the moved element', () => {
+++      const nested = `<!doctype html>
+++<html><body>
+++  <main>
+++    <section data-od-id="outer">
+++      <article data-od-id="inner"><p data-od-id="leaf">leaf</p></article>
+++    </section>
+++  </main>
+++</body></html>`;
+++
+++      const result = applyManualEditPatch(nested, {
+++        kind: 'move-before-ref',
+++        id: 'outer',
+++        referenceId: 'leaf',
+++      });
+++
+++      expect(result.ok).toBe(false);
+++      expect(result.error).toMatch(/descendant/i);
+++    });
+++
+++    it('rejects append-to-parent when parent is a descendant of the moved element', () => {
+++      const nested = `<!doctype html>
+++<html><body>
+++  <main>
+++    <section data-od-id="outer">
+++      <article data-od-id="inner"></article>
+++    </section>
+++  </main>
+++</body></html>`;
+++
+++      const result = applyManualEditPatch(nested, {
+++        kind: 'append-to-parent',
+++        id: 'outer',
+++        parentId: 'inner',
+++      });
+++
+++      expect(result.ok).toBe(false);
+++      expect(result.error).toMatch(/descendant/i);
+++    });
+++  });
+  });

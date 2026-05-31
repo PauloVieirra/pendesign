@@ -46,7 +46,7 @@ export function buildPluginFolderAgentActionPrompt(
 //     user expected the plugin-folder buttons to satisfy.
 function buildContributePrompt(folderPath: string): string {
   return [
-    'Open a draft Pull Request that adds this generated plugin to the Open Design community catalog at `nexu-io/open-design`.',
+    'Open a draft Pull Request that adds this generated plugin to the Vision Design community catalog at `nexu-io/open-design`.',
     'The goal is to end this turn with a single PR URL the user can click in their browser to review the pre-filled form and press Create.',
     '',
     `Plugin folder: \`${folderPath}\``,

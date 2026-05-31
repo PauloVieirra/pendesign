@@ -16,7 +16,7 @@ import {
   type InstalledPluginRecord,
 } from '@open-design/contracts';
 import { useT } from '../i18n';
-import { navigate, useRoute } from '../router';
+import { navigate, useRoute, type Route } from '../router';
 import type {
   AgentInfo,
   ApiProtocol,
@@ -33,12 +33,13 @@ import type {
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { CenteredLoader } from './Loading';
 import { DesignsTab } from './DesignsTab';
-import { DesignSystemManagerView } from './design-system-manager/DesignSystemManagerView';
 import { createEmptyDesignSystemForProject } from '../providers/design-system-variables';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
-import { GithubStarBadge } from './GithubStarBadge';
+// GithubStarBadge intentionally removed from the entry topbar (the Star and
+// "Use everywhere" chips were stripped — Vision Design hides those CLI-focused
+// affordances on the home screen).
 import { HomeView } from './HomeView';
 import {
   createPluginAuthoringHandoff,
@@ -50,6 +51,7 @@ import { Icon } from './Icon';
 import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { NewProjectModal } from './NewProjectModal';
+import { WelcomeBanner } from './WelcomeBanner';
 import { PluginsView } from './PluginsView';
 import type { CreateInput, CreateTab, FigmaCreateInput } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
@@ -109,18 +111,6 @@ function defaultPluginInputsForCreate(
 }
 
 // Theme options exposed in the avatar-popover appearance submenu.
-
-// DS Manager (plan task 19): looks up the design system pinned to a project so
-// the EntryShell can hand it to `DesignSystemManagerView`. Returns `null` when
-// the project is missing or has no DS attached, which the manager view treats
-// as the empty-state entry point (attach / import / pick from library).
-function designSystemIdForProject(
-  projectId: string,
-  projects: ReadonlyArray<{ id: string; designSystemId?: string | null }>,
-): string | null {
-  const project = projects.find((p) => p.id === projectId);
-  return project?.designSystemId ?? null;
-}
 
 interface Props {
   skills: SkillSummary[];
@@ -503,8 +493,8 @@ export function EntryShell({
         />
         <main className="entry-main entry-main--scroll">
           <div className="entry-main__topbar">
+            <WelcomeBanner />
             <div className="entry-main__topbar-chips">
-              <GithubStarBadge />
               <InlineModelSwitcher
                 config={config}
                 agents={agents}
@@ -516,21 +506,6 @@ export function EntryShell({
                 onApiModelChange={onApiModelChange}
                 onOpenSettings={onOpenSettings}
               />
-              <button
-                type="button"
-                className="use-everywhere-chip"
-                onClick={() => openIntegrationTab('use-everywhere')}
-                title={t('entry.useEverywhereTitle')}
-                aria-label={t('entry.useEverywhereAria')}
-                data-testid="entry-use-everywhere-button"
-              >
-                <span className="use-everywhere-chip__icon" aria-hidden>
-                  <Icon name="hammer" size={13} />
-                </span>
-                <span className="use-everywhere-chip__label">
-                  {t('entry.useEverywhereTitle')}
-                </span>
-              </button>
             </div>
             {avatarMenu}
           </div>
@@ -599,52 +574,7 @@ export function EntryShell({
               />
             ) : null}
             {view === 'design-systems' ? (
-              route.kind === 'home' && route.projectContext ? (
-                <DesignSystemManagerView
-                  projectId={route.projectContext}
-                  designSystemId={designSystemIdForProject(route.projectContext, projects)}
-                  projectName={
-                    projects.find((p) => p.id === route.projectContext)?.name ?? 'this project'
-                  }
-                  onAttachDsRequested={() => onCreateDesignSystem?.()}
-                  onCreateEmpty={async () => {
-                    const projectId = route.projectContext;
-                    if (!projectId) return;
-                    const result = await createEmptyDesignSystemForProject(projectId);
-                    if ('error' in result) return;
-                    // Refresh DS catalog + project list so the new
-                    // designSystemId flows into the Manager's props on the
-                    // next render. If the parent didn't supply a project
-                    // refresher, fall back to the navigate-to-self trick.
-                    if (typeof onDesignSystemsRefresh === 'function') {
-                      await onDesignSystemsRefresh();
-                    }
-                    if (typeof onProjectsRefresh === 'function') {
-                      await onProjectsRefresh();
-                    } else {
-                      navigate({ kind: 'home', view: 'design-systems', projectContext: projectId });
-                    }
-                  }}
-                />
-              ) : designSystemsLoading ? (
-                <CenteredLoader label={t('common.loading')} />
-              ) : (
-                <div className="entry-section">
-                  <header className="entry-section__head">
-                    <h1 className="entry-section__title">{t('entry.navDesignSystems')}</h1>
-                  </header>
-                  <DesignSystemsTab
-                    systems={designSystems}
-                    selectedId={defaultDesignSystemId}
-                    onSelect={onChangeDefaultDesignSystem}
-                    onCreate={onCreateDesignSystem}
-                    onOpenSystem={onOpenDesignSystem}
-                    onSystemsRefresh={onDesignSystemsRefresh}
-                    onPreview={(id) => setPreviewSystemId(id)}
-                    projectContext={route.kind === 'home' ? route.projectContext : undefined}
-                  />
-                </div>
-              )
+              <DesignSystemsEntryRedirect route={route} />
             ) : null}
             {view === 'integrations' ? (
               <IntegrationsView
@@ -694,4 +624,16 @@ export function EntryShell({
       ) : null}
     </div>
   );
+}
+
+function DesignSystemsEntryRedirect({ route }: { route: Route }) {
+  const projectContext = route.kind === 'home' ? route.projectContext : null;
+  useEffect(() => {
+    if (!projectContext) {
+      navigate({ kind: 'home', view: 'projects' });
+      return;
+    }
+    navigate({ kind: 'project', projectId: projectContext, conversationId: null, fileName: null, ds: 'open' });
+  }, [projectContext]);
+  return null;
 }

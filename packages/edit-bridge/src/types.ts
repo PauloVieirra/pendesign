@@ -82,6 +82,8 @@ export type ManualEditPatch =
   | { id: string; kind: 'move-element-down' }
   | { id: string; kind: 'move-before-ref'; referenceId: string }
   | { id: string; kind: 'append-to-parent'; parentId: string }
+  | { id: string; kind: 'insert-html-as-child'; parentId: string; html: string }
+  | { id: string; kind: 'insert-html-before-ref'; referenceId: string; html: string }
   | { kind: 'set-full-source'; source: string };
 
 export interface ManualEditHistoryEntry {
@@ -201,6 +203,58 @@ export interface ManualEditFormatColorRequestMessage {
   currentColor: string;
 }
 
+// Bridge → host. The host posts 'od-edit-request-snapshot' { requestId }
+// when a structural patch couldn't find its target in the source HTML
+// (typical for single-file SPAs). The bridge replies with this message
+// carrying a cleaned-up clone of the body so the host can do a
+// snapshot-replace on disk.
+export interface ManualEditSnapshotResponseMessage {
+  type: 'od-edit-snapshot-response';
+  requestId: string;
+  bodyHtml: string;
+}
+
+export type InsertToolKind = 'text' | 'shape';
+
+export interface ManualEditInsertArmMessage {
+  type: 'od-edit-insert-arm';
+  tool: InsertToolKind;
+}
+
+export interface ManualEditInsertDisarmMessage {
+  type: 'od-edit-insert-disarm';
+}
+
+export interface ManualEditInsertCommitMessage {
+  type: 'od-edit-insert-commit';
+  tool: InsertToolKind;
+  /** `data-od-id` of the container, or `'__body__'` for the document body
+   * (matches the drag-and-drop containerId convention in the bridge). */
+  containerId: string;
+  /** `data-od-id` of the sibling to insert before; `null` means append as
+   * the last child of `containerId`. */
+  insertBefore: string | null;
+}
+
+export interface ManualEditInsertDisarmedMessage {
+  type: 'od-edit-insert-disarmed';
+  /** Why the bridge auto-disarmed: `'commit'` after a successful insert,
+   * `'escape'` after the user pressed Esc inside the iframe. */
+  reason: 'commit' | 'escape';
+}
+
+// Bridge → host. The bridge forwards Delete/Backspace presses that originate
+// inside the iframe (where focus normally lives after the user clicks to
+// select a target) so the host can open the central confirm modal. The host
+// also keeps a window-level listener as a fallback for the case where focus
+// is on the sidebar/host (e.g. user selected via the layer list). The two
+// paths are deduplicated by the host's `if (deleteConfirmOpen) return;` guard.
+export interface ManualEditDeleteRequestMessage {
+  type: 'od-edit-delete-request';
+  /** data-od-id of the currently selected element. */
+  id: string;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -213,7 +267,11 @@ export type ManualEditBridgeMessage =
   | ManualEditSourceRequestMessage
   | ManualEditStructuralActionMessage
   | ManualEditFormatColorRequestMessage
-  | ManualEditResizeCommitMessage;
+  | ManualEditResizeCommitMessage
+  | ManualEditSnapshotResponseMessage
+  | ManualEditInsertCommitMessage
+  | ManualEditInsertDisarmedMessage
+  | ManualEditDeleteRequestMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'lineHeight', 'letterSpacing',

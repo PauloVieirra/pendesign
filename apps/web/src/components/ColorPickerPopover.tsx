@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { VariablesFile } from '../providers/design-system-variables';
+import { pickPrimaryValue, type VariablesFile } from '../providers/design-system-variables';
 import { Icon } from './Icon';
 
 /**
@@ -216,7 +216,7 @@ function resolveSwatchColor(value: string, variables: VariablesFile | null | und
       for (const variable of group.variables) {
         if (variable.type !== 'color') continue;
         const slug = `--${slugify(collection.name)}-${slugify(group.name)}-${slugify(variable.name)}`;
-        if (slug === target) return String(variable.value);
+        if (slug === target) return String(pickPrimaryValue(variable) ?? '');
       }
     }
   }
@@ -595,7 +595,7 @@ export function ColorPickerPopover({ value, onChange, allowGradient = false, var
         for (const variable of group.variables) {
           if (variable.type !== 'color') continue;
           const slug = `--${slugify(collection.name)}-${slugify(group.name)}-${slugify(variable.name)}`;
-          dsColors.push({ slug, value: String(variable.value), name: variable.name });
+          dsColors.push({ slug, value: String(pickPrimaryValue(variable) ?? ''), name: variable.name });
         }
       }
     }
